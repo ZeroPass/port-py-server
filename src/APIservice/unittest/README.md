@@ -1,4 +1,4 @@
-This is small test client script which calls PassID APIs: `passID.register`, `passID.login`, `passID.sayHello`
+This is small test client script which calls Port APIs: `port.register`, `port.login`, `port.sayHello`
 on to server with valid passport data (EF.SOD, EF.DG15 and passport signatures).
 
 ### Usage

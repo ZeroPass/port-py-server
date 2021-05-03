@@ -39,14 +39,14 @@ class PeMissigParam(ProtoError):
     code = 422
 
 class PePreconditionFailed(ProtoError):
-    """ 
+    """
     One or more condition in verification of emrtd PKI truschain failed.
     Or when verifying SOD contains specific DG e.g.: DG1
     """
     code = 412
 
 class PePreconditionRequired(ProtoError):
-    """ 
+    """
     Required preconditions that are marked as optional.
     e.g.: at registration dg14 maight be required or at login dg1 could be required
     """
@@ -62,12 +62,12 @@ class PeMacVerifyFailed(ProtoError):
     code = 401
 
 
-class PassIdProto:
+class PortProto:
 
     def __init__(self, storage: StorageAPI, cttl: int):
         self.cttl = cttl
         self._db = storage
-        self._log = log.getLogger("passid.proto")
+        self._log = log.getLogger("port.proto")
 
     def createNewChallenge(self) -> Challenge:
         now = utils.time_now()
@@ -103,7 +103,7 @@ class PassIdProto:
 
         # 2. Verify emrtd PKI trust chain
         self.__verify_emrtd_trustchain(sod, dg14, dg15)
-        
+
         # 3. Verify challenge authentication
         sigAlgo = None
         if aaPubKey.isEcKey():
@@ -217,7 +217,7 @@ class PassIdProto:
         """
         Check if signature is correct and the time frame is OK
         :raises:
-            PeChallengeExpired: If challenge stored in db by cid has already expired 
+            PeChallengeExpired: If challenge stored in db by cid has already expired
             PeMissigParam: If aaPubKey is ec public key and no sigAlgo is provided
             PeSigVerifyFailed: If verifying signatures over chunks of challenge fails
         """
@@ -253,7 +253,7 @@ class PassIdProto:
 
     def __verify_emrtd_trustchain(self, sod: ef.SOD, dg14: Union[ef.DG14, None], dg15: ef.DG15) -> None:
         """"
-        Verify eMRTD trust chain from eMRTD SOD to issuing CSCA 
+        Verify eMRTD trust chain from eMRTD SOD to issuing CSCA
         :raises: An exception is risen if any part of trust chain verification fails
         """
         assert isinstance(sod, ef.SOD)
@@ -325,7 +325,7 @@ class PassIdProto:
 
         if csca is None:
             self._log.verbose("Trying to find CSCA in DB by DSC issuer field: [{}]".format(dsc.issuer.human_friendly))
-            csca = self._db.getCSCAbySubject(dsc.issuer) 
+            csca = self._db.getCSCAbySubject(dsc.issuer)
 
         if csca is None:
             self._log.error("CSCA not found!")

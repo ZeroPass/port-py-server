@@ -14,7 +14,7 @@ from .db import (
 )
 
 from .proto import (
-    PassIdProto,
+    PortProto,
     PeAccountConflict,
     PeChallengeExpired,
     PeMissigParam,
@@ -40,7 +40,7 @@ __all__ = [
     "PeChallengeExpired",
     "PeMissigParam",
     "PeSigVerifyFailed",
-    "PassIdProto",
+    "PortProto",
     "ProtoError",
     "SessionKey",
     "StorageAPI",

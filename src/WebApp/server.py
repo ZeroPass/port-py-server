@@ -217,49 +217,49 @@ class WebApp(http.server.BaseHTTPRequestHandler):
                     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
                     <title>2 Column Frames Layout &mdash; Left Menu</title>
                     <style type="text/css">
-                    
+
                     body{
                         margin: 0;
                         padding: 0;
                         overflow: hidden;
-                        height: 100%; 
-                        max-height: 100%; 
+                        height: 100%;
+                        max-height: 100%;
                         font-family:Sans-serif;
                         line-height: 1.5em;
                     }
-                    
+
                     #nav{
                         position: absolute;
                         top: 0;
-                        bottom: 0; 
+                        bottom: 0;
                         left: 0;
                         width: 230px; /* Width of navigation frame */
                         height: 100%;
                         overflow: hidden; /* Disables scrollbars on the navigation frame. To enable scrollbars, change "hidden" to "scroll" */
                         background: #eee;
                     }
-                    
+
                     main{
                         position: fixed;
-                        top: 0; 
+                        top: 0;
                         left: 230px; /* Set this to the width of the navigation frame */
                         right: 0;
                         bottom: 0;
-                        overflow: auto; 
+                        overflow: auto;
                         background: #fff;
                     }
-                    
+
                     #bottom{
                         text-align: right;
                         position:absolute;
                         bottom:0;
                         right:5%;
                     }
-                    
+
                     .innertube{
                         margin: 15px; /* Provides padding for the content */
                     }
-                    
+
                     .uploadButton {
                         box-shadow:inset 0px 1px 0px 0px #ffffff;
                         background:linear-gradient(to bottom, #f9f9f9 5%, #e9e9e9 100%);
@@ -284,53 +284,53 @@ class WebApp(http.server.BaseHTTPRequestHandler):
                         position:relative;
                         top:1px;
                     }
-                    
+
                     p {
                         color: #555;
                     }
-            
+
                     nav ul {
                         list-style-type: none;
                         margin: 0;
                         padding: 0;
                     }
-                    
+
                     nav ul a {
                         color: darkgreen;
                         text-decoration: none;
                     }
-                            
+
                     /*IE6 fix*/
                     * html body{
                         padding: 0 0 0 230px; /* Set the last value to the width of the navigation frame */
                     }
-                    
-                    * html main{ 
-                        height: 100%; 
-                        width: 100%; 
+
+                    * html main{
+                        height: 100%;
+                        width: 100%;
                     }
-                    
+
                     </style>
-                    
+
                     <script type="text/javascript">
                         /* =============================
-                        This script generates sample text for the body content. 
-                        You can remove this script and any reference to it. 
+                        This script generates sample text for the body content.
+                        You can remove this script and any reference to it.
                          ============================= */
                         var bodyText=["Remember, you are unique, just like everybody else.", "Too much agreement kills a good chat.", "Get your facts first, then you can distort them as you please.", "I intend to live forever. So far, so good.", "</p><p>A clear conscience is usually a sign of a bad memory.", "What's another word for Thesaurus?", "<h3>Heading</h3><p>Experience is something you don't get until just after you need it."]
                         function generateText(sentenceCount){
                             for (var i=0; i<sentenceCount; i++)
                             document.write(bodyText[Math.floor(Math.random()*7)]+" ")
                         }
-                    </script>	
-                
+                    </script>
+
                 </head>
-                
-                <body>		
-                            
+
+                <body>
+
                     <main>
                         <div class="innertube">
-                            
+
                             <h1>Upload ICAO data</h1>
                             <!--<p><script>generateText(300)</script></p>-->
                                 <form ENCTYPE=\"multipart/form-data\" method=\"post\">
@@ -340,22 +340,22 @@ class WebApp(http.server.BaseHTTPRequestHandler):
                                 <input name=\"fileDSC\" type=\"file\" multiple/>
                                 </br></br>
                                 <input class="uploadButton" type=\"submit\" value=\"Upload both files\"/></form>
-        
+
                         </div>
                     </main>
-                
+
                     <nav id="nav">
                         <div class="innertube">
-                        
-                        <h3>EOSIO PassID</h3>
+
+                        <h3>Port</h3>
                         <h5>On-chain ePassport Active Authentication</h5>
                         </br></br></br></br>
-                        
+
                         <div id="bottom">Block.one/ZeroPass </div>
-                        
+
                         </div>
                     </nav>
-                
+
                 </body>
             </html>
             """)

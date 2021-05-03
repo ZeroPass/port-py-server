@@ -28,8 +28,8 @@ def bsigs_to_b64sigs(bsigs):
 
 def pingServer(url: str) -> Challenge:
     payload = {
-        "method": "passID.ping",
-        "params": { 
+        "method": "port.ping",
+        "params": {
             "ping" : int.from_bytes(os.urandom(4), 'big')
         },
         "jsonrpc": "2.0",
@@ -44,7 +44,7 @@ def pingServer(url: str) -> Challenge:
 
 def requestChallenge(url: str) -> Challenge:
     payload = {
-        "method": "passID.getChallenge",
+        "method": "port.getChallenge",
         "params": [],
         "jsonrpc": "2.0",
         "id": 8,
@@ -58,7 +58,7 @@ def requestChallenge(url: str) -> Challenge:
 
 def requestRegister(url: str, dg15: ef.DG15, sod: ef.SOD, cid: CID, csigs: List[bytes]):
     payload = {
-        "method": "passID.register",
+        "method": "port.register",
         "params": {
             "dg15"  : b64encode(dg15.dump()),
             "sod"   : b64encode(sod.dump()),
@@ -82,7 +82,7 @@ def requestRegister(url: str, dg15: ef.DG15, sod: ef.SOD, cid: CID, csigs: List[
 
 def requestLogin(url: str, uid: UserId, cid: CID, csigs: List[bytes], dg1 = None):
     payload = {
-        "method": "passID.login",
+        "method": "port.login",
         "params": {
             "uid"  : uid.toBase64(),
             "cid"   : cid.hex(),
@@ -106,7 +106,7 @@ def requestLogin(url: str, uid: UserId, cid: CID, csigs: List[bytes], dg1 = None
 def requestGreeting(url: str, uid: UserId, s: Session):
     mac = s.getMAC("sayHello".encode('ascii') + uid)
     payload = {
-        "method": "passID.sayHello",
+        "method": "port.sayHello",
         "params": {
             "uid"  : uid.toBase64(),
             "mac"  : b64encode(mac),

@@ -30,14 +30,14 @@ def _b64csigs_to_bcsigs(str_csigs: List[str]) -> List[bytes]:
         csigs.append(try_deser(lambda: b64decode(scsig)))
     return csigs
 
-class PassIdApiServer:
-    """ PassID Api server """
-    api_method_prefix = "passID"
+class PortApiServer:
+    """ Port Api server """
+    api_method_prefix = "port"
 
     def __init__(self, db: proto.StorageAPI, config: Config):
         self._conf  = config.api_server
-        self._proto = proto.PassIdProto(db, config.challenge_ttl)
-        self._log   = log.getLogger("passid.api")
+        self._proto = proto.PortProto(db, config.challenge_ttl)
+        self._log   = log.getLogger("port.api")
 
         # Register rpc api methods
         self.__init_api()
@@ -45,7 +45,7 @@ class PassIdApiServer:
     def start(self):
         run_simple(self._conf.host, self._conf.port, self.__create_calls, ssl_context=self._conf.ssl_ctx, threaded=True)
 
-    def passidapi(api_f):
+    def portapi(api_f):
         def wrapped_api_f(self, *args, **kwargs):
             self.__log_api_call(api_f, **kwargs)
             ret=api_f(self, *args, **kwargs)
@@ -54,10 +54,10 @@ class PassIdApiServer:
         return wrapped_api_f
 
 # RPC API methods
-    # API: passID.ping
-    @passidapi
+    # API: port.ping
+    @portapi
     def ping(self, ping: int) -> dict:
-        """ 
+        """
         Function returns challenge that passport needs to sign.
         Challenge is base64 encoded.
         """
@@ -67,10 +67,10 @@ class PassIdApiServer:
         except Exception as e:
             return self.__handle_exception(e)
 
-    # API: passID.getChallenge
-    @passidapi
+    # API: port.getChallenge
+    @portapi
     def getChallenge(self) -> dict:
-        """ 
+        """
         Function returns challenge that passport needs to sign.
         Challenge is base64 encoded.
         """
@@ -80,13 +80,13 @@ class PassIdApiServer:
         except Exception as e:
             return self.__handle_exception(e)
 
-    # API: passID.cancelChallenge
-    @passidapi
+    # API: port.cancelChallenge
+    @portapi
     def cancelChallenge(self, challenge: str) -> Union[None, dict]:
-        """ 
+        """
         Function erases challenge from server.
         :param challenge: base64 encoded string
-        :return: 
+        :return:
                  Nothing if success, else error
         """
         try:
@@ -96,10 +96,10 @@ class PassIdApiServer:
         except Exception as e:
             return self.__handle_exception(e)
 
-    # API: passID.register
-    @passidapi
+    # API: port.register
+    @portapi
     def register(self, dg15: str, sod: str, cid: str, csigs: List[str], dg14: str = None) -> dict:
-        """ 
+        """
         Register new user. It returns back to the client userId which is publicKey address,
         session key and session expiration time.
 
@@ -108,7 +108,7 @@ class PassIdApiServer:
         :param cid: Challenge id
         :param csigs: Challenge signatures
         :param dg14: eMRTD DG14 file (optional)
-        :return: 
+        :return:
                  'uid'         - base64 encoded user id
                  'session_key' - base64 encoded session key
                  'expires'     - unix timestamp of time when session will expire
@@ -127,10 +127,10 @@ class PassIdApiServer:
         except Exception as e:
             return self.__handle_exception(e)
 
-    # API: passID.login
-    @passidapi
+    # API: port.login
+    @portapi
     def login(self, uid: str, cid: str, csigs: List[str], dg1: str = None) -> dict:
-        """ 
+        """
         It returns back session key and session expiration time.
 
         :param uid: User id
@@ -152,10 +152,10 @@ class PassIdApiServer:
         except Exception as e:
             return self.__handle_exception(e)
 
-    # API: passID.sayHello
-    @passidapi
+    # API: port.sayHello
+    @portapi
     def sayHello(self, uid: str, mac: str) -> dict:
-        """ 
+        """
         It returns back greeting message based on whether user is anonymous or not.
 
         :param uid: User id
@@ -191,7 +191,7 @@ class PassIdApiServer:
         if isinstance(e, proto.SeEntryNotFound):
             self._log.debug("Request storage error: {}".format(e))
             raise JSONRPCDispatchException(404, str(e))
-        
+
         self._log.error("Unhandled exception encountered, e={}".format(e))
         raise JSONRPCDispatchException(500, "Internal Server Error")
 
@@ -200,12 +200,12 @@ class PassIdApiServer:
 
         def add_api_meth(api_f, name):
             # method format: <api_prefix>.<methodName>
-            passid_api_f = lambda *args, **kwargs: api_f(self, *args, **kwargs)
-            self._req_disp.add_method(passid_api_f, "{}.{}".format(PassIdApiServer.api_method_prefix, name))
+            port_api_f = lambda *args, **kwargs: api_f(self, *args, **kwargs)
+            self._req_disp.add_method(port_api_f, "{}.{}".format(PortApiServer.api_method_prefix, name))
 
-        # register methods with @passidapi decorator as rpc api handler
+        # register methods with @portapi decorator as rpc api handler
         import inspect
-        meths = inspect.getmembers(PassIdApiServer, predicate=inspect.isfunction)
+        meths = inspect.getmembers(PortApiServer, predicate=inspect.isfunction)
         for m in meths:
             if m[1].__name__ == "wrapped_api_f":
                 add_api_meth(m[1], m[0])

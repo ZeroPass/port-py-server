@@ -1,11 +1,11 @@
 # WebApp data
-Web portal where anyone can upload LDAP (`*.ldif`) files from [ICAO PKD](https://download.pkd.icao.int/) (Master list, DSC & CRL) to server. The uploaded certificates are then used by [API service](https://github.com/ZeroPass/PassID-Server/tree/master/src/APIservice).
+Web portal where anyone can upload LDAP (`*.ldif`) files from [ICAO PKD](https://download.pkd.icao.int/) (Master list, DSC & CRL) to server. The uploaded certificates are then used by [API service](https://github.com/ZeroPass/port-py-server/tree/master/src/APIservice).
 
 
 ### Prerequisites
 * Python 3.7 or higher,
-* Installed requirements from [here](../../../../../PassID-Server#prerequisites),
-* Configured PostgreSQL user and database (see [here](../../../../../PassID-Server#configure-postgresql-database)).
+* Installed requirements from [here](../../../../../port-py-server#prerequisites),
+* Configured PostgreSQL user and database (see [here](../../../../../port-py-server#configure-postgresql-database)).
 
 ### Parameters
 
@@ -23,7 +23,7 @@ options:
 ```
 default: 8000
 type: int
-options: 
+options:
         -<PORT>      (<PORT>)
 ```
 
@@ -52,7 +52,7 @@ Run in the foreground (in 'src/WebApp'):
 
 Run in the background (in 'src/WebApp'):
 ```
-nohup python3 server.py --db-user <USER> --db-pwd <PWD> --db-name <NAME> --url localhost &  
+nohup python3 server.py --db-user <USER> --db-pwd <PWD> --db-name <NAME> --url localhost &
 ```
 
 ### Other documentation

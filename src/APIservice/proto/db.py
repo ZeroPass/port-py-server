@@ -20,7 +20,7 @@ from pymrtd.pki.keys import AAPublicKey, SignatureAlgorithm
 
 from database.storage.storageManager import Connection
 
-from database.storage.challengeStorage import * 
+from database.storage.challengeStorage import *
 from database.storage.accountStorage import AccountStorage, AccountStorageError
 from database.storage.x509Storage import DocumentSignerCertificateStorage, CSCAStorage
 
@@ -33,10 +33,10 @@ class SeEntryNotFound(StorageAPIError):
 
 class StorageAPI(ABC):
     ''' Abstract storage interface for user data and MRTD trustchain certificates (CSCA, DSC) '''
-    
+
     @abstractmethod
     def getChallenge(self, cid: CID) -> Tuple[Challenge, datetime]:
-        """ 
+        """
         Function fetches challenge from db and returns
         challenge and time of creation.
 
@@ -107,7 +107,7 @@ class DatabaseAPIError(StorageAPIError):
     pass
 
 class DatabaseAPI(StorageAPI):
-    ''' 
+    '''
     DatabaseAPI implements StorageAPI as persistent storage.
     It's defined as abstraction layer over class Connection (which uses PostgreSQL)
     to expose Connection interface to StorageAPI without mixing two interfaces.
@@ -119,7 +119,7 @@ class DatabaseAPI(StorageAPI):
         self._dbc = Connection(user, pwd, db)
 
     def getChallenge(self, cid: CID) -> Tuple[Challenge, datetime]:
-        """ 
+        """
         Function fetches challenge from db and returns
         challenge and time of creation.
 
@@ -133,7 +133,7 @@ class DatabaseAPI(StorageAPI):
            .query(ChallengeStorage) \
            .filter(ChallengeStorage.id == str(cid)) \
            .all()
-        
+
         if len(result) == 0:
             raise SeEntryNotFound("challenge not found")
 
@@ -262,14 +262,14 @@ class MemoryDB(StorageAPI):
     '''
     MemoryDB implements StorageAPI as non-peristent database.
     The data is stored in memory (RAM) and gets deleted as instance of MemoryDB is destroyed.
-    The purpose of MemoryDB is testing of passID proto without needing to set up (or reset) proper database.
-    Internally data is stored as dictionary in 4 categories: 
+    The purpose of MemoryDB is testing of port proto without needing to set up (or reset) proper database.
+    Internally data is stored as dictionary in 4 categories:
         proto_challenges -> Dictionary[CID, Tuple[Challenge, datetime]]
         accounts         -> Dictionary[UserId, AccountStorage]
         cscas            -> Set[CscaCertificate]
         dscs             -> Set[DocumentSignerCertificate]
     '''
-    
+
     def __init__(self):
         self._d = {
             'proto_challenges' : {},
@@ -279,7 +279,7 @@ class MemoryDB(StorageAPI):
         }
 
     def getChallenge(self, cid: CID) -> Tuple[Challenge, datetime]:
-        """ 
+        """
         Function fetches challenge from db and returns
         challenge and time of creation.
 
