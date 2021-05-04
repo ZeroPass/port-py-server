@@ -11,7 +11,6 @@ Part of source code is also [pymrtd](https://github.com/ZeroPass/port-py-server/
 - [Usage](#usage)
   + [Instructions for running server services](#instructions-for-running-server-services)
 - [Server module structure](#server-module-structure)
-- [License](#license)
 
 ## Dependencies
 * [Python 3.7 or higher](https://www.python.org/downloads/).<br>
@@ -112,6 +111,3 @@ To extract eMRTD trustchain certificates (CSCA/DSC) from master list files (`*.m
 * [APIService](https://github.com/ZeroPass/port-py-server/tree/master/src/APIservice)
 * [pymrtd](src/pymrtd)
 * [WebApp](https://github.com/ZeroPass/port-py-server/tree/master/src/WebApp)
-
-## License
-This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details

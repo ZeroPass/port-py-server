@@ -11,7 +11,6 @@ All API mehods are defined in [api.py](https://github.com/ZeroPass/port-py-serve
 - [API Methods](#api-methods)
 - [API Errors](#api-errors)
 - [Testing](#testing)
-- [License](#license)
 
 ## Prerequisites
 * Python 3.7 or higher,
@@ -205,7 +204,3 @@ Server can return these Port errors defined [here](https://github.com/ZeroPass/p
 
 ## Testing
 See [test client](unittest) in unittest folder.
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details

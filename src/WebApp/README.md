@@ -58,6 +58,3 @@ nohup python3 server.py --db-user <USER> --db-pwd <PWD> --db-name <NAME> --url l
 ### Other documentation
 * [ICAO 9303 LDAP-LDIF structure specification](https://www.icao.int/publications/Documents/9303_p12_cons_en.pdf)
 
-## License
-
-This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details
