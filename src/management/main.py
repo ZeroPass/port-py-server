@@ -1,10 +1,3 @@
-'''
-    File name: main.py
-    Author: ZeroPass - Nejc Skerjanc
-    License: MIT lincense
-    Python Version: 3.6
-'''
-
 from management.builder import Builder
 from settings import *
 

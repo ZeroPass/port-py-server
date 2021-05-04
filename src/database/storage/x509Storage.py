@@ -1,9 +1,3 @@
-'''
-    File name: x509Storage.py
-    Author: ZeroPass - Nejc Skerjanc
-    License: MIT lincense
-    Python Version: 3.6
-'''
 from database.storage.storageManager import Connection
 from pymrtd.pki.x509 import CscaCertificate, DocumentSignerCertificate
 import logging

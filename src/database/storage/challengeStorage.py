@@ -1,10 +1,3 @@
-'''
-    File name: challengeStorage.py
-    Author: ZeroPass - Nejc Skerjanc
-    License: MIT lincense
-    Python Version: 3.6
-'''
-
 from APIservice.proto.challenge import Challenge
 from datetime import datetime
 

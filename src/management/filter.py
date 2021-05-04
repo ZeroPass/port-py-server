@@ -1,10 +1,3 @@
-'''
-    File name: filter.py
-    Author: ZeroPass - Nejc Skerjanc
-    License: MIT lincense
-    Python Version: 3.6
-'''
-
 from asn1crypto import crl, x509
 import re
 

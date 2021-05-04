@@ -1,10 +1,3 @@
-'''
-    File name: accountStorage.py
-    Author: ZeroPass - Nejc Skerjanc
-    License: MIT lincense
-    Python Version: 3.6
-'''
-
 from database.storage.storageManager import Connection
 from APIservice.proto.user import UserId
 from APIservice.proto.session import Session
@@ -26,7 +19,7 @@ class AccountStorage(object):
     _publicKey = None
     _validUntil = None
     _SOD = None
-    _SKey= None 
+    _SKey= None
     _isValid = None
 
     def __init__(self, uid: UserId, sod: ef.SOD, aaPublicKey: AAPublicKey, sigAlgo: Union[SignatureAlgorithm, None], dg1: Union[ef.DG1, None], session: Session, validUntil: datetime, loginCount: int = 0):

@@ -1,10 +1,3 @@
-'''
-    File name: crlArray.py
-    Author: ZeroPass - Nejc Skerjanc
-    License: MIT lincense
-    Python Version: 3.6
-'''
-
 from pki.crl import CertificationRevocationList
 from settings import *
 

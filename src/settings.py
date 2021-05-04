@@ -1,12 +1,5 @@
-'''
-    File name: settings.py
-    Author: ZeroPass - Nejc Skerjanc
-    License: MIT lincense
-    Python Version: 3.6
-'''
-
 import ssl
-from typing import NamedTuple 
+from typing import NamedTuple
 
 
 class DbConfig(NamedTuple):

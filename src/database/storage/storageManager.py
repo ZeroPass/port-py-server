@@ -1,10 +1,3 @@
-'''
-    File name: storageManager.py
-    Author: ZeroPass - Nejc Skerjanc
-    License: MIT lincense
-    Python Version: 3.6
-'''
-
 import sqlalchemy
 from sqlalchemy import Table, Column, Integer, BigInteger, String, DateTime, MetaData, LargeBinary, Boolean
 from sqlalchemy.orm import mapper, sessionmaker
