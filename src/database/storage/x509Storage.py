@@ -1,3 +1,4 @@
+from typing import List
 from database.storage.storageManager import Connection
 from pymrtd.pki.x509 import CscaCertificate, DocumentSignerCertificate
 import logging
@@ -16,13 +17,13 @@ class CSCAStorage(object):
     def __init__(self, csca: CscaCertificate):
         """Initialization class with serialization of DSC"""
         self.serializeCSCA(csca)
-        self.issuer       = csca.issuer.human_friendly
-        self.fingerprint  = csca.fingerprint
-        self.subject      = csca.subject.human_friendly
-        self.subjectKey   = csca.subjectKey
-        self.authorityKey = csca.authorityKey
-        self.notValidBefore   = csca.notValidBefore
-        self.notValidAfter   = csca.notValidAfter
+        self.issuer         = csca.issuer.human_friendly
+        self.fingerprint    = csca.fingerprint
+        self.subject        = csca.subject.human_friendly
+        self.subjectKey     = csca.subjectKey
+        self.authorityKey   = csca.authorityKey
+        self.notValidBefore = csca.notValidBefore
+        self.notValidAfter  = csca.notValidAfter
 
         try:
             self.serialNumber = str(csca.serial_number)
@@ -52,12 +53,15 @@ def readFromDB_CSCA_issuer_serialNumber(issuer: str, serialNumber: int, connecti
     """Reading from database"""
     try:
         logger.info("Reading CSCA object from database. Issuer:" + issuer + ", serial number: " + str(serialNumber))
-        return connection.getSession().query(CSCAStorage).filter(CSCAStorage.issuer == issuer,
-                                                                 CSCAStorage.serialNumber == str(serialNumber.native)).all()
+        return connection.getSession() \
+                         .query(CSCAStorage) \
+                         .filter(CSCAStorage.issuer == issuer,
+                                 CSCAStorage.serialNumber == str(serialNumber.native)
+                         ).all()
     except Exception as e:
         raise CSCAStorageError("Problem with writing the object" + e)
 
-def readFromDB_CSCA_authorityKey(authorityKey: bytes, connection: Connection) -> []:
+def readFromDB_CSCA_authorityKey(authorityKey: bytes, connection: Connection) -> List[]:
     """Reading from database"""
     try:
         logger.info("Reading CSCA object from database by authority key")
@@ -65,7 +69,7 @@ def readFromDB_CSCA_authorityKey(authorityKey: bytes, connection: Connection) ->
     except Exception as e:
         raise CSCAStorageError("Problem with writing the object" + e)
 
-def deleteFromDB_CSCA(CSCAs: [],connection: Connection):
+def deleteFromDB_CSCA(CSCAs: List[CSCAStorage],connection: Connection):
     """Reading from database"""
     try:
         logger.info("Delete DSCs; size:" + str(len(CSCAs)))
@@ -86,12 +90,12 @@ class DocumentSignerCertificateStorage(object):
     def __init__(self, dsc: DocumentSignerCertificate, issuerCountry: str):
         """Initialization class with serialization of DSC"""
         self.serializeDSC(dsc)
-        self.issuer       = dsc.issuer.human_friendly
-        self.fingerprint  = dsc.fingerprint
-        self.subject      = dsc.subject.human_friendly
-        self.subjectKey   = dsc.subjectKey
-        self.authorityKey     = dsc.authorityKey
-        self.notValidBefore   = dsc.notValidBefore
+        self.issuer          = dsc.issuer.human_friendly
+        self.fingerprint     = dsc.fingerprint
+        self.subject         = dsc.subject.human_friendly
+        self.subjectKey      = dsc.subjectKey
+        self.authorityKey    = dsc.authorityKey
+        self.notValidBefore  = dsc.notValidBefore
         self.notValidAfter   = dsc.notValidAfter
         try:
             self.serialNumber = str(dsc.serial_number)
@@ -122,8 +126,11 @@ def readFromDB_DSC_issuer_serialNumber(issuer: str, serialNumber: int, connectio
     """Reading from database"""
     try:
         logger.info("Reading DSC object from database. Issuer:" + issuer + ", serial number: " + str(serialNumber))
-        return connection.getSession().query(DocumentSignerCertificateStorage).filter(DocumentSignerCertificateStorage.issuer == issuer,
-                                                                                      DocumentSignerCertificateStorage.serialNumber == str(serialNumber.native)).all()
+        return connection.getSession() \
+            .query(DocumentSignerCertificateStorage) \
+            .filter(DocumentSignerCertificateStorage.issuer == issuer,
+                    DocumentSignerCertificateStorage.serialNumber == str(serialNumber.native)
+            ).all()
     except Exception as e:
         raise DocumentSignerCertificateStorageError("Problem with writing the object" + e)
 
