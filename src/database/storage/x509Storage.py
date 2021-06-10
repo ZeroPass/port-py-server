@@ -49,7 +49,7 @@ def writeToDB_CSCA(csca: CscaCertificate, connection: Connection):
     except Exception:
         raise CSCAStorageError("Problem with writing the object")
 
-def readFromDB_CSCA_issuer_serialNumber(issuer: str, serialNumber: int, connection: Connection) -> []:
+def readFromDB_CSCA_issuer_serialNumber(issuer: str, serialNumber: int, connection: Connection) -> List[CSCAStorage]:
     """Reading from database"""
     try:
         logger.info("Reading CSCA object from database. Issuer:" + issuer + ", serial number: " + str(serialNumber))
@@ -61,7 +61,7 @@ def readFromDB_CSCA_issuer_serialNumber(issuer: str, serialNumber: int, connecti
     except Exception as e:
         raise CSCAStorageError("Problem with writing the object" + e)
 
-def readFromDB_CSCA_authorityKey(authorityKey: bytes, connection: Connection) -> List[]:
+def readFromDB_CSCA_authorityKey(authorityKey: bytes, connection: Connection) -> List[CSCAStorage]:
     """Reading from database"""
     try:
         logger.info("Reading CSCA object from database by authority key")
