@@ -114,7 +114,7 @@ class DatabaseAPI(StorageAPI):
     '''
 
     def __init__(self, user: str, pwd: str, db: str):
-        """Creating connection to the database and initialization of main strucutres"""
+        """Creating connection to the database and initialization of main structures"""
         self._log = logging.getLogger(DatabaseAPI.__name__)
         self._dbc = Connection(user, pwd, db)
 

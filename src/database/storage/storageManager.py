@@ -75,7 +75,7 @@ class Connection:
     session = None
 
     def __init__(self, user: str, password: str, db: str, host='localhost', port=5432):
-        """When we initialize the instance we meed to send connneciton and metadata instances to the object"""
+        """When we initialize the instance we meed to send connection and metadata instances to the object"""
         try:
             # We connect with the help of the PostgreSQL URL
             url = 'postgresql://{}:{}@{}:{}/{}'
