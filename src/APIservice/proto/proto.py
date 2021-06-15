@@ -1,7 +1,9 @@
-from datetime import datetime, timedelta
-from typing import List, Tuple, Union
+
 
 from asn1crypto.x509 import Name
+from datetime import datetime, timedelta
+from threading import Timer
+from typing import List, Tuple, Union
 
 from .challenge import CID, Challenge
 from .db import StorageAPI
@@ -64,10 +66,45 @@ class PeMacVerifyFailed(ProtoError):
 
 class PortProto:
 
-    def __init__(self, storage: StorageAPI, cttl: int):
+    def __init__(self, storage: StorageAPI, cttl: int, maintenanceInterval: int = 3600):
+        """
+        Initializes new PortProto.
+        :param storage: database storage to use
+        :param cttl: Challenge expiration time in seconds (time-to-leave)
+        :param maintenanceInterval: Protocol maintenance interval in seconds.
+                                    i.e. expired challenges are purged once per this interval.
+                                    Default interval is 3600 sec (1 hour)
+        """
         self.cttl = cttl
-        self._db = storage
+        self._db  = storage
         self._log = log.getLogger("port.proto")
+        self.maintenanceInterval = maintenanceInterval
+        self._mjtimer: Timer     = None
+
+    def start(self):
+        self.doMaintenance()
+
+    def stop(self):
+        if self._mjtimer is not None and self._mjtimer.is_alive():
+            self._log.debug("Stopping maintenance thread...")
+            self._mjtimer.cancel()
+            self._mjtimer.join(30)
+            if self._mjtimer.is_alive():
+                self._log.error("Couldn't stop maintenance thread")
+            else:
+                self._log.debug("Stopping maintenance thread...SUCCESS")
+
+    def doMaintenance(self):
+        self._log.debug('Start maintenance job')
+        if self._mjtimer is not None:
+            self._mjtimer.cancel()
+
+        self.__purgeExpiredChallenges()
+
+        self._mjtimer = Timer(self.maintenanceInterval, self.doMaintenance)
+        self._mjtimer.setName('maintenance_job')
+        self._mjtimer.start()
+        self._log.debug('Finished maintenance job')
 
     def createNewChallenge(self) -> Challenge:
         now = utils.time_now()
@@ -435,3 +472,8 @@ class PortProto:
 
         if not success:
             raise PeMacVerifyFailed("Invalid session MAC")
+
+    def __purgeExpiredChallenges(self):
+        self._log.debug('Purging expired challenges')
+        now = utils.time_now() - timedelta(seconds=self.cttl)
+        self._db.deleteExpiredChallenges(now)
