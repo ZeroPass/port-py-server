@@ -43,7 +43,11 @@ class PortApiServer:
         self.__init_api()
 
     def start(self):
+        self._proto.start()
         run_simple(self._conf.host, self._conf.port, self.__create_calls, ssl_context=self._conf.ssl_ctx, threaded=True)
+
+    def stop(self):
+        self._proto.stop()
 
     def portapi(api_f):
         def wrapped_api_f(self, *args, **kwargs):

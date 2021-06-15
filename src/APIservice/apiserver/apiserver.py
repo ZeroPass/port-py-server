@@ -1,5 +1,5 @@
 #!/usr/bin/python
-import argparse, os, ssl, sys, coloredlogs
+import argparse, coloredlogs, os, signal, sys, ssl
 from pathlib import Path
 
 _script_path = Path(os.path.dirname(sys.argv[0]))
@@ -209,6 +209,14 @@ def main():
         sapi = DevApiServer(db, config, args['dev_fc'], args['dev_no_tcv'])
     else:
         sapi = PortApiServer(db, config)
+
+
+    def signal_handler(sig, frame):
+        print('Stopping server...')
+        sapi.stop()
+        print('Stopping server... SUCCESS')
+        sys.exit(0)
+    signal.signal(signal.SIGINT, signal_handler)
     sapi.start()
 
 if __name__ == "__main__":
