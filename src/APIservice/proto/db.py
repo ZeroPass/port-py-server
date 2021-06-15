@@ -51,13 +51,21 @@ class StorageAPI(ABC):
     def addChallenge(self, challenge: Challenge, timedate: datetime) -> None:
         """
         Add challenge to storage.
-        :param challange:
-        :param timdate: Date and time when challenge was created
+        :param challenge:
+        :param timdate: Challenge crate Date and time
         """
         pass
 
     @abstractmethod
     def deleteChallenge(self, cid: CID) -> None:
+        pass
+
+    @abstractmethod
+    def deleteExpiredChallenges(self, time: datetime) -> None:
+        """
+        Deletes expired challenges that have createTime less than time.
+        :param time:
+        """
         pass
 
     # User methods
@@ -156,6 +164,11 @@ class DatabaseAPI(StorageAPI):
     def deleteChallenge(self, cid: CID) -> None:
         assert isinstance(cid, CID)
         self._dbc.getSession().query(ChallengeStorage).filter(ChallengeStorage.id == str(cid)).delete()
+        self._dbc.getSession().commit()
+
+    def deleteExpiredChallenges(self, time: datetime) -> None:
+        assert isinstance(time, datetime)
+        self._dbc.getSession().query(ChallengeStorage).filter(ChallengeStorage.createTime < time).delete()
         self._dbc.getSession().commit()
 
     def accountExists(self, uid: UserId) -> bool:
@@ -305,6 +318,12 @@ class MemoryDB(StorageAPI):
         assert isinstance(cid, CID)
         if cid in self._d['proto_challenges']:
             del self._d['proto_challenges'][cid]
+
+    def deleteExpiredChallenges(self, time: datetime) -> None:
+        assert isinstance(time, datetime)
+        for cid, c, createTime in self._d['proto_challenges'].items():
+            if createTime < time:
+                del self._d['proto_challenges'][cid]
 
     def accountExists(self, uid: UserId) -> bool:
         assert isinstance(uid, UserId)
