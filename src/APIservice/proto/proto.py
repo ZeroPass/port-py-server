@@ -34,13 +34,13 @@ class PeCredentialsExpired(ProtoError):
     """ Challenge has expired """
     code = 498
 
-class PeMissigParam(ProtoError):
+class PeMissingParam(ProtoError):
     """ Missing protocol parameter """
     code = 422
 
 class PePreconditionFailed(ProtoError):
     """
-    One or more condition in verification of emrtd PKI truschain failed.
+    One or more condition in verification of emrtd PKI trustchain failed.
     Or when verifying SOD contains specific DG e.g.: DG1
     """
     code = 412
@@ -48,7 +48,7 @@ class PePreconditionFailed(ProtoError):
 class PePreconditionRequired(ProtoError):
     """
     Required preconditions that are marked as optional.
-    e.g.: at registration dg14 maight be required or at login dg1 could be required
+    e.g.: at registration dg14 might be required or at login dg1 could be required
     """
     code = 428
 
@@ -129,7 +129,7 @@ class PortProto:
         if len(sod.dsCertificates) > 0:
             self._log.debug("Issuing country of account's eMRTD: {}"
                 .format(utils.code_to_country_name(sod.dsCertificates[0].issuerCountry)))
-        self._log.verbose("vaild_until={}".format(a.validUntil))
+        self._log.verbose("valid_until={}".format(a.validUntil))
         self._log.verbose("login_count={}".format(a.loginCount))
         self._log.verbose("dg1=None")
         self._log.verbose("pubkey={}".format(a.aaPublicKey.hex()))
@@ -218,14 +218,14 @@ class PortProto:
         Check if signature is correct and the time frame is OK
         :raises:
             PeChallengeExpired: If challenge stored in db by cid has already expired
-            PeMissigParam: If aaPubKey is ec public key and no sigAlgo is provided
+            PeMissingParam: If aaPubKey is ec public key and no sigAlgo is provided
             PeSigVerifyFailed: If verifying signatures over chunks of challenge fails
         """
 
         try:
             self._log.debug("Verifying challenge cid={}".format(cid))
             if aaPubKey.isEcKey() and sigAlgo is None:
-                raise PeMissigParam("Missing param sigAlgo")
+                raise PeMissingParam("Missing param sigAlgo")
 
             c, cet = self._db.getChallenge(cid)
 
@@ -245,7 +245,6 @@ class PortProto:
             for idx, sig in enumerate(csigs):
                 if not aaPubKey.verifySignature(ccs[idx], sig, sigAlgo):
                     raise PeSigVerifyFailed("Challenge signature verification failed")
-
             self._log.success("Challenge signed with eMRTD was successfully verified!")
         except:
             self._log.error("Challenge verification failed!")

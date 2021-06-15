@@ -17,7 +17,7 @@ from .proto import (
     PortProto,
     PeAccountConflict,
     PeChallengeExpired,
-    PeMissigParam,
+    PeMissingParam,
     PeSigVerifyFailed,
     ProtoError
 )
@@ -38,7 +38,7 @@ __all__ = [
     "MemoryDBError",
     "PeAccountConflict",
     "PeChallengeExpired",
-    "PeMissigParam",
+    "PeMissingParam",
     "PeSigVerifyFailed",
     "PortProto",
     "ProtoError",
