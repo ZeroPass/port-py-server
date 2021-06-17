@@ -1,10 +1,8 @@
-import base64, hmac, hashlib
-from typing import cast
-import os
+import base64, hmac, hashlib, os
 
 from cryptography.hazmat.primitives.hashes import Hash, SHA256
 from cryptography.hazmat.backends import default_backend
-
+from typing import cast
 
 class SessionKeyError(Exception):
     pass
@@ -77,7 +75,7 @@ class Session:
 
         dsize = SessionKey._hash_algo.digest_size
         key = SessionKey(rawSession[0:dsize])
-        nonce = int.from_bytes(rawSession[dsize:], byteorder='big')  
+        nonce = int.from_bytes(rawSession[dsize:], byteorder='big')
         return Session(key, nonce)
 
     def bytes(self) -> bytes:
@@ -87,6 +85,6 @@ class Session:
         return self.__nonce.to_bytes(4, 'big')
 
     def __increment_nonce(self):
-        self.__nonce += 1 
+        self.__nonce += 1
         if self.__nonce > 0xffffffff:
             self.__nonce = 0

@@ -1,21 +1,18 @@
-import os
-from typing import List, Union
+import os, port.log as log
 
-from werkzeug.wrappers import Request, Response
-from werkzeug.serving import run_simple
+from base64 import b64decode
 
 from jsonrpc import Dispatcher, JSONRPCResponseManager as JRPCRespMgr
 from jsonrpc.exceptions import JSONRPCDispatchException, JSONRPCServerError, JSONRPCInternalError
 
-import log
+from port import proto
+from port.settings import Config
 
-from APIservice import proto
 from pymrtd import ef
-from settings import Config
+from typing import List, Union
 
-from base64 import b64decode
-
-#before start you need to install json-rpc librarby (pip install json-rpc)
+from werkzeug.wrappers import Request, Response
+from werkzeug.serving import run_simple
 
 def try_deser(f):
     try:
@@ -44,7 +41,7 @@ class PortApiServer:
 
     def start(self):
         self._proto.start()
-        run_simple(self._conf.host, self._conf.port, self.__create_calls, ssl_context=self._conf.ssl_ctx, threaded=True)
+        run_simple(self._conf.host, self._conf.port, self.__handle_request, ssl_context=self._conf.ssl_ctx, threaded=False)
 
     def stop(self):
         self._proto.stop()
@@ -107,11 +104,11 @@ class PortApiServer:
         Register new user. It returns back to the client userId which is publicKey address,
         session key and session expiration time.
 
-        :param dg15: eMRTD DG15 file
-        :param sod: eMRTD SOD file
-        :param cid: Challenge id
-        :param csigs: Challenge signatures
-        :param dg14: eMRTD DG14 file (optional)
+        :param dg15:  base64 encoded eMRTD DG15 file
+        :param sod:   base64 encoded eMRTD SOD file
+        :param cid:   hex encoded Challenge id
+        :param csigs: base64 encoded challenge signatures
+        :param dg14:  base64 encoded eMRTD DG14 file (optional)
         :return:
                  'uid'         - base64 encoded user id
                  'session_key' - base64 encoded session key
@@ -137,9 +134,9 @@ class PortApiServer:
         """
         It returns back session key and session expiration time.
 
-        :param uid: User id
-        :param cid: Challenge id
-        :param csigs: Challenge signatures
+        :param uid:   User id
+        :param cid:   base64 encoded Challenge id
+        :param csigs: base64 encoded challenge signatures
         :return:
                  'session_key' - base64 encoded session key
                  'expires'     - unix timestamp of time when session will expire
@@ -177,8 +174,7 @@ class PortApiServer:
 
 # Request handler
     @Request.application
-    def __create_calls(self, request):
-        """Create API calls"""
+    def __handle_request(self, request):
         response = JRPCRespMgr.handle(
             request.data,
             self._req_disp

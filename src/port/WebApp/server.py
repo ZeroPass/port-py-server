@@ -11,7 +11,7 @@ sys.path.append(str(_script_path / Path("../")))
 
 
 logger = logging.getLogger(__name__)
-from management.builder import Builder
+from port.management.builder import Builder
 
 import os
 import posixpath
@@ -23,7 +23,7 @@ import shutil
 import mimetypes
 import re
 import argparse
-from settings import *
+from port.settings import *
 import base64
 
 from io import BytesIO

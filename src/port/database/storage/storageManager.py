@@ -1,6 +1,7 @@
 import sqlalchemy
-from sqlalchemy import Table, Column, Integer, BigInteger, String, DateTime, MetaData, LargeBinary, Boolean
+from sqlalchemy import Table, Column, Integer, String, DateTime, MetaData, LargeBinary, Boolean
 from sqlalchemy.orm import mapper, sessionmaker
+from sqlalchemy.orm.session import Session
 from sqlalchemy.sql import func
 
 #creating base class from template
@@ -85,7 +86,8 @@ class Connection:
             self.connectionObj = sqlalchemy.create_engine(url, client_encoding='utf8', echo=True)
 
             # We then bind the connection to MetaData()
-            self.metaData = sqlalchemy.MetaData(bind=self.connectionObj, reflect=True)
+            self.metaData = MetaData(bind=self.connectionObj)
+            self.metaData.reflect()
 
             # we create session object to use it later
             Session = sessionmaker(bind=self.connectionObj)
@@ -94,24 +96,24 @@ class Connection:
             self.initTables()
 
         except Exception as e:
-            raise ConnectionError("Connection failed.")
+            raise ConnectionError(e)
 
     def getEngine(self):
         """ It returns engline object"""
         return self.connectionObj
 
-    def getSession(self):
-        """ It returns session to use it in the acutual storage objects/instances"""
+    def getSession(self) -> Session:
+        """ It returns session to use it in the actual storage objects/instances"""
         return self.session
 
     def initTables(self):
         """Initialize tables for usage in database"""
 
         #imports - to avoid circle imports
-        from database.storage.certificateRevocationListStorage import CertificateRevocationListStorage
-        from database.storage.x509Storage import DocumentSignerCertificateStorage, CSCAStorage
-        from database.storage.challengeStorage import ChallengeStorage
-        from database.storage.accountStorage import AccountStorage
+        from port.database.storage.certificateRevocationListStorage import CertificateRevocationListStorage
+        from port.database.storage.x509Storage import DocumentSignerCertificateStorage, CSCAStorage
+        from port.database.storage.challengeStorage import ChallengeStorage
+        from port.database.storage.accountStorage import AccountStorage
 
         #CertificateRevocationList
         mapper(CertificateRevocationListStorage, certificateRevocationListDB)
@@ -131,7 +133,6 @@ class Connection:
         #creating tables
         Base.metadata.create_all(self.connectionObj, tables=[certificateRevocationListDB, documentSignerCertificate, cscaCertificate, challenge, account])
 
-
 def truncateAll(connection: Connection):
     """Truncate all tables"""
     try:
@@ -139,5 +140,4 @@ def truncateAll(connection: Connection):
         for result in connection.getEngine().execute(sql_raw_query):
             connection.getEngine().execute(result[0])
     except Exception as e:
-        raise IOError("Problem deleting object" + e)
-
+        raise IOError("Failed to truncate: " + str(e))

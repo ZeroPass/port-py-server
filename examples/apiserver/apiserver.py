@@ -3,13 +3,13 @@ import argparse, coloredlogs, os, signal, sys, ssl
 from pathlib import Path
 
 _script_path = Path(os.path.dirname(sys.argv[0]))
-sys.path.append(str(_script_path / Path("../../")))
+#sys.path.append(str(_script_path / Path("../../")))
 
-import log
+import port.log as log
 from datetime import datetime, timedelta
-from settings import *
-from APIservice.api import PortApiServer
-from APIservice import proto
+from port.settings import Config, DbConfig, ServerConfig
+from port.api import PortApiServer
+from port import proto
 from pymrtd import ef
 from pymrtd.pki import x509
 
@@ -31,9 +31,9 @@ class DevProto(proto.PortProto):
     def _get_default_account_expiration(self):
         return proto.utils.time_now() + timedelta(minutes=1)
 
-    def validateCertificatePath(self, sod: ef.SOD):
+    def __validate_certificate_path(self, sod: ef.SOD):
             if not self._no_tcv:
-                super().validateCertificatePath(sod)
+                super().__validate_certificate_path(sod)
             else:
                 self._log.warning("Skipping verification of eMRTD certificate trustchain")
 
@@ -41,8 +41,6 @@ class DevApiServer(PortApiServer):
     def __init__(self, db: proto.StorageAPI, config: Config, fc=False, no_tcv=False):
         super().__init__(db, config)
         self._proto = DevProto(db, config.challenge_ttl, fc, no_tcv)
-
-
 
 
 def parse_args():
@@ -164,6 +162,7 @@ def load_pkd_to_mdb(mdb: proto.MemoryDB, pkd_path: Path):
                 cert_count+=1
         except Exception as e:
             l.warning("Could not load certificate '{}'".format(cert))
+            l.exception(e)
     l.info("{} certificates loaded into mdb.".format(cert_count))
 
 
@@ -203,13 +202,11 @@ def main():
     else:
         db = proto.DatabaseAPI(config.database.user, config.database.pwd, config.database.db)
 
-
     # Setup and run server
     if args["dev"]:
         sapi = DevApiServer(db, config, args['dev_fc'], args['dev_no_tcv'])
     else:
         sapi = PortApiServer(db, config)
-
 
     def signal_handler(sig, frame):
         print('Stopping server...')

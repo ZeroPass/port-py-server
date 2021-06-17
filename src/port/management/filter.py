@@ -1,8 +1,8 @@
+import logging
 from asn1crypto import crl, x509
-import re
 
-from settings import *
-from database.storage.x509Storage import readFromDB_DSC_issuer_serialNumber, \
+from port.settings import *
+from port.database.storage.x509Storage import DocumentSignerCertificateStorage, readFromDB_DSC_issuer_serialNumber, \
                                         readFromDB_CSCA_issuer_serialNumber, \
                                         readFromDB_CSCA_authorityKey, \
                                         readFromDB_DSC_authorityKey, \
@@ -11,6 +11,7 @@ from database.storage.x509Storage import readFromDB_DSC_issuer_serialNumber, \
                                         deleteFromDB_CSCA
 
 from pymrtd.pki.crl import CertificateRevocationList
+from typing import List
 
 class FilterError(Exception):
     pass
@@ -18,7 +19,7 @@ class FilterError(Exception):
 class Filter:
     """Filtration of CSCA, eCSCA and DSCs"""
 
-    from database.storage.storageManager import Connection
+    from port.database.storage.storageManager import Connection
     def __init__(self, crl: CertificateRevocationList, connection: Connection):
         """Start the process"""
         try:
@@ -34,7 +35,7 @@ class Filter:
         """Get human readable issuer"""
         return crl.issuer.human_friendly
 
-    def findConnectedCertificatesUnderCSCA(self, CSCA, connection: Connection):
+    def findConnectedCertificatesUnderCSCA(self, CSCA, connection: Connection) -> List[DocumentSignerCertificateStorage]:
         """Find connected certificates by both modes"""
         DSCsMode1 = self.checkByIssuerDSC(CSCA.subject, connection)
         DSCsMode2 = self.checkBySubjectKeyDSC(CSCA.subjectKey, connection)
@@ -44,16 +45,16 @@ class Filter:
         """Find connected certificates: if two CSCA have the same subjectKey"""
         return readFromDB_CSCA_authorityKey(CSCA.subjectKey, connection)
 
-    def checkByIssuerDSC(self, issuer: str, connection: Connection) -> []:
+    def checkByIssuerDSC(self, issuer: str, connection: Connection) -> List[DocumentSignerCertificateStorage]:
         """Check connection between certificates by first mode (issuer and serial number)"""
         return readFromDB_DSC_issuer(issuer, connection)
 
-    def checkBySubjectKeyDSC(self, subjectKey: bytes, connection: Connection) -> []:
-        """Check connection between certificate by second mode (CSCA subject key t0 DSC authority key) //subject key is actualy authority key in the DSC"""
+    def checkBySubjectKeyDSC(self, subjectKey: bytes, connection: Connection) -> List[DocumentSignerCertificateStorage]:
+        """Check connection between certificate by second mode (CSCA subject key t0 DSC authority key) //subject key is actually authority key in the DSC"""
         return readFromDB_DSC_authorityKey(subjectKey, connection)
 
 
-    def deleteCertificateByIssuerAndSerialNumber(self, issuer, serialNumber, connection: Connection) -> []:
+    def deleteCertificateByIssuerAndSerialNumber(self, issuer, serialNumber, connection: Connection) -> None:
         """Find in database certificates with selected issuer and serial number"""
         self._log.debug("Find linked certificates with issuer: " + issuer + " and serial number:" + str(serialNumber))
 
@@ -86,4 +87,3 @@ class Filter:
 
             #delete CSCA
             deleteFromDB_CSCA([item], connection)
-

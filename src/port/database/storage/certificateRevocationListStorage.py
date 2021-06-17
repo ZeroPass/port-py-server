@@ -1,9 +1,12 @@
 import logging
+
+from port.database.storage.storageManager import Connection
+from port.settings import *
+
 from pymrtd.pki.crl import CertificateRevocationList
-from settings import *
+from typing import List
 
 logger = logging.getLogger(__name__)
-
 
 class CertificateRevocationListStorageError(Exception):
     pass
@@ -40,7 +43,6 @@ class CertificateRevocationListStorage(object):
 #
 #Storage management functions
 #
-from database.storage.storageManager import Connection
 
 def writeToDB_CRL(crl: CertificateRevocationList, issuerCountry: str, connection: Connection):
     """Write to database with ORM"""
@@ -53,7 +55,7 @@ def writeToDB_CRL(crl: CertificateRevocationList, issuerCountry: str, connection
     except Exception as e:
         raise CertificateRevocationListStorageError("Problem with writing the object: " + str(e))
 
-def readFromDB_CRL(connection: Connection) -> []:
+def readFromDB_CRL(connection: Connection) -> List[CertificateRevocationListStorage]:
     """Reading from database"""
     try:
         logger.info("Reading CRL objects from database.")

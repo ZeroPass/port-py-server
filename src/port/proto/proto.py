@@ -1,24 +1,20 @@
-
-
-from asn1crypto.x509 import Name
-from datetime import datetime, timedelta
-from threading import Timer
-from typing import List, Tuple, Union
-
+import port.log as log
+from . import utils
 from .challenge import CID, Challenge
 from .db import StorageAPI
 from .session import Session, SessionKey
 from .user import UserId
-from . import utils
 
-from database.storage.accountStorage import AccountStorage
-
-import log
+from asn1crypto.x509 import Name
+from datetime import datetime, timedelta
 
 from pymrtd import ef
 from pymrtd.pki.keys import AAPublicKey, SignatureAlgorithm
 from pymrtd.pki.x509 import Certificate, CscaCertificate, DocumentSignerCertificate
 
+from port.database.storage.accountStorage import AccountStorage
+from threading import Timer
+from typing import List, Tuple, Union
 
 class ProtoError(Exception):
     """ General protocol exception """
@@ -66,7 +62,7 @@ class PeMacVerifyFailed(ProtoError):
 
 class PortProto:
 
-    def __init__(self, storage: StorageAPI, cttl: int, maintenanceInterval: int = 3600):
+    def __init__(self, storage: StorageAPI, cttl: int, maintenanceInterval: int = 36):
         """
         Initializes new PortProto.
         :param storage: database storage to use
@@ -99,12 +95,17 @@ class PortProto:
         if self._mjtimer is not None:
             self._mjtimer.cancel()
 
-        self.__purgeExpiredChallenges()
+        try:
+            self.__purgeExpiredChallenges()
+        except Exception as e:
+            self._log.error("An exception was encountered while doing maintenance job")
+            self._log.exception(e)
 
         self._mjtimer = Timer(self.maintenanceInterval, self.doMaintenance)
         self._mjtimer.setName('maintenance_job')
         self._mjtimer.start()
-        self._log.debug('Finished maintenance job')
+        self._log.debug('Finished maintenance job, next schedule at: {}'
+            .format(utils.time_now() + timedelta(seconds=self.maintenanceInterval)))
 
     def createNewChallenge(self) -> Challenge:
         now = utils.time_now()

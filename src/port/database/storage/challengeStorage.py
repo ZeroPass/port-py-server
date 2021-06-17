@@ -1,5 +1,5 @@
-from APIservice.proto.challenge import Challenge
 from datetime import datetime
+from port.proto.challenge import Challenge
 
 class ChallengeStorage(object):
     """Class for interaction between code structure and database"""

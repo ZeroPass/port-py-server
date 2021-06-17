@@ -1,16 +1,12 @@
+import re
 from ldif3 import LDIFParser
 from asn1crypto import crl, x509
-import re
-
+from port.database import Connection
 #from database.storage.DSC import CertX509
 from pymrtd.pki.crl import writeToDB, readFromDB
-
 from pymrtd.pki.crl import CertificateRevocationList
 
-from database import Connection
-
 conn = Connection("nejko", "nejko", "icao")
-
 
 certificateList = {}
 revocationList = {}

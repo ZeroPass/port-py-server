@@ -1,13 +1,11 @@
 import base64
-from datetime import datetime
-from math import log
-from typing import cast, Union
 import os
 
+from datetime import datetime
 from cryptography.hazmat.primitives.hashes import Hash, SHA512_256
 from cryptography.hazmat.backends import default_backend
-
-
+from math import log
+from typing import cast, Union
 
 class CID(int):
     """ Represents challenge id """

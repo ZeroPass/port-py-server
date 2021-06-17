@@ -6,10 +6,10 @@ import logging
 from pymrtd.pki.crl import CertificateRevocationList
 from pymrtd.pki.x509 import DocumentSignerCertificate, Certificate, CscaCertificate, MasterListSignerCertificate
 
-from database.storage.certificateRevocationListStorage import CertificateRevocationListStorageError, writeToDB_CRL, readFromDB_CRL
-from database.storage.x509Storage import writeToDB_CSCA, writeToDB_DSC
+from port.database.storage.certificateRevocationListStorage import CertificateRevocationListStorageError, writeToDB_CRL, readFromDB_CRL
+from port.database.storage.x509Storage import writeToDB_CSCA, writeToDB_DSC
 
-from management.filter import Filter
+from port.management.filter import Filter
 
 from typing import Dict
 from datetime import datetime
@@ -17,9 +17,9 @@ from datetime import datetime
 
 #from pymrtd import ef
 from pymrtd.pki.ml import CscaMasterList
-from database.storage.storageManager import Connection, truncateAll
+from port.database.storage.storageManager import Connection, truncateAll
 
-from settings import *
+from port.settings import *
 
 logger = logging.getLogger(__name__)
 

@@ -1,29 +1,19 @@
 import logging
-from abc import ABC, abstractmethod
-from datetime import datetime, timedelta
-from typing import List, Tuple, Union
-
-from asn1crypto.x509 import Name
 
 from .challenge import CID, Challenge
 from .user import UserId
-from pymrtd import ef
+
+from abc import ABC, abstractmethod
+from asn1crypto.x509 import Name
+from datetime import datetime
+
+from port.database.storage.storageManager import Connection
+from port.database.storage.challengeStorage import *
+from port.database.storage.accountStorage import AccountStorage, AccountStorageError
+from port.database.storage.x509Storage import DocumentSignerCertificateStorage, CSCAStorage
+
 from pymrtd.pki import x509
-from pymrtd.pki.keys import AAPublicKey, SignatureAlgorithm
-
-
-
-#sudo apt-get install postgresql postgresql-contrib
-#pip install sqlalchemy
-#pip install psycopg2 sqlalchemy
-#sudo -u postgres createuser --interactive
-
-from database.storage.storageManager import Connection
-
-from database.storage.challengeStorage import *
-from database.storage.accountStorage import AccountStorage, AccountStorageError
-from database.storage.x509Storage import DocumentSignerCertificateStorage, CSCAStorage
-
+from typing import List, Tuple, Union
 
 class StorageAPIError(Exception):
     pass
@@ -163,12 +153,18 @@ class DatabaseAPI(StorageAPI):
 
     def deleteChallenge(self, cid: CID) -> None:
         assert isinstance(cid, CID)
-        self._dbc.getSession().query(ChallengeStorage).filter(ChallengeStorage.id == str(cid)).delete()
+        self._dbc.getSession() \
+                 .query(ChallengeStorage) \
+                 .filter(ChallengeStorage.id == str(cid)) \
+                 .delete()
         self._dbc.getSession().commit()
 
     def deleteExpiredChallenges(self, time: datetime) -> None:
         assert isinstance(time, datetime)
-        self._dbc.getSession().query(ChallengeStorage).filter(ChallengeStorage.createTime < time).delete()
+        self._dbc.getSession() \
+                 .query(ChallengeStorage) \
+                 .filter(ChallengeStorage.createTime < time) \
+                 .delete()
         self._dbc.getSession().commit()
 
     def accountExists(self, uid: UserId) -> bool:
@@ -317,13 +313,14 @@ class MemoryDB(StorageAPI):
     def deleteChallenge(self, cid: CID) -> None:
         assert isinstance(cid, CID)
         if cid in self._d['proto_challenges']:
-            del self._d['proto_challenges'][cid]
+            self._d['proto_challenges'].pop(cid)
 
     def deleteExpiredChallenges(self, time: datetime) -> None:
         assert isinstance(time, datetime)
-        for cid, c, createTime in self._d['proto_challenges'].items():
-            if createTime < time:
-                del self._d['proto_challenges'][cid]
+        d = { cid:(c, createTime)
+            for cid, (c, createTime) in self._d['proto_challenges'].items()
+            if createTime >= time }
+        self._d['proto_challenges'] = d
 
     def accountExists(self, uid: UserId) -> bool:
         assert isinstance(uid, UserId)

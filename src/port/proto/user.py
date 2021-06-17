@@ -1,8 +1,6 @@
-import base64
-import hashlib
-from typing import cast
-
+import base64, hashlib
 from pymrtd.pki.keys import AAPublicKey
+from typing import cast
 
 class UserIdError(Exception):
     pass

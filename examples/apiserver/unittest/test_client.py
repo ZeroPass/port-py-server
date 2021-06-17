@@ -1,20 +1,12 @@
 #!/usr/bin/python
-import sys, os
-from pathlib import Path
-sys.path.append(str(Path(os.path.dirname(sys.argv[0])) / Path("../../")))
-
-import base64
-import json
-import requests
+import base64, json, os, requests
 
 from datetime import datetime
+from port.proto import CID, Challenge, UserId, Session, SessionKey
+from pymrtd import ef
 from typing import List
 
-from APIservice.proto import CID, Challenge, UserId, Session, SessionKey
-from pymrtd import ef
-
 headers = {'content-type': 'application/json'}
-
 
 def b64encode(data: bytes):
     return str(base64.b64encode(data), 'ascii')
@@ -24,7 +16,6 @@ def bsigs_to_b64sigs(bsigs):
     for bsig in bsigs:
         ssigs.append(b64encode(bsig))
     return ssigs
-
 
 def pingServer(url: str) -> Challenge:
     payload = {

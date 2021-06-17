@@ -1,5 +1,5 @@
-from management.builder import Builder
-from settings import *
+from port.management.builder import Builder
+from port.settings import *
 
 
 DSC_CRL = open('C://Users/nejko/Desktop/ZeroPass/B1/random/parseCSCAandCRL/data/abc/icaopkd-001-dsccrl-003903.ldif', 'rb')

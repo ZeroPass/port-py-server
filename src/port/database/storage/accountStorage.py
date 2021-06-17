@@ -1,14 +1,12 @@
-from database.storage.storageManager import Connection
-from APIservice.proto.user import UserId
-from APIservice.proto.session import Session
+from port.database.storage.storageManager import Connection
+from port.proto.user import UserId
+from port.proto.session import Session
 
 from pymrtd import ef
 from pymrtd.pki.keys import AAPublicKey, SignatureAlgorithm
 
 from datetime import datetime
 from typing import Union
-
-
 
 class AccountStorageError(Exception):
     pass

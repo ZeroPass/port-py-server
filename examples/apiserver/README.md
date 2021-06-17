@@ -1,7 +1,7 @@
 # API service
 Port API service serves endpoint on JSON-RPC protocol.
 Server has 6 API methods defined.
-All API mehods are defined in [api.py](https://github.com/ZeroPass/port-py-server/blob/18e134e9316bf3888ae5e51ce4cf46468e832f44/src/APIservice/api.py#L56-L172) and their logic is defined in class [PortProto](https://github.com/ZeroPass/port-py-server/blob/66b2ea724ec9a515d07298eed828c6849ec1cbbc/src/APIservice/proto/proto.py#L65-L438).
+All API methods are defined in [api.py](https://github.com/ZeroPass/port-py-server/blob/18e134e9316bf3888ae5e51ce4cf46468e832f44/src/APIservice/api.py#L56-L172) and their logic is defined in class [PortProto](https://github.com/ZeroPass/port-py-server/blob/66b2ea724ec9a515d07298eed828c6849ec1cbbc/src/APIservice/proto/proto.py#L65-L438).
  To demonstrate the eMRTD PoC, API methods `port.register` and `port.login` should be called respectively.
 
 ## Table of Contents
@@ -20,12 +20,12 @@ All API mehods are defined in [api.py](https://github.com/ZeroPass/port-py-serve
 ## Usage
 Run in the foreground:
 ```
- sudo python3 src/APIservice/apiserver/apiserver.py --db-user <USER> --db-pwd <PWD> --db-name <NAME> --url 0.0.0.0
+ sudo python3 apiserver.py --db-user <USER> --db-pwd <PWD> --db-name <NAME> --url 0.0.0.0
 ```
 
 Run in the background:
 ```
-sudo nohup python3 src/APIservice/apiserver/apiserver.py --db-user <USER> --db-pwd <PWD> --db-name <NAME> --url 0.0.0.0 &
+sudo nohup python3 apiserver.py --db-user <USER> --db-pwd <PWD> --db-name <NAME> --url 0.0.0.0 &
 ```
 *Note: Listening to port 443 requiers commands to be run as `sudo`.*
 
@@ -33,12 +33,12 @@ sudo nohup python3 src/APIservice/apiserver/apiserver.py --db-user <USER> --db-p
 Local run using [MemoryDB](https://github.com/ZeroPass/port-py-server/blob/ddcc6073d298cb1a4e0d99195d928a9dce0f78e5/src/APIservice/proto/db.py#L262-L375):
 *Note: Use python tool [pkdext](https://github.com/ZeroPass/PassID-documntation-and-tools/tree/master/tools/pkdext) to extract CSCA and DSC certificates from master list in LDAP (\*.ldif) files*
 ```
-python3 src/APIservice/apiserver/apiserver.py --mdb --mdb-pkd=<path_to_pkd_root>
+python3 apiserver.py --mdb --mdb-pkd=<path_to_pkd_root>
 ```
 
 Local run in dev mode using [MemoryDB](https://github.com/ZeroPass/port-py-server/blob/ddcc6073d298cb1a4e0d99195d928a9dce0f78e5/src/APIservice/proto/db.py#L262-L375):
 ```
-python3 src/APIservice/apiserver/apiserver.py --dev --mdb --mdb-pkd=<path_to_pkd_root>
+python3 apiserver.py --dev --mdb --mdb-pkd=<path_to_pkd_root>
 ```
 
 ### Server Parameters
@@ -100,8 +100,8 @@ default: false
 type: bool
 ```
 
-* --dev-fc : use fixed constant challenge with value of [this bytes](https://github.com/ZeroPass/port-py-server/blob/master/src/APIservice/apiserver/apiserver.py#L26) instead of random challenge
-*To be used for testing server with [test client](https://github.com/ZeroPass/port-py-server/blob/master/src/APIservice/unittest/test_client.py)*
+* --dev-fc : use fixed constant challenge with value of [this bytes](https://github.com/ZeroPass/port-py-server/blob/master/examples/apiserver/apiserver.py#L26) instead of random challenge
+*To be used for testing server with [test client](https://github.com/ZeroPass/port-py-server/blob/master/examples/apiserver/unittest/test_client.py)*
 ```
 default: false
 type: bool
@@ -125,14 +125,14 @@ default: 0 - verbose
 type: int
 ```
 
-* --mdb : use [MemoryDB](https://github.com/ZeroPass/port-py-server/blob/ddcc6073d298cb1a4e0d99195d928a9dce0f78e5/src/APIservice/proto/db.py#L262-L375) instead of sql database
+* --mdb : use [MemoryDB](https://github.com/ZeroPass/port-py-server/blob/ddcc6073d298cb1a4e0d99195d928a9dce0f78e5/src/port/proto/db.py#L262-L375) instead of sql database
 *Note: All entries are stored in memory (RAM) and are erased when server is restarted*
 ```
 default: false
 type: bool
 ```
 
-* --mdb-pkd : path to the root folder of trustchain CSCA/DSC certificates to be loaded into [MemoryDB](https://github.com/ZeroPass/port-py-server/blob/ddcc6073d298cb1a4e0d99195d928a9dce0f78e5/src/APIservice/proto/db.py#L262-L375)
+* --mdb-pkd : path to the root folder of trustchain CSCA/DSC certificates to be loaded into [MemoryDB](https://github.com/ZeroPass/port-py-server/blob/ddcc6073d298cb1a4e0d99195d928a9dce0f78e5/src/port/proto/db.py#L262-L375)
 ```
 default: None
 type: str
@@ -150,7 +150,7 @@ type: bool
   **returns:** `int32` random [*pong*] number
 
 * **port.getChallenge**
-  Returns new random 32 bytes chanllenge to be at register or login to establish new session with.
+  Returns new random 32 bytes challenge to be at register or login to establish new session with.
   **params:** none
   **returns:** 32-byte [*challenge*]
 
@@ -165,21 +165,21 @@ type: bool
   **params:**
     * `base64` encoded [[*dg15*]](https://github.com/ZeroPass/port-py-server/blob/a87cb5cc55c160a9ca80583ecb6099d7a6e57660/src/pymrtd/ef/dg.py#L189-L203) file (eMRTD AA Public Key)
     * `base64` encoded [[*SOD*]](https://github.com/ZeroPass/port-py-server/blob/a87cb5cc55c160a9ca80583ecb6099d7a6e57660/src/pymrtd/ef/sod.py#L135-L195) file (eMRTD Data Security Object)
-    * `hex` encoded 4-byte [[*cid*]](https://github.com/ZeroPass/port-py-server/blob/master/src/APIservice/proto/challenge.py#L12-L37) (challenge id)
+    * `hex` encoded 4-byte [[*cid*]](https://github.com/ZeroPass/port-py-server/blob/master/src/port/proto/challenge.py#L12-L37) (challenge id)
     * ordered list [*csigs*] of 4 `base64` encoded eMRTD signatures (AA) made over 8-byte long challenge chunks ([see verification process](https://github.com/ZeroPass/port-py-server/blob/5800f368b03de6bf8d2ee9d26ba974ff3284b215/src/APIservice/proto/proto.py#L244-L249))
     * (Optional)`base64` encoded [[*dg14*]](https://github.com/ZeroPass/port-py-server/blob/a87cb5cc55c160a9ca80583ecb6099d7a6e57660/src/pymrtd/ef/dg.py#L161-L185) file.
     File is required if elliptic curve cryptography was used to produce signatures. (EF.DG14 contains info about ECC signature algorithm)
 
   **returns:**
-    * `base64` encoded 20-byte [*uid*] [user id](https://github.com/ZeroPass/port-py-server/blob/a87cb5cc55c160a9ca80583ecb6099d7a6e57660/src/APIservice/proto/user.py#L10-L39)
-    * `base64` encoded 32-byte HMAC [[*session_key*]](https://github.com/ZeroPass/port-py-server/blob/23af931ab1ef8fdc0c2d948c1fd4a14a71d7beba/src/APIservice/proto/session.py#L12-L43)
+    * `base64` encoded 20-byte [*uid*] [user id](https://github.com/ZeroPass/port-py-server/blob/a87cb5cc55c160a9ca80583ecb6099d7a6e57660/src/port/proto/user.py#L10-L39)
+    * `base64` encoded 32-byte HMAC [[*session_key*]](https://github.com/ZeroPass/port-py-server/blob/23af931ab1ef8fdc0c2d948c1fd4a14a71d7beba/src/port/proto/session.py#L12-L43)
     * `int32` unix time when session [*expires*] (not used).
 
  * **port.login**
   Logins existing user using eMRTD credentials.
   **params:**
-    * `base64` encoded 20-byte [*uid*] [user id](https://github.com/ZeroPass/port-py-server/blob/a87cb5cc55c160a9ca80583ecb6099d7a6e57660/src/APIservice/proto/user.py#L10-L39)
-    * `hex` encoded 4-byte [[*cid*]](https://github.com/ZeroPass/port-py-server/blob/master/src/APIservice/proto/challenge.py#L12-L37) (challenge id)
+    * `base64` encoded 20-byte [*uid*] [user id](https://github.com/ZeroPass/port-py-server/blob/a87cb5cc55c160a9ca80583ecb6099d7a6e57660/src/port/proto/user.py#L10-L39)
+    * `hex` encoded 4-byte [[*cid*]](https://github.com/ZeroPass/port-py-server/blob/master/src/port/proto/challenge.py#L12-L37) (challenge id)
     * ordered list [*csigs*] of 4 `base64` encoded eMRTD signatures (AA) made over 8-byte long challenge chunks ([see verification process](https://github.com/ZeroPass/port-py-server/blob/5800f368b03de6bf8d2ee9d26ba974ff3284b215/src/APIservice/proto/proto.py#L244-L249))
     * (Optional) `base64` encoded [[*dg1*]](https://github.com/ZeroPass/port-py-server/blob/a87cb5cc55c160a9ca80583ecb6099d7a6e57660/src/pymrtd/ef/dg.py#L148-L158) file (eMRTD MRZ).
     By default EF.DG1 is required [second](https://github.com/ZeroPass/port-py-server/blob/66b2ea724ec9a515d07298eed828c6849ec1cbbc/src/APIservice/proto/proto.py#L155-L159) time user logs-in.
@@ -189,18 +189,18 @@ type: bool
     * `int32` unix time when session [*expires*] (not used).
 
 * **port.sayHello**
-  Returns grettings from server. Returned greeting is in format: *"Hi, anonymous!"* or
+  Returns greetings from server. Returned greeting is in format: *"Hi, anonymous!"* or
   *"Hi, <LAST_NAME> <FIRST_NAME>!"* if EF.DG1 was provided at login.
   (API method is defined only to present validated and parsed personal user data back to client)
   **params:**
     * `base64` encoded 20-byte [*uid*] [user id](https://github.com/ZeroPass/port-py-server/blob/a87cb5cc55c160a9ca80583ecb6099d7a6e57660/src/APIservice/proto/user.py#L10-L39)
-    *  `base64` encoded 32-byte [*mac*] digest of [HMAC-SHA256](https://github.com/ZeroPass/port-py-server/blob/66b2ea724ec9a515d07298eed828c6849ec1cbbc/src/APIservice/proto/session.py#L63-L69) calculated over [[api name | uid]](https://github.com/ZeroPass/port-py-server/blob/master/src/APIservice/proto/proto.py#L206) using session key (generated at register/login).
+    *  `base64` encoded 32-byte [*mac*] digest of [HMAC-SHA256](https://github.com/ZeroPass/port-py-server/blob/66b2ea724ec9a515d07298eed828c6849ec1cbbc/src/APIservice/proto/session.py#L63-L69) calculated over [[api name | uid]](https://github.com/ZeroPass/port-py-server/blob/master/port/proto/proto.py#L206) using session key (generated at register/login).
 
    **returns:**
     * `str` greeting
 
 ## API Errors
-Server can return these Port errors defined [here](https://github.com/ZeroPass/port-py-server/blob/master/src/APIservice/proto/proto.py#L21-L62).
+Server can return these Port errors defined [here](https://github.com/ZeroPass/port-py-server/blob/master/src/port/proto/proto.py#L21-L62).
 
 ## Testing
 See [test client](unittest) in unittest folder.
