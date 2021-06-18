@@ -309,7 +309,7 @@ class PortProto:
             self._log.error("Failed to verify eMRTD certificate trust chain!")
             raise
 
-    def __get_dsc_by_isser_and_serial_number(self, issuer: Name, serialNumber: int, sod: ef.SOD) -> Tuple[Union[DocumentSignerCertificate, None], bool]:
+    def __get_dsc_by_issuer_and_serial_number(self, issuer: Name, serialNumber: int, sod: ef.SOD) -> Tuple[Union[DocumentSignerCertificate, None], bool]:
         """
         Get DSC from SOD or from database if not found ind SOD.
         :param issuer:
@@ -389,18 +389,14 @@ class PortProto:
 
         # Get DSCs certificates that signed SOD file. DSC is also validated to CSCA trust chain if necessary.
         dscs = []
-        for sidx, signer in enumerate(sod.signers):
+        for _, signer in enumerate(sod.signers):
             if signer.name == "issuer_and_serial_number":
                 #sni = signer['sid'].chosen
                 signer = signer.chosen
                 issuer = signer["issuer"]
                 serial = signer["serial_number"].native
                 self._log.verbose("Getting DSC which issued SOD by serial no.: {} and issuer: [{}]".format(serial, issuer.human_friendly))
-                dsc, validateDSC = self.__get_dsc_by_isser_and_serial_number(
-                    issuer,
-                    serial,
-                    sod
-                )
+                dsc, validateDSC = self.__get_dsc_by_issuer_and_serial_number(issuer, serial, sod)
             elif signer.name == "subject_key_identifier":
                 keyid = signer.native
                 self._log.verbose("Getting DSC which issued SOD by subject_key={}".format(keyid.hex()))
@@ -409,7 +405,7 @@ class PortProto:
                 raise PePreconditionFailed("Unknown connection path from SOD to DSC")
 
             if dsc is None:
-                raise PePreconditionFailed("No DSC found")
+                raise PePreconditionFailed("DSC not found")
 
             self._log.verbose("Got DSC fp={} issuer_country={}, validating path to CSCA required: {}"
                 .format(dsc.fingerprint[0:8], utils.code_to_country_name(dsc.issuerCountry), validateDSC))
