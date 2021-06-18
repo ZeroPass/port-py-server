@@ -23,10 +23,6 @@ from port.settings import *
 
 logger = logging.getLogger(__name__)
 
-#subject - authority
-#issucer - subject
-
-
 def get_issuer_cert(issued_cert: Certificate, root_certs: Dict[bytes, Certificate]):
     if issued_cert.self_signed == 'maybe':
         return issued_cert
@@ -38,8 +34,6 @@ def get_issuer_cert(issued_cert: Certificate, root_certs: Dict[bytes, Certificat
         for skid, rc in root_certs.items():
             if rc.subject == issuer:
                 return rc
-
-    return None
 
 class BuilderError(Exception):
     pass
