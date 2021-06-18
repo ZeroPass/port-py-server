@@ -32,7 +32,7 @@ class AccountStorage(object):
         assert isinstance(loginCount, int)
 
         if sigAlgo is not None:
-            sigAlog = sigAlgo.dump()
+            sigAlgo = sigAlgo.dump()
         if dg1 is not None:
             dg1 = dg1.dump()
 
