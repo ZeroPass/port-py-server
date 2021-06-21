@@ -9,7 +9,7 @@ from port import proto
 from port.settings import Config
 
 from pymrtd import ef
-from typing import List, Union
+from typing import Callable, List, Union
 
 from werkzeug.wrappers import Request, Response
 from werkzeug.serving import run_simple
@@ -41,15 +41,15 @@ class PortApiServer:
 
     def start(self):
         self._proto.start()
-        run_simple(self._conf.host, self._conf.port, self.__handle_request, ssl_context=self._conf.ssl_ctx, threaded=False)
+        run_simple(self._conf.host, self._conf.port, self.__handle_request, use_reloader=True, ssl_context=self._conf.ssl_ctx, threaded=True)
 
     def stop(self):
         self._proto.stop()
 
-    def portapi(api_f):
+    def portapi(api_f: Callable): # pylint: disable=no-self-argument
         def wrapped_api_f(self, *args, **kwargs):
             self.__log_api_call(api_f, **kwargs)
-            ret=api_f(self, *args, **kwargs)
+            ret=api_f(self, *args, **kwargs) # pylint: disable=not-callable
             self.__log_api_response(api_f, ret)
             return ret
         return wrapped_api_f
