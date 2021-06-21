@@ -70,13 +70,15 @@ class PortApiServer:
 
     # API: port.getChallenge
     @portapi
-    def getChallenge(self) -> dict:
+    def getChallenge(self, uid: str) -> dict:
         """
         Function returns challenge that passport needs to sign.
         Challenge is base64 encoded.
+        :param uid: base64 encoded UserId to generate the challenge for
         """
         try:
-            c = self._proto.createNewChallenge()
+            uid = try_deser(lambda: proto.UserId.fromBase64(uid))
+            c   = self._proto.createNewChallenge(uid)
             return { "challenge": c.toBase64() }
         except Exception as e:
             return self.__handle_exception(e)

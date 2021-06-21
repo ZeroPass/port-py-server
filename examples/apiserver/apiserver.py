@@ -1,6 +1,7 @@
 #!/usr/bin/python
 import argparse, coloredlogs, os, signal, sys, ssl
 from pathlib import Path
+from port.proto.user import UserId
 
 _script_path = Path(os.path.dirname(sys.argv[0]))
 #sys.path.append(str(_script_path / Path("../../")))
@@ -20,13 +21,13 @@ class DevProto(proto.PortProto):
         self._fc = fc
         self._no_tcv = no_tcv
 
-    def createNewChallenge(self) -> proto.Challenge:
+    def createNewChallenge(self, uid: UserId) -> proto.Challenge:
         if self._fc:
             now = datetime.utcnow()
             c = proto.Challenge.fromhex("47E4EE7F211F73265DD17658F6E21C1318BD6C81F37598E20A2756299542EFCF")
             self._db.addChallenge(c, now)
             return c
-        return super().createNewChallenge()
+        return super().createNewChallenge(uid)
 
     def _get_default_account_expiration(self):
         return proto.utils.time_now() + timedelta(minutes=1)

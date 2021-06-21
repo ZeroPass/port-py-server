@@ -33,10 +33,12 @@ def pingServer(url: str) -> Challenge:
         raise Exception(response['error'])
     return response['result']['pong']
 
-def requestChallenge(url: str) -> Challenge:
+def requestChallenge(url: str, uid: UserId) -> Challenge:
     payload = {
         "method": "port.getChallenge",
-        "params": [],
+        "params": {
+            "uid"   : uid.toBase64(),
+        },
         "jsonrpc": "2.0",
         "id": 8,
     }
@@ -140,7 +142,7 @@ def main():
         print("Pong: {}\n".format(pong))
 
         print("Requesting challenge from server ...")
-        c = requestChallenge(url)
+        c = requestChallenge(url, tvUid)
         print("Server returned challenge: {}\n".format(c.hex()))
         assert c == sigc
 
@@ -156,7 +158,7 @@ def main():
 
 
         print("Requesting new challenge from server for login ...")
-        c = requestChallenge(url)
+        c = requestChallenge(url, tvUid)
         print("Server returned challenge: {}\n".format(c.hex()))
         assert c == sigc
 

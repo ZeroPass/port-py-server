@@ -107,9 +107,9 @@ class PortProto:
         self._log.debug('Finished maintenance job, next schedule at: {}'
             .format(utils.time_now() + timedelta(seconds=self.maintenanceInterval)))
 
-    def createNewChallenge(self) -> Challenge:
+    def createNewChallenge(self, uid: UserId) -> Challenge:
         now = utils.time_now()
-        c   = Challenge.generate(now)
+        c   = Challenge.generate(now, uid)
         self._db.addChallenge(c, now)
         self._log.debug("New challenge created cid={}".format(c.id))
         return c

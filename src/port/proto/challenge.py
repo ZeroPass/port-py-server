@@ -71,7 +71,7 @@ class Challenge(bytes):
         return str(base64.b64encode(self), 'ascii')
 
     @staticmethod
-    def generate(time: datetime) -> "Challenge":
+    def generate(time: datetime, extraData: bytes) -> "Challenge":
         assert isinstance(time, datetime)
         ts = int(time.timestamp())
         ts = ts.to_bytes((ts.bit_length() + 7) // 8, 'big')
@@ -79,6 +79,7 @@ class Challenge(bytes):
 
         h = Hash(Challenge._hash_algo(), backend=default_backend())
         h.update(ts)
+        h.update(extraData)
         h.update(rs)
 
         return Challenge(h.finalize())
