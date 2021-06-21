@@ -8,10 +8,10 @@ from typing import List
 
 logger = logging.getLogger(__name__)
 
-class CertificateRevocationListStorageError(Exception):
+class CrlStorageError(Exception):
     pass
 
-class CertificateRevocationListStorage(object):
+class CrlStorage(object):
     """Class for interaaction between code structure and database"""
     _object = None
     _issuerCountry = None
@@ -48,20 +48,20 @@ def writeToDB_CRL(crl: CertificateRevocationList, issuerCountry: str, connection
     """Write to database with ORM"""
     try:
         logger.info("Writing CRL object to database. Country: " + crl.issuerCountry)
-        crls = CertificateRevocationListStorage(crl, issuerCountry)
+        crls = CrlStorage(crl, issuerCountry)
         connection.getSession().add(crls)
         connection.getSession().commit()
 
     except Exception as e:
-        raise CertificateRevocationListStorageError("Problem with writing the object: " + str(e))
+        raise CrlStorageError("Problem with writing the object: " + str(e))
 
-def readFromDB_CRL(connection: Connection) -> List[CertificateRevocationListStorage]:
+def readFromDB_CRL(connection: Connection) -> List[CrlStorage]:
     """Reading from database"""
     try:
         logger.info("Reading CRL objects from database.")
-        if connection.getSession().query(CertificateRevocationListStorage).count() > 0:
-            return connection.getSession().query(CertificateRevocationListStorage).all()
-        raise CertificateRevocationListStorageError("There is no CRL in database.")
+        if connection.getSession().query(CrlStorage).count() > 0:
+            return connection.getSession().query(CrlStorage).all()
+        raise CrlStorageError("There is no CRL in database.")
 
     except Exception as e:
-        raise CertificateRevocationListStorageError("Problem with reading the object: " + str(e))
+        raise CrlStorageError("Problem with reading the object: " + str(e))

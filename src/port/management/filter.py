@@ -2,7 +2,7 @@ import logging
 from asn1crypto import crl, x509
 
 from port.settings import *
-from port.database.storage.x509Storage import DocumentSignerCertificateStorage, readFromDB_DSC_issuer_serialNumber, \
+from port.database.storage.x509Storage import DscStorage, readFromDB_DSC_issuer_serialNumber, \
                                         readFromDB_CSCA_issuer_serialNumber, \
                                         readFromDB_CSCA_authorityKey, \
                                         readFromDB_DSC_authorityKey, \
@@ -35,7 +35,7 @@ class Filter:
         """Get human readable issuer"""
         return crl.issuer.human_friendly
 
-    def findConnectedCertificatesUnderCSCA(self, CSCA, connection: Connection) -> List[DocumentSignerCertificateStorage]:
+    def findConnectedCertificatesUnderCSCA(self, CSCA, connection: Connection) -> List[DscStorage]:
         """Find connected certificates by both modes"""
         DSCsMode1 = self.checkByIssuerDSC(CSCA.subject, connection)
         DSCsMode2 = self.checkBySubjectKeyDSC(CSCA.subjectKey, connection)
@@ -45,11 +45,11 @@ class Filter:
         """Find connected certificates: if two CSCA have the same subjectKey"""
         return readFromDB_CSCA_authorityKey(CSCA.subjectKey, connection)
 
-    def checkByIssuerDSC(self, issuer: str, connection: Connection) -> List[DocumentSignerCertificateStorage]:
+    def checkByIssuerDSC(self, issuer: str, connection: Connection) -> List[DscStorage]:
         """Check connection between certificates by first mode (issuer and serial number)"""
         return readFromDB_DSC_issuer(issuer, connection)
 
-    def checkBySubjectKeyDSC(self, subjectKey: bytes, connection: Connection) -> List[DocumentSignerCertificateStorage]:
+    def checkBySubjectKeyDSC(self, subjectKey: bytes, connection: Connection) -> List[DscStorage]:
         """Check connection between certificate by second mode (CSCA subject key t0 DSC authority key) //subject key is actually authority key in the DSC"""
         return readFromDB_DSC_authorityKey(subjectKey, connection)
 

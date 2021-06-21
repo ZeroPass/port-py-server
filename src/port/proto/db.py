@@ -10,7 +10,7 @@ from datetime import datetime
 from port.database.storage.storageManager import Connection
 from port.database.storage.challengeStorage import *
 from port.database.storage.accountStorage import AccountStorage, AccountStorageError
-from port.database.storage.x509Storage import DocumentSignerCertificateStorage, CSCAStorage
+from port.database.storage.x509Storage import DscStorage, CSCAStorage
 
 from pymrtd.pki import x509
 from typing import List, Tuple, Union
@@ -218,9 +218,9 @@ class DatabaseAPI(StorageAPI):
         assert isinstance(issuer, Name)
         assert isinstance(serialNumber, int)
         items = self._dbc.getSession() \
-            .query(DocumentSignerCertificateStorage) \
-            .filter(DocumentSignerCertificateStorage.issuer == issuer.human_friendly, \
-                DocumentSignerCertificateStorage.serialNumber == str(serialNumber) \
+            .query(DscStorage) \
+            .filter(DscStorage.issuer == issuer.human_friendly, \
+                DscStorage.serialNumber == str(serialNumber) \
             ).all()
 
         if len(items) == 0:
@@ -231,8 +231,8 @@ class DatabaseAPI(StorageAPI):
         """ Get DSC by it's subject key. """
         assert isinstance(subjectKey, bytes)
         items = self._dbc.getSession() \
-            .query(DocumentSignerCertificateStorage) \
-            .filter(DocumentSignerCertificateStorage.subjectKey == subjectKey) \
+            .query(DscStorage) \
+            .filter(DscStorage.subjectKey == subjectKey) \
             .all()
 
         if len(items) == 0:

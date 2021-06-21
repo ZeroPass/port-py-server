@@ -6,7 +6,7 @@ import logging
 from pymrtd.pki.crl import CertificateRevocationList
 from pymrtd.pki.x509 import DocumentSignerCertificate, Certificate, CscaCertificate, MasterListSignerCertificate
 
-from port.database.storage.certificateRevocationListStorage import CertificateRevocationListStorageError, writeToDB_CRL, readFromDB_CRL
+from port.database.storage.crlStorage import CrlStorageError, writeToDB_CRL, readFromDB_CRL
 from port.database.storage.x509Storage import writeToDB_CSCA, writeToDB_DSC
 
 from port.management.filter import Filter
@@ -149,7 +149,7 @@ class Builder:
 
 
     #gledam subject key, ce ga ni gledam issucer in serial key
-    def iterateCRL(self, crl: CertificateRevocationListStorageError, connection: Connection):
+    def iterateCRL(self, crl: CrlStorageError, connection: Connection):
         try:
             #f = open("test.crl", "wb")
             #r = crl.dump()
@@ -168,7 +168,7 @@ class Builder:
             for crl in crlArray:
                 self.iterateCRL(crl.getObject(), connection)
 
-        except CertificateRevocationListStorageError as e:
+        except CrlStorageError as e:
             self._log.error("Exception description:" + e)
         except Exception as e:
             raise Exception("Unknown error.")

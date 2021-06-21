@@ -110,16 +110,16 @@ class Connection:
         """Initialize tables for usage in database"""
 
         #imports - to avoid circle imports
-        from port.database.storage.certificateRevocationListStorage import CertificateRevocationListStorage
-        from port.database.storage.x509Storage import DocumentSignerCertificateStorage, CSCAStorage
+        from port.database.storage.crlStorage import CrlStorage
+        from port.database.storage.x509Storage import DscStorage, CSCAStorage
         from port.database.storage.challengeStorage import ChallengeStorage
         from port.database.storage.accountStorage import AccountStorage
 
         #CertificateRevocationList
-        mapper(CertificateRevocationListStorage, certificateRevocationListDB)
+        mapper(CrlStorage, certificateRevocationListDB)
 
         #DocumentSignerCertificate
-        mapper(DocumentSignerCertificateStorage, documentSignerCertificate)
+        mapper(DscStorage, documentSignerCertificate)
 
         # CSCAStorage
         mapper(CSCAStorage, cscaCertificate)

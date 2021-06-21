@@ -8,14 +8,14 @@ logger = logging.getLogger(__name__)
 class CSCAStorageError(Exception):
     pass
 
-class DocumentSignerCertificateStorageError(Exception):
+class DscStorageError(Exception):
     pass
 
 class CSCAStorage(object):
     """Class for interaction between code structure and database - CSCA"""
 
     def __init__(self, csca: CscaCertificate):
-        """Initialization class with serialization of DSC"""
+        """Initialization class with serialization of CSCA"""
         self.serializeCSCA(csca)
         self.issuer         = csca.issuer.human_friendly
         self.fingerprint    = csca.fingerprint
@@ -85,9 +85,9 @@ def deleteFromDB_CSCA(CSCAs: List[CSCAStorage],connection: Connection):
                 logger.error("Action delete failed. No item in database or object was not CSCA.")
         connection.getSession().commit()
     except Exception as e:
-        raise DocumentSignerCertificateStorageError("Problem with writing the object" + e)
+        raise DscStorageError("Problem with writing the object" + e)
 
-class DocumentSignerCertificateStorage(object):
+class DscStorage(object):
     """Class for interaction between code structure and database - DSC"""
 
     def __init__(self, dsc: DocumentSignerCertificate, issuerCountry: str):
@@ -118,48 +118,48 @@ def writeToDB_DSC(dsc: DocumentSignerCertificate, issuerCountry: str, connection
     """Write to database with ORM"""
     try:
         logger.info("Writing DSC object to database. Country: " + issuerCountry)
-        a = DocumentSignerCertificateStorage(dsc, issuerCountry)
+        a = DscStorage(dsc, issuerCountry)
         connection.getSession().add(a)
         connection.getSession().commit()
 
     except Exception as e:
-        raise DocumentSignerCertificateStorageError("Couldn't write DSC storage to DB: " + str(e))
+        raise DscStorageError("Couldn't write DSC storage to DB: " + str(e))
 
-def readFromDB_DSC_issuer_serialNumber(issuer: str, serialNumber: int, connection: Connection) -> List[DocumentSignerCertificateStorage]:
+def readFromDB_DSC_issuer_serialNumber(issuer: str, serialNumber: int, connection: Connection) -> List[DscStorage]:
     """Reading from database"""
     try:
         logger.info("Reading DSC object from database. Issuer:" + issuer + ", serial number: " + str(serialNumber))
         return connection.getSession() \
-            .query(DocumentSignerCertificateStorage) \
-            .filter(DocumentSignerCertificateStorage.issuer == issuer,
-                    DocumentSignerCertificateStorage.serialNumber == str(serialNumber.native)
+            .query(DscStorage) \
+            .filter(DscStorage.issuer == issuer,
+                    DscStorage.serialNumber == str(serialNumber.native)
             ).all()
     except Exception as e:
-        raise DocumentSignerCertificateStorageError("Problem with writing the object" + e)
+        raise DscStorageError("Problem with writing the object" + e)
 
-def readFromDB_DSC_issuer(issuer: str, connection: Connection) -> List[DocumentSignerCertificateStorage]:
+def readFromDB_DSC_issuer(issuer: str, connection: Connection) -> List[DscStorage]:
     """Reading from database"""
     try:
         logger.info("Reading DSC object from database. Issuer:" + issuer)
         return connection.getSession() \
-                         .query(DocumentSignerCertificateStorage) \
-                         .filter(DocumentSignerCertificateStorage.issuer == issuer) \
+                         .query(DscStorage) \
+                         .filter(DscStorage.issuer == issuer) \
                          .all()
     except Exception:
-        raise DocumentSignerCertificateStorageError("Problem with writing the object")
+        raise DscStorageError("Problem with writing the object")
 
-def readFromDB_DSC_authorityKey(authorityKey: bytes, connection: Connection) -> List[DocumentSignerCertificateStorage]:
+def readFromDB_DSC_authorityKey(authorityKey: bytes, connection: Connection) -> List[DscStorage]:
     """Reading from database"""
     try:
         logger.info("Reading DSC object from database with authority key.")
         return connection.getSession() \
-                         .query(DocumentSignerCertificateStorage) \
-                         .filter(DocumentSignerCertificateStorage.authorityKey == authorityKey) \
+                         .query(DscStorage) \
+                         .filter(DscStorage.authorityKey == authorityKey) \
                          .all()
     except Exception:
-        raise DocumentSignerCertificateStorageError("Problem with writing the object")
+        raise DscStorageError("Problem with writing the object")
 
-def deleteFromDB_DSC(dscs: List[DocumentSignerCertificateStorage],connection: Connection):
+def deleteFromDB_DSC(dscs: List[DscStorage],connection: Connection):
     """Reading from database"""
     try:
         logger.info("Delete DSCs; size:" + str(len(dscs)))
@@ -173,4 +173,4 @@ def deleteFromDB_DSC(dscs: List[DocumentSignerCertificateStorage],connection: Co
                 logger.error("Action delete failed. No item in database or object was not DSC. error={}".format(str(e)))
         connection.getSession().commit()
     except Exception as e:
-        raise DocumentSignerCertificateStorageError("Problem with writing the object. error={}".format(str(e)))
+        raise DscStorageError("Problem with writing the object. error={}".format(str(e)))
