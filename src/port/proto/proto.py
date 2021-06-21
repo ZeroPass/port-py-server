@@ -118,7 +118,7 @@ class PortProto:
         self._db.deleteChallenge(cid)
         self._log.debug("Challenge canceled cid={}".format(cid))
 
-    def register(self, dg15: ef.DG15, sod: ef.SOD, cid: CID, csigs: List[bytes], dg14: ef.DG14 = None) -> Tuple[UserId, SessionKey, datetime]:
+    def register(self, uid: UserId, sod: ef.SOD, dg15: ef.DG15, cid: CID, csigs: List[bytes], dg14: ef.DG14 = None) -> Tuple[UserId, SessionKey, datetime]:
         """
         Register new user account.
 
@@ -130,9 +130,6 @@ class PortProto:
         :return: Tuple of user id, session key and session expiration time
         """
         # 1. Verify account doesn't exist yet
-        aaPubKey = dg15.aaPublicKey
-        uid      = UserId.fromAAPublicKey(aaPubKey)
-
         if self._db.accountExists(uid):
             et = self._db.getAccountExpiry(uid)
             if not utils.has_expired(et, utils.time_now()):
@@ -144,6 +141,7 @@ class PortProto:
 
         # 3. Verify challenge authentication
         sigAlgo = None
+        aaPubKey = dg15.aaPublicKey
         if aaPubKey.isEcKey():
             if dg14 is None:
                 raise PePreconditionRequired("DG14 required")
@@ -177,7 +175,7 @@ class PortProto:
         # 6. Return user id, session key and session expiry date
         return (uid, sk, et)
 
-    def login(self, uid: UserId,  cid: CID, csigs: List[bytes], dg1: ef.DG1 = None) -> Tuple[SessionKey, datetime]:
+    def login(self, uid: UserId, cid: CID, csigs: List[bytes], dg1: ef.DG1 = None) -> Tuple[SessionKey, datetime]:
         """
         Login user and return session key.
 

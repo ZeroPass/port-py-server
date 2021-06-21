@@ -47,12 +47,13 @@ def requestChallenge(url: str) -> Challenge:
         raise Exception(response['error'])
     return Challenge.fromBase64(response['result']['challenge'])
 
-def requestRegister(url: str, dg15: ef.DG15, sod: ef.SOD, cid: CID, csigs: List[bytes]):
+def requestRegister(url: str, uid: UserId, sod: ef.SOD, dg15: ef.DG15, cid: CID, csigs: List[bytes]):
     payload = {
         "method": "port.register",
         "params": {
-            "dg15"  : b64encode(dg15.dump()),
+            "uid"   : uid.toBase64(),
             "sod"   : b64encode(sod.dump()),
+            "dg15"  : b64encode(dg15.dump()),
             "cid"   : cid.hex(),
             "csigs" : bsigs_to_b64sigs(csigs),
          },
@@ -145,7 +146,7 @@ def main():
 
 
         print("Registering new user ...")
-        uid, s, et = requestRegister(url, dg15, sod, sigc.id, csigs)
+        uid, s, et = requestRegister(url, tvUid, sod, dg15, sigc.id, csigs)
         assert uid == tvUid
         print("User was successfully registered!\n  uid={}\n  session_key={}\n  session_expires={}\n".format(uid.hex(), s.key.hex(), et))
 

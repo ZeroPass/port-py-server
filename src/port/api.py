@@ -99,13 +99,14 @@ class PortApiServer:
 
     # API: port.register
     @portapi
-    def register(self, dg15: str, sod: str, cid: str, csigs: List[str], dg14: str = None) -> dict:
+    def register(self, uid: str, sod: str, dg15: str, cid: str, csigs: List[str], dg14: str = None) -> dict:
         """
         Register new user. It returns back to the client userId which is publicKey address,
         session key and session expiration time.
 
-        :param dg15:  base64 encoded eMRTD DG15 file
+        :param uid:   base64 encoded UserId
         :param sod:   base64 encoded eMRTD SOD file
+        :param dg15:  base64 encoded eMRTD DG15 file
         :param cid:   hex encoded Challenge id
         :param csigs: base64 encoded challenge signatures
         :param dg14:  base64 encoded eMRTD DG14 file (optional)
@@ -116,14 +117,15 @@ class PortApiServer:
         """
 
         try:
-            dg15 = try_deser(lambda: ef.DG15.load(b64decode(dg15)))
-            sod  = try_deser(lambda: ef.SOD.load(b64decode(sod)))
-            cid  = try_deser(lambda: proto.CID.fromhex(cid))
+            uid   = try_deser(lambda: proto.UserId.fromBase64(uid))
+            sod   = try_deser(lambda: ef.SOD.load(b64decode(sod)))
+            dg15  = try_deser(lambda: ef.DG15.load(b64decode(dg15)))
+            cid   = try_deser(lambda: proto.CID.fromhex(cid))
             csigs = _b64csigs_to_bcsigs(csigs)
             if dg14 is not None:
                 dg14 = try_deser(lambda: ef.DG14.load(b64decode(dg14)))
 
-            uid, sk, set = self._proto.register(dg15, sod, cid, csigs, dg14)
+            uid, sk, set = self._proto.register(uid, sod, dg15, cid, csigs, dg14)
             return { "uid": uid.toBase64(), "session_key": sk.toBase64(), "expires": int(set.timestamp()) }
         except Exception as e:
             return self.__handle_exception(e)
