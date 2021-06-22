@@ -1,5 +1,5 @@
 import pycountry
-from datetime import datetime, timedelta
+from datetime import datetime
 from pymrtd.pki.x509 import Certificate
 
 def time_now():
@@ -22,3 +22,10 @@ def code_to_country_name(code: str):
     if c is None:
         return code
     return c.name
+
+def int_count_bytes(n: int):
+    bytes = 0
+    while(n):
+        bytes += 1
+        n >>= 8
+    return bytes
