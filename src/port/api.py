@@ -122,7 +122,7 @@ class PortApiServer:
             uid   = try_deser(lambda: proto.UserId.fromBase64(uid))
             sod   = try_deser(lambda: ef.SOD.load(b64decode(sod)))
             dg15  = try_deser(lambda: ef.DG15.load(b64decode(dg15)))
-            cid   = try_deser(lambda: proto.CID.fromhex(cid))
+            cid   = try_deser(lambda: proto.CID.fromHex(cid))
             csigs = _b64csigs_to_bcsigs(csigs)
             if dg14 is not None:
                 dg14 = try_deser(lambda: ef.DG14.load(b64decode(dg14)))
@@ -147,7 +147,7 @@ class PortApiServer:
         """
         try:
             uid = try_deser(lambda: proto.UserId.fromBase64(uid))
-            cid = try_deser(lambda: proto.CID.fromhex(cid))
+            cid = try_deser(lambda: proto.CID.fromHex(cid))
             csigs = _b64csigs_to_bcsigs(csigs)
             if dg1 is not None:
                 dg1 = try_deser(lambda: ef.DG1.load(b64decode(dg1)))
