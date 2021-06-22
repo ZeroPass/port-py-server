@@ -8,25 +8,13 @@ class UserIdError(Exception):
 class UserId(bytes):
     """ Represents accounts userId"""
 
-    _hash_algo = 'ripemd160'
+    max_size: int = 20
 
     def __new__(cls, userId: bytes) -> "UserId":
         if not isinstance(userId, bytes) or \
-            len(userId) != hashlib.new(cls._hash_algo).digest_size:
+            len(userId) < UserId.max_size:
             raise UserIdError("Invalid userId data")
         return cast(UserId, super().__new__(cls, userId))  # type: ignore  # https://github.com/python/typeshed/issues/2630  # noqa: E501
-
-    @staticmethod
-    def fromAAPublicKey(pubKey: AAPublicKey) -> "UserId":
-        assert isinstance(pubKey, AAPublicKey)
-        h = hashlib.new(UserId._hash_algo)
-        h.update(pubKey.dump())
-        return UserId(h.digest())
-
-    @staticmethod
-    def fromhex(hexStr: str) -> "UserId":
-        assert isinstance(hexStr, str)
-        return UserId(bytes.fromhex(hexStr))
 
     @staticmethod
     def fromBase64(b64Str: str) -> "UserId":
