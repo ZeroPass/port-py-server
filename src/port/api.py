@@ -196,6 +196,10 @@ class PortApiServer:
             self._log.debug("Request storage error: {}".format(e))
             raise JSONRPCDispatchException(404, str(e))
 
+        if isinstance(e, proto.SeEntryAlreadyExists):
+            self._log.debug("Request storage error: {}".format(e))
+            raise JSONRPCDispatchException(409, str(e))
+
         self._log.error("Unhandled exception encountered, e={}".format(e))
         raise JSONRPCDispatchException(500, "Internal Server Error")
 

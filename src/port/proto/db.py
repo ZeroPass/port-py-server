@@ -21,6 +21,9 @@ class StorageAPIError(Exception):
 class SeEntryNotFound(StorageAPIError):
     pass
 
+class SeEntryAlreadyExists(StorageAPIError):
+    pass
+
 class StorageAPI(ABC):
     ''' Abstract storage interface for user data and MRTD trustchain certificates (CSCA, DSC) '''
 
@@ -133,7 +136,7 @@ class DatabaseAPI(StorageAPI):
            .all()
 
         if len(result) == 0:
-            raise SeEntryNotFound("challenge not found")
+            raise SeEntryNotFound("Challenge not found")
 
         cs = result[0]
         c = cs.getChallenge()
@@ -145,8 +148,8 @@ class DatabaseAPI(StorageAPI):
         assert isinstance(timedate, datetime)
         cs = ChallengeStorage.fromChallenge(challenge, timedate)
 
-        if self._dbc.getSession().query(ChallengeStorage).filter(ChallengeStorage.id == str(challenge.id)).count() > 0:
-            raise DatabaseAPIError("Challenge already exists")
+        if self._dbc.getSession().query(ChallengeStorage).filter(ChallengeStorage.id == challenge.id).count() > 0:
+            raise SeEntryAlreadyExists("Challenge already exists")
 
         self._dbc.getSession().add(cs)
         self._dbc.getSession().commit()
