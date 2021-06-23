@@ -228,7 +228,7 @@ class DatabaseAPI(StorageAPI):
 
         if len(items) == 0:
             return None
-        return items[0].getObject()
+        return items[0].getCertificate()
 
     def getDSCbySubjectKey(self, subjectKey: bytes) -> Union[x509.DocumentSignerCertificate, None]:
         """ Get DSC by it's subject key. """
@@ -240,7 +240,7 @@ class DatabaseAPI(StorageAPI):
 
         if len(items) == 0:
             return None
-        return items[0].getObject()
+        return items[0].getCertificate()
 
     def getCSCAbySubject(self, subject: Name) -> Union[x509.CscaCertificate, None]:
         """ Get CSCA by it's issuer and serial number. """
@@ -252,7 +252,7 @@ class DatabaseAPI(StorageAPI):
 
         if len(items) == 0:
             return None
-        return items[0].getObject()
+        return items[0].getCertificate()
 
     def getCSCAbySubjectKey(self, subjectKey: bytes) -> Union[x509.CscaCertificate, None]:
         """ Get CSCA by it's subject key. """
@@ -264,7 +264,7 @@ class DatabaseAPI(StorageAPI):
 
         if len(items) == 0:
             return None
-        return items[0].getObject()
+        return items[0].getCertificate()
 
 
 class MemoryDBError(StorageAPIError):

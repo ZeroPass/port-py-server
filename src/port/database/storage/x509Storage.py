@@ -1,9 +1,13 @@
+import datetime
 import logging
-from typing import List
+from typing import List, Optional
 from port.database.storage.storageManager import Connection
-from pymrtd.pki.x509 import CscaCertificate, DocumentSignerCertificate
+from pymrtd.pki.x509 import Certificate, CscaCertificate, DocumentSignerCertificate
+from port.database.utils import formatAlpha2
+from port.proto.types import CertificateId
 
 logger = logging.getLogger(__name__)
+
 
 class CSCAStorageError(Exception):
     pass
@@ -11,33 +15,44 @@ class CSCAStorageError(Exception):
 class DscStorageError(Exception):
     pass
 
-class CSCAStorage(object):
-    """Class for interaction between code structure and database - CSCA"""
+class CertificateStorage(object):
+    """Storage class for """
+    id: CertificateId
+    country: str
+    serial: str
+    notValidBefore: datetime
+    notValidAfter: datetime
+    issuerId: Optional[CertificateId]
+    issuer: str
+    authorityKey: str
+    subject: str
+    subjectKey: str
+    certificate: bytes
 
-    def __init__(self, csca: CscaCertificate):
-        """Initialization class with serialization of CSCA"""
-        self.serializeCSCA(csca)
-        self.issuer         = csca.issuer.human_friendly
-        self.fingerprint    = csca.fingerprint
-        self.subject        = csca.subject.human_friendly
-        self.subjectKey     = csca.subjectKey
-        self.authorityKey   = csca.authorityKey
-        self.notValidBefore = csca.notValidBefore
-        self.notValidAfter  = csca.notValidAfter
+    _type = None
 
+    def __init__(self, cert: Certificate, issuerId: Optional[CertificateId] = None):
+        self.id             = CertificateId.fromCertificate(cert)
+        self.country        = formatAlpha2(cert.issuerCountry)
+        self.notValidBefore = cert.notValidBefore
+        self.notValidAfter  = cert.notValidAfter
+        self.issuerId       = issuerId
+        self.issuer         = cert.issuer.human_friendly
+        self.authorityKey   = cert.authorityKey
+        self.subject        = cert.subject.human_friendly
+        self.subjectKey     = cert.subjectKey
+        self.certificate    = cert.dump()
         try:
-            self.serialNumber = str(csca.serial_number)
+            self.serial = str(cert.serial_number)
         except:
-            self.serialNumber = ""
+            self.serial = ""
 
-    def serializeCSCA(self, csca: CscaCertificate):
-        """Function serialize CSCA object to sequence"""
-        self.object = csca.dump()
+    def getCertificate(self):
+        """Returns object"""
+        return self._type.load(self.certificate)
 
-    def getObject(self) -> CscaCertificate:
-        """Returns CSCA object"""
-        return CscaCertificate.load(self.object)
-
+class CSCAStorage(CertificateStorage):
+    _type = CscaCertificate
 
 def writeToDB_CSCA(csca: CscaCertificate, connection: Connection):
     """Write to database with ORM"""
@@ -56,7 +71,7 @@ def readFromDB_CSCA_issuer_serialNumber(issuer: str, serialNumber: int, connecti
         return connection.getSession() \
                          .query(CSCAStorage) \
                          .filter(CSCAStorage.issuer == issuer,
-                                 CSCAStorage.serialNumber == str(serialNumber.native)
+                                 CSCAStorage.serial == str(serialNumber.native)
                          ).all()
     except Exception as e:
         raise CSCAStorageError("Problem with writing the object" + e)
@@ -72,7 +87,7 @@ def readFromDB_CSCA_authorityKey(authorityKey: bytes, connection: Connection) ->
     except Exception as e:
         raise CSCAStorageError("Problem with writing the object" + e)
 
-def deleteFromDB_CSCA(CSCAs: List[CSCAStorage],connection: Connection):
+def deleteFromDB_CSCA(CSCAs: List[CSCAStorage], connection: Connection):
     """Reading from database"""
     try:
         logger.info("Delete DSCs; size:" + str(len(CSCAs)))
@@ -87,38 +102,40 @@ def deleteFromDB_CSCA(CSCAs: List[CSCAStorage],connection: Connection):
     except Exception as e:
         raise DscStorageError("Problem with writing the object" + e)
 
-class DscStorage(object):
-    """Class for interaction between code structure and database - DSC"""
+class DscStorage(CertificateStorage):
+    _type = DocumentSignerCertificate
+# class DscStorage(object):
+#     """Class for interaction between code structure and database - DSC"""
 
-    def __init__(self, dsc: DocumentSignerCertificate, issuerCountry: str):
-        """Initialization class with serialization of DSC"""
-        self.serializeDSC(dsc)
-        self.issuer          = dsc.issuer.human_friendly
-        self.fingerprint     = dsc.fingerprint
-        self.subject         = dsc.subject.human_friendly
-        self.subjectKey      = dsc.subjectKey
-        self.authorityKey    = dsc.authorityKey
-        self.notValidBefore  = dsc.notValidBefore
-        self.notValidAfter   = dsc.notValidAfter
-        try:
-            self.serialNumber = str(dsc.serial_number)
-        except:
-            self.serialNumber = ""
+#     def __init__(self, dsc: DocumentSignerCertificate, issuerCountry: str):
+#         """Initialization class with serialization of DSC"""
+#         self.serializeDSC(dsc)
+#         self.issuer          = dsc.issuer.human_friendly
+#         self.fingerprint     = dsc.fingerprint
+#         self.subject         = dsc.subject.human_friendly
+#         self.subjectKey      = dsc.subjectKey
+#         self.authorityKey    = dsc.authorityKey
+#         self.notValidBefore  = dsc.notValidBefore
+#         self.notValidAfter   = dsc.notValidAfter
+#         try:
+#             self.serialNumber = str(dsc.serial_number)
+#         except:
+#             self.serialNumber = ""
 
-    def serializeDSC(self, dsc: DocumentSignerCertificate):
-        """Function serialize DSC object to sequence"""
-        self.object = dsc.dump()
+#     def serializeDSC(self, dsc: DocumentSignerCertificate):
+#         """Function serialize DSC object to sequence"""
+#         self.object = dsc.dump()
 
-    def getObject(self) -> DocumentSignerCertificate:
-        """Returns DSC object"""
-        return DocumentSignerCertificate.load(self.object)
+#     def getObject(self) -> DocumentSignerCertificate:
+#         """Returns DSC object"""
+#         return DocumentSignerCertificate.load(self.object)
 
 
-def writeToDB_DSC(dsc: DocumentSignerCertificate, issuerCountry: str, connection: Connection):
+def writeToDB_DSC(dsc: DocumentSignerCertificate, connection: Connection):
     """Write to database with ORM"""
     try:
-        logger.info("Writing DSC object to database. Country: " + issuerCountry)
-        a = DscStorage(dsc, issuerCountry)
+        logger.info("Writing DSC object to database. Country: " + dsc.issuerCountry)
+        a = DscStorage(dsc)
         connection.getSession().add(a)
         connection.getSession().commit()
 
@@ -132,7 +149,7 @@ def readFromDB_DSC_issuer_serialNumber(issuer: str, serialNumber: int, connectio
         return connection.getSession() \
             .query(DscStorage) \
             .filter(DscStorage.issuer == issuer,
-                    DscStorage.serialNumber == str(serialNumber.native)
+                    DscStorage.serial == str(serialNumber.native)
             ).all()
     except Exception as e:
         raise DscStorageError("Problem with writing the object" + e)

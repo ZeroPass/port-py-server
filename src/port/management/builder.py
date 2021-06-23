@@ -68,7 +68,7 @@ class Builder:
                 dsc.__class__ = DocumentSignerCertificate
                 dsc.__init__()
                 #write to DB
-                writeToDB_DSC(dsc, countryCode, connection)
+                writeToDB_DSC(dsc, connection)
 
             if 'certificateRevocationList;binary' in entry:
                 countryCode = re.findall(r'[c,C]{1}=(.*)(,dc=data){1}', dn)[0][0]
@@ -94,6 +94,8 @@ class Builder:
 
         except Exception as e:
             self._log.error("Certificate is not valid anymore or verification failed.")
+            self._log.exception(e)
+
     def parseCSCAFile(self, CSCAFile, connection: Connection):
         """Parsing CSCA file"""
         parser = LDIFParser(CSCAFile)

@@ -1,3 +1,4 @@
+from typing import Optional
 import sqlalchemy
 from sqlalchemy import Table, Column, Integer, String, DateTime, MetaData, LargeBinary, Boolean
 from sqlalchemy.orm import mapper, sessionmaker
@@ -6,6 +7,7 @@ from sqlalchemy.sql import func
 
 #creating base class from template
 from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.sql.schema import ForeignKey
 Base = declarative_base()
 
 class ConnectionError(Exception):
@@ -13,42 +15,38 @@ class ConnectionError(Exception):
 
 """Database structures"""
 metadata = MetaData()
-certificateRevocationListDB = Table('certificateRevocationList', metadata,
-                            Column('id', Integer, primary_key=True),
-                            Column('object', LargeBinary),
-                            Column('issuerCountry', String),
-                            Column('size', Integer),
-                            Column('thisUpdate', DateTime),
-                            Column('nextUpdate', DateTime),
-                            Column('signatureAlgorithm', String),
-                            Column('signatureHashAlgorithm', String)
-                            )
+crlDB = Table('certificateRevocationList', metadata,
+    Column('id', Integer, primary_key=True),
+    Column('object', LargeBinary),
+    Column('issuerCountry', String),
+    Column('size', Integer),
+    Column('thisUpdate', DateTime),
+    Column('nextUpdate', DateTime),
+    Column('signatureAlgorithm', String),
+    Column('signatureHashAlgorithm', String)
+)
 
-documentSignerCertificate = Table('documentSignerCertificate', metadata,
-                            Column('id', Integer, primary_key=True),
-                            Column('object', LargeBinary),
-                            Column('issuer', String),
-                            Column('serialNumber', String),
-                            Column('fingerprint', String),
-                            Column('notValidBefore', DateTime),
-                            Column('notValidAfter', DateTime),
-                            Column('subject', String),
-                            Column('subjectKey', LargeBinary),
-                            Column('authorityKey', LargeBinary)
-                            )
+def certColumns(issuerCertTable: Optional[str] = None):
+    hasIssuer = issuerCertTable is not None
+    return [
+        Column('id', Integer, primary_key=True),
+        Column('country', String, nullable=False, index=True),
+        Column('serial', String),
+        Column('notValidBefore', DateTime, nullable=False),
+        Column('notValidAfter', DateTime, nullable=False),
+        Column('issuerId', Integer,
+            ForeignKey(issuerCertTable + '.id') if hasIssuer else None,
+            nullable = (not hasIssuer)
+        ),
+        Column('issuer', String),
+        Column('authorityKey', LargeBinary),
+        Column('subject', String, nullable=False),
+        Column('subjectKey', LargeBinary),
+        Column('certificate', LargeBinary, nullable=False)
+    ]
 
-cscaCertificate = Table('CSCACertificate', metadata,
-                            Column('id', Integer, primary_key=True),
-                            Column('object', LargeBinary),
-                            Column('issuer', String),
-                            Column('serialNumber', String),
-                            Column('fingerprint', String),
-                            Column('notValidBefore', DateTime),
-                            Column('notValidAfter', DateTime),
-                            Column('subject', String),
-                            Column('subjectKey', LargeBinary),
-                            Column('authorityKey', LargeBinary)
-                            )
+csca = Table('csca', metadata, *certColumns())
+dsc  = Table('dsc', metadata, *certColumns(issuerCertTable='csca'))
 
 challenge = Table('userChallenge', metadata,
                             Column('id', String, primary_key=True),
@@ -57,16 +55,16 @@ challenge = Table('userChallenge', metadata,
                             )
 
 account = Table('account', metadata,
-                            Column('uid', LargeBinary, primary_key=True), # uid = UserId
-                            Column('sod', LargeBinary, nullable=False),
-                            Column('aaPublicKey', LargeBinary, nullable=False),
-                            Column('sigAlgo', LargeBinary, nullable=True),
-                            Column('dg1', LargeBinary, nullable=True),
-                            Column('session', LargeBinary, nullable=False), # Note: Should be moved to separate table
-                            Column('validUntil', DateTime),
-                            Column('loginCount', Integer, default=0),
-                            Column('isValid', Boolean)
-                            )
+    Column('uid', LargeBinary, primary_key=True), # uid = UserId
+    Column('sod', LargeBinary, nullable=False),
+    Column('aaPublicKey', LargeBinary, nullable=False),
+    Column('sigAlgo', LargeBinary, nullable=True),
+    Column('dg1', LargeBinary, nullable=True),
+    Column('session', LargeBinary, nullable=False), # Note: Should be moved to separate table
+    Column('validUntil', DateTime),
+    Column('loginCount', Integer, default=0),
+    Column('isValid', Boolean)
+)
 
 class Connection:
     """Manage ORM connection to save/load objects in database"""
@@ -116,13 +114,13 @@ class Connection:
         from port.database.storage.accountStorage import AccountStorage
 
         #CertificateRevocationList
-        mapper(CrlStorage, certificateRevocationListDB)
+        mapper(CrlStorage, crlDB)
 
         #DocumentSignerCertificate
-        mapper(DscStorage, documentSignerCertificate)
+        mapper(DscStorage, dsc)
 
         # CSCAStorage
-        mapper(CSCAStorage, cscaCertificate)
+        mapper(CSCAStorage, csca)
 
         # challenge
         mapper(ChallengeStorage, challenge)
@@ -131,7 +129,7 @@ class Connection:
         mapper(AccountStorage, account)
 
         #creating tables
-        Base.metadata.create_all(self.connectionObj, tables=[certificateRevocationListDB, documentSignerCertificate, cscaCertificate, challenge, account])
+        Base.metadata.create_all(self.connectionObj, tables=[crlDB, dsc, csca, challenge, account])
 
 def truncateAll(connection: Connection):
     """Truncate all tables"""
