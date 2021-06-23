@@ -1,8 +1,11 @@
 from datetime import datetime
-from port.proto.challenge import Challenge
+from port.proto.challenge import CID, Challenge
 
 class ChallengeStorage(object):
     """Class for interaction between code structure and database"""
+    id: CID
+    challenge: str
+    createTime: datetime
 
     def __init__(self):
         self.id = None

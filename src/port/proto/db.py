@@ -158,7 +158,7 @@ class DatabaseAPI(StorageAPI):
         assert isinstance(cid, CID)
         self._dbc.getSession() \
                  .query(ChallengeStorage) \
-                 .filter(ChallengeStorage.id == str(cid)) \
+                 .filter(ChallengeStorage.id == cid) \
                  .delete()
         self._dbc.getSession().commit()
 

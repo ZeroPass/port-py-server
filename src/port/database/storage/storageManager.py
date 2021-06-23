@@ -15,7 +15,7 @@ class ConnectionError(Exception):
 
 """Database structures"""
 metadata = MetaData()
-crlDB = Table('certificateRevocationList', metadata,
+crl = Table('crl', metadata,
     Column('id', Integer, primary_key=True),
     Column('object', LargeBinary),
     Column('issuerCountry', String),
@@ -48,13 +48,13 @@ def certColumns(issuerCertTable: Optional[str] = None):
 csca = Table('csca', metadata, *certColumns())
 dsc  = Table('dsc', metadata, *certColumns(issuerCertTable='csca'))
 
-challenge = Table('userChallenge', metadata,
-                            Column('id', String, primary_key=True),
-                            Column('challenge', String),
-                            Column("createTime", DateTime(timezone=True), default=func.now())
-                            )
+challenges = Table('challenges', metadata,
+    Column('id', Integer, primary_key=True),
+    Column('challenge', String, nullable=False),
+    Column("createTime", DateTime(timezone=True), nullable=False)
+)
 
-account = Table('account', metadata,
+accounts = Table('accounts', metadata,
     Column('uid', LargeBinary, primary_key=True), # uid = UserId
     Column('sod', LargeBinary, nullable=False),
     Column('aaPublicKey', LargeBinary, nullable=False),
@@ -114,7 +114,7 @@ class Connection:
         from port.database.storage.accountStorage import AccountStorage
 
         #CertificateRevocationList
-        mapper(CrlStorage, crlDB)
+        mapper(CrlStorage, crl)
 
         #DocumentSignerCertificate
         mapper(DscStorage, dsc)
@@ -123,13 +123,13 @@ class Connection:
         mapper(CSCAStorage, csca)
 
         # challenge
-        mapper(ChallengeStorage, challenge)
+        mapper(ChallengeStorage, challenges)
 
         # account
-        mapper(AccountStorage, account)
+        mapper(AccountStorage, accounts)
 
         #creating tables
-        Base.metadata.create_all(self.connectionObj, tables=[crlDB, dsc, csca, challenge, account])
+        Base.metadata.create_all(self.connectionObj, tables=[crl, dsc, csca, challenges, accounts])
 
 def truncateAll(connection: Connection):
     """Truncate all tables"""
