@@ -1,6 +1,9 @@
 #!/usr/bin/python
 import argparse, coloredlogs, os, signal, sys, ssl
+from collections import defaultdict
 from pathlib import Path
+from port.database.utils import formatAlpha2
+from port.proto.db import SeEntryAlreadyExists
 from port.proto.user import UserId
 
 _script_path = Path(os.path.dirname(sys.argv[0]))
@@ -11,6 +14,7 @@ from datetime import datetime, timedelta
 from port.settings import Config, DbConfig, ServerConfig
 from port.api import PortApiServer
 from port import proto
+from port.proto.types import CertificateId
 from pymrtd import ef
 from pymrtd.pki import x509
 
@@ -146,6 +150,24 @@ def load_pkd_to_mdb(mdb: proto.MemoryDB, pkd_path: Path):
     l = log.getLogger('port.api.server')
     l.info("Loading PKD certificates into mdb ...")
     cert_count = 0
+    cscas_sk = defaultdict(list)
+    cscas_sub = defaultdict(list)
+
+    def get_issuer_id(cert: x509.Certificate):
+        if cert.authorityKey is not None:
+            if cert.authorityKey in cscas_sk:
+                for csca in cscas_sk[cert.authorityKey]:
+                    if cert.notValidBefore >= csca.notValidBefore and \
+                       cert.notValidAfter <= csca.notValidAfter:
+                        return CertificateId.fromCertificate(csca)
+
+        if (cert.issuer.human_friendly in cscas_sub):
+            for csca in cscas_sub[cert.issuer.human_friendly]:
+                if cert.notValidBefore >= csca.notValidBefore and \
+                   cert.notValidAfter <= csca.notValidAfter:
+                    return CertificateId.fromCertificate(csca)
+        return None
+
     for cert in pkd_path.rglob('*.cer'):
         try:
             l.verbose("Loading certificate: {}".format(cert))
@@ -153,19 +175,60 @@ def load_pkd_to_mdb(mdb: proto.MemoryDB, pkd_path: Path):
             cert = x509.Certificate.load(cfd.read())
 
             ku = cert.key_usage_value.native
-            if cert.ca and 'key_cert_sign' in ku:
+            if cert.ca:
+                if 'key_cert_sign' not in ku:
+                    l.warning("CSCA doesn't have key_cert_sign constrain. C={} serial={} key_id={}"
+                        .format(formatAlpha2(cert.issuerCountry), cert.serial_number, cert.subjectKey.hex()))
                 cert.__class__ = x509.CscaCertificate
-                mdb.addCscaCertificate(cert)
-                cert_count+=1
-            elif 'digital_signature' in ku:
+                if cert.subjectKey is not None:
+                    cscas_sk[cert.subjectKey].append(cert)
+                else:
+                    cscas_sub[cert.subject.human_friendly].append(cert)
+            elif 'digital_signature' in ku and 'key_cert_sign' not in ku:
                 cert.__class__ = x509.DocumentSignerCertificate
-                mdb.addDscCertificate(cert)
+                issuerId = get_issuer_id(cert)
+                if issuerId == None:
+                    l.warning("Skipping DSC certificate because no issuing CSCA was found. C={} serial={} key_id={}"
+                        .format(formatAlpha2(cert.issuerCountry), cert.serial_number, cert.subjectKey.hex()))
+                    continue
+                mdb.addDscCertificate(cert, issuerId)
                 cert_count+=1
+            else:
+                l.warning("Skipping certificate because it is not CA but has key_cert_sign constrain. C={} serial={} key_id={}"
+                    .format(formatAlpha2(cert.issuerCountry), cert.serial_number, cert.subjectKey.hex()))
+        except SeEntryAlreadyExists:
+            pass
         except Exception as e:
-            l.warning("Could not load certificate '{}'".format(cert))
+            l.warning("Could not load certificate. C={} serial={} key_id={}"
+                .format(formatAlpha2(cert.issuerCountry), cert.serial_number, cert.subjectKey.hex()))
             l.exception(e)
-    l.info("{} certificates loaded into mdb.".format(cert_count))
 
+    # Now add cscas to the database
+    def insert_cscas(dcscas):
+        count = 0
+        for _,cscas in dcscas.items():
+            for csca in cscas:
+                issuerId = None
+                if csca.self_signed == 'no':
+                    issuerId = get_issuer_id(csca)
+                    if issuerId is None:
+                        l.warning("Skipping LCSA because no issuing CSCA was found. LCSCA C={} serial={} key_id={}"
+                            .format(formatAlpha2(csca.issuerCountry), csca.serial_number, csca.subjectKey.hex()))
+                        continue
+                try:
+                    mdb.addCscaCertificate(csca, issuerId)
+                    count+=1
+                except SeEntryAlreadyExists:
+                    pass
+                except Exception as e:
+                    l.warning("Could not add CSCA certificate CSCA C={} serial={} key_id={}"
+                        .format(formatAlpha2(csca.issuerCountry), csca.serial_number, csca.subjectKey.hex()))
+                    l.exception(e)
+        return count
+
+    cert_count += insert_cscas(cscas_sk)
+    cert_count += insert_cscas(cscas_sub)
+    l.info("{} certificates loaded into mdb.".format(cert_count))
 
 def main():
     args = parse_args()

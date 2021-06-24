@@ -1,5 +1,10 @@
 import logging
 
+from asn1crypto.core import InstanceOf
+from port.database.utils import formatAlpha2
+
+from port.proto.types import CertificateId
+
 from .challenge import CID, Challenge
 from .user import UserId
 
@@ -13,7 +18,7 @@ from port.database.storage.accountStorage import AccountStorage, AccountStorageE
 from port.database.storage.x509Storage import DscStorage, CSCAStorage
 
 from pymrtd.pki import x509
-from typing import List, Tuple, Union
+from typing import Optional, Tuple
 
 class StorageAPIError(Exception):
     pass
@@ -85,23 +90,45 @@ class StorageAPI(ABC):
         pass
 
     @abstractmethod
-    def getDSCbySerialNumber(self, issuer: Name, serialNumber: int) -> Union[x509.DocumentSignerCertificate, None]:
-        """Get DSC"""
+    def addCscaCertificate(self, csca: x509.CscaCertificate, issuerId: Optional[CertificateId] = None) -> CertificateId:
+        """
+        Inserts new CSCA certificate into database
+        :param csca: CSCA certificate to insert into database.
+        :param issuerId: The CSCA issuerId in case the CSCA is linked (Optional).
+        :return: The csca CertificateId
+        """
         pass
 
     @abstractmethod
-    def getDSCbySubjectKey(self, subjectKey: bytes) -> Union[x509.DocumentSignerCertificate, None]:
-        """Get DSC"""
+    def getCSCAbySubject(self, subject: Name) -> Optional[x509.CscaCertificate]:
         pass
 
     @abstractmethod
-    def getCSCAbySubject(self, subject: Name) -> Union[x509.CscaCertificate, None]:
-        pass
-
-    @abstractmethod
-    def getCSCAbySubjectKey(self, subjectKey: bytes) -> Union[x509.CscaCertificate, None]:
+    def getCSCAbySubjectKey(self, subjectKey: bytes) -> Optional[x509.CscaCertificate]:
         """Get CSCA"""
         pass
+
+    @abstractmethod
+    def addDscCertificate(self, dsc: x509.DocumentSignerCertificate, issuerId: CertificateId) -> CertificateId:
+        """
+        Inserts new DSC certificate into database
+        :param dsc: DSC certificate to insert into database.
+        :param issuerId: The DSC issuerId.
+        :return: The dsc CertificateId
+        """
+        pass
+
+    @abstractmethod
+    def getDSCbySerialNumber(self, issuer: Name, serialNumber: int) -> Optional[x509.DocumentSignerCertificate]:
+        """Get DSC"""
+        pass
+
+    @abstractmethod
+    def getDSCbySubjectKey(self, subjectKey: bytes) -> Optional[x509.DocumentSignerCertificate]:
+        """Get DSC"""
+        pass
+
+
 
 
 class DatabaseAPIError(StorageAPIError):
@@ -172,7 +199,10 @@ class DatabaseAPI(StorageAPI):
 
     def accountExists(self, uid: UserId) -> bool:
         assert isinstance(uid, UserId)
-        return True if self._dbc.getSession().query(AccountStorage).filter(AccountStorage.uid == uid).count() > 0 else False
+        return self._dbc.getSession() \
+            .query(AccountStorage) \
+            .filter(AccountStorage.uid == uid) \
+            .count() > 0
 
     def addOrUpdateAccount(self, account: AccountStorage) -> None:
         assert isinstance(account, AccountStorage)
@@ -216,33 +246,28 @@ class DatabaseAPI(StorageAPI):
         assert isinstance(items[0].getValidUntil(), datetime)
         return items[0].getValidUntil()
 
-    def getDSCbySerialNumber(self, issuer: Name, serialNumber: int) -> Union[x509.DocumentSignerCertificate, None]:
-        """ Get DSC by it's issuer and serial number. """
-        assert isinstance(issuer, Name)
-        assert isinstance(serialNumber, int)
-        items = self._dbc.getSession() \
-            .query(DscStorage) \
-            .filter(DscStorage.issuer == issuer.human_friendly, \
-                DscStorage.serialNumber == str(serialNumber) \
-            ).all()
+    def addCscaCertificate(self, csca: x509.CscaCertificate, issuerId: Optional[CertificateId] = None) -> CertificateId:
+        """
+        Inserts new CSCA into database
+        :param csca: CSCA certificate to insert into database.
+        :param issuerId: The CSCA issuerId in case the CSCA is linked (Optional).
+        :return: The csca CertificateId
+        """
+        self._log.debug("Inserting new CSCA into database C={} serial={}"
+            .format(formatAlpha2(csca.issuerCountry), csca.serial_number))
 
-        if len(items) == 0:
-            return None
-        return items[0].getCertificate()
+        assert isinstance(csca, x509.CscaCertificate)
+        assert issuerId is None or isinstance(issuerId, CertificateId)
 
-    def getDSCbySubjectKey(self, subjectKey: bytes) -> Union[x509.DocumentSignerCertificate, None]:
-        """ Get DSC by it's subject key. """
-        assert isinstance(subjectKey, bytes)
-        items = self._dbc.getSession() \
-            .query(DscStorage) \
-            .filter(DscStorage.subjectKey == subjectKey) \
-            .all()
+        cs = CSCAStorage(csca, issuerId)
+        if self._dbc.getSession().query(CSCAStorage).filter(CSCAStorage.id == cs.id).count() > 0:
+            raise SeEntryAlreadyExists("CSCA already exists")
 
-        if len(items) == 0:
-            return None
-        return items[0].getCertificate()
+        self._dbc.getSession().add(cs)
+        self._dbc.getSession().commit()
+        return cs.id
 
-    def getCSCAbySubject(self, subject: Name) -> Union[x509.CscaCertificate, None]:
+    def getCSCAbySubject(self, subject: Name) -> Optional[x509.CscaCertificate]:
         """ Get CSCA by it's issuer and serial number. """
         assert isinstance(subject, Name)
         items = self._dbc.getSession() \
@@ -254,12 +279,59 @@ class DatabaseAPI(StorageAPI):
             return None
         return items[0].getCertificate()
 
-    def getCSCAbySubjectKey(self, subjectKey: bytes) -> Union[x509.CscaCertificate, None]:
+    def getCSCAbySubjectKey(self, subjectKey: bytes) -> Optional[x509.CscaCertificate]:
         """ Get CSCA by it's subject key. """
         assert isinstance(subjectKey, bytes)
         items = self._dbc.getSession() \
             .query(CSCAStorage) \
             .filter(CSCAStorage.subjectKey == subjectKey) \
+            .all()
+
+        if len(items) == 0:
+            return None
+        return items[0].getCertificate()
+
+    def addDscCertificate(self, dsc: x509.DocumentSignerCertificate, issuerId: CertificateId) -> CertificateId:
+        """
+        Inserts new DSC certificate into database
+        :param dsc: DSC certificate to insert into database.
+        :param issuerId: The DSC issuerId.
+        :return: The dsc CertificateId
+        """
+        self._log.debug("Inserting new DSC into database C={} serial={}"
+            .format(formatAlpha2(dsc.issuerCountry), dsc.serial_number))
+
+        assert isinstance(dsc, x509.DocumentSignerCertificate)
+        assert isinstance(issuerId, CertificateId)
+
+        ds = DscStorage(dsc, issuerId)
+        if self._dbc.getSession().query(DscStorage).filter(DscStorage.id == ds.id).count() > 0:
+            raise SeEntryAlreadyExists("DSC already exists")
+
+        self._dbc.getSession().add(ds)
+        self._dbc.getSession().commit()
+        return ds.id
+
+    def getDSCbySerialNumber(self, issuer: Name, serial: int) -> Optional[x509.DocumentSignerCertificate]:
+        """ Get DSC by it's issuer and serial number. """
+        assert isinstance(issuer, Name)
+        assert isinstance(serial, int)
+        items = self._dbc.getSession() \
+            .query(DscStorage) \
+            .filter(DscStorage.issuer == issuer.human_friendly, \
+                DscStorage.serial == str(serial) \
+            ).all()
+
+        if len(items) == 0:
+            return None
+        return items[0].getCertificate()
+
+    def getDSCbySubjectKey(self, subjectKey: bytes) -> Optional[x509.DocumentSignerCertificate]:
+        """ Get DSC by it's subject key. """
+        assert isinstance(subjectKey, bytes)
+        items = self._dbc.getSession() \
+            .query(DscStorage) \
+            .filter(DscStorage.subjectKey == subjectKey) \
             .all()
 
         if len(items) == 0:
@@ -283,6 +355,7 @@ class MemoryDB(StorageAPI):
     '''
 
     def __init__(self):
+        self._log = logging.getLogger(MemoryDB.__name__)
         self._d = {
             'proto_challenges' : {},
             'accounts' : {},
@@ -351,43 +424,75 @@ class MemoryDB(StorageAPI):
         a = self.getAccount(uid)
         return a.validUntil
 
-    def getDSCbySerialNumber(self, issuer: Name, serialNumber: int) -> Union[x509.DocumentSignerCertificate, None]:
+    def addCscaCertificate(self, csca: x509.CscaCertificate, issuerId: Optional[CertificateId] = None) -> CertificateId:
+        """
+        Adds new CSCA into database
+        :param csca: CSCA certificate to insert into database.
+        :param issuerId: The CSCA issuerId in case the CSCA is linked (Optional).
+        :return: The csca CertificateId
+        """
+        self._log.debug("Inserting new CSCA into database C={} serial={}"
+            .format(formatAlpha2(csca.issuerCountry), csca.serial_number))
+
+        assert isinstance(csca, x509.CscaCertificate)
+        assert issuerId is None or isinstance(issuerId, CertificateId)
+
+        cs = CSCAStorage(csca, issuerId)
+        for c in self._d['cscas']:
+            if c.id == cs.id:
+                raise SeEntryAlreadyExists("CSCA already exists")
+        self._d['cscas'].add(cs)
+        return cs.id
+
+    def getCSCAbySubject(self, subject: Name)-> Optional[x509.CscaCertificate]:
+        """Get CSCA"""
+        assert isinstance(subject, Name)
+        for cs in self._d['cscas']:
+            if cs.subject == subject.human_friendly:
+                return cs.getCertificate()
+        return None
+
+    def getCSCAbySubjectKey(self, subjectKey: bytes) -> Optional[x509.CscaCertificate]:
+        """Get CSCA"""
+        assert isinstance(subjectKey, bytes)
+        for csca in self._d['cscas']:
+            if csca.subjectKey == subjectKey:
+                return csca.getCertificate()
+        return None
+
+    def addDscCertificate(self, dsc: x509.DocumentSignerCertificate, issuerId: CertificateId) -> CertificateId:
+        """
+        Adds new DSC certificate into database
+        :param csca: DSC certificate to insert into database.
+        :param issuerId: The DSC issuerId in case the CSCA is linked (Optional).
+        :return: The dsc CertificateId
+        """
+        self._log.debug("Inserting new CSCA into database C={} serial={}"
+            .format(formatAlpha2(dsc.issuerCountry), dsc.serial_number))
+
+        assert isinstance(dsc, x509.CscaCertificate)
+        assert issuerId is None or isinstance(issuerId, CertificateId)
+
+        ds = DscStorage(dsc, issuerId)
+        for c in self._d['dscs']:
+            if c.id == ds.id:
+                raise SeEntryAlreadyExists("DSC already exists")
+        self._d['dscs'].add(ds)
+        return ds.id
+
+    def getDSCbySerialNumber(self, issuer: Name, serial: int) -> Optional[x509.DocumentSignerCertificate]:
         """Get DSC"""
         assert isinstance(issuer, Name)
-        assert isinstance(serialNumber, int)
+        assert isinstance(serial, int)
         for dsc in self._d['dscs']:
-            if dsc.issuer == issuer and dsc.serial_number == serialNumber:
+            if dsc.issuer == issuer and dsc.serial_number == serial:
                 return dsc
         return None
 
-    def getDSCbySubjectKey(self, subjectKey: bytes) -> Union[x509.DocumentSignerCertificate, None]:
+    def getDSCbySubjectKey(self, subjectKey: bytes) -> Optional[x509.DocumentSignerCertificate]:
         """Get DSC"""
         assert isinstance(subjectKey, bytes)
         for dsc in self._d['dscs']:
             if dsc.subjectKey == subjectKey:
                 return dsc
         return None
-
-    def getCSCAbySubject(self, subject: Name)-> Union[x509.CscaCertificate, None]:
-        """Get CSCA"""
-        assert isinstance(subject, Name)
-        for csca in self._d['cscas']:
-            if csca.subject == subject:
-                return csca
-        return None
-
-    def getCSCAbySubjectKey(self, subjectKey: bytes) -> Union[x509.CscaCertificate, None]:
-        """Get CSCA"""
-        assert isinstance(subjectKey, bytes)
-        for csca in self._d['cscas']:
-            if csca.subjectKey == subjectKey:
-                return csca
-        return None
-
-    def addCscaCertificate(self, csca: x509.CscaCertificate):
-        assert isinstance(csca, x509.CscaCertificate)
-        self._d['cscas'].add(csca)
-
-    def addDscCertificate(self, dsc: x509.DocumentSignerCertificate):
-        assert isinstance(dsc, x509.DocumentSignerCertificate)
-        self._d['dscs'].add(dsc)
