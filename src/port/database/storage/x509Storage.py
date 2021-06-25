@@ -9,7 +9,7 @@ from port.proto.types import CertificateId
 logger = logging.getLogger(__name__)
 
 
-class CSCAStorageError(Exception):
+class CscaStorageError(Exception):
     pass
 
 class DscStorageError(Exception):
@@ -51,43 +51,43 @@ class CertificateStorage(object):
         """Returns object"""
         return self._type.load(self.certificate)
 
-class CSCAStorage(CertificateStorage):
+class CscaStorage(CertificateStorage):
     _type = CscaCertificate
 
 def writeToDB_CSCA(csca: CscaCertificate, connection: Connection):
     """Write to database with ORM"""
     try:
         logger.info("Writing CSCA object to database. Country: " + csca.issuerCountry)
-        connection.getSession().add(CSCAStorage(csca))
+        connection.getSession().add(CscaStorage(csca))
         connection.getSession().commit()
 
     except Exception:
-        raise CSCAStorageError("Problem with writing the object")
+        raise CscaStorageError("Problem with writing the object")
 
-def readFromDB_CSCA_issuer_serialNumber(issuer: str, serialNumber: int, connection: Connection) -> List[CSCAStorage]:
+def readFromDB_CSCA_issuer_serialNumber(issuer: str, serialNumber: int, connection: Connection) -> List[CscaStorage]:
     """Reading from database"""
     try:
         logger.info("Reading CSCA object from database. Issuer:" + issuer + ", serial number: " + str(serialNumber))
         return connection.getSession() \
-                         .query(CSCAStorage) \
-                         .filter(CSCAStorage.issuer == issuer,
-                                 CSCAStorage.serial == str(serialNumber.native)
+                         .query(CscaStorage) \
+                         .filter(CscaStorage.issuer == issuer,
+                                 CscaStorage.serial == str(serialNumber.native)
                          ).all()
     except Exception as e:
-        raise CSCAStorageError("Problem with writing the object" + e)
+        raise CscaStorageError("Problem with writing the object" + e)
 
-def readFromDB_CSCA_authorityKey(authorityKey: bytes, connection: Connection) -> List[CSCAStorage]:
+def readFromDB_CSCA_authorityKey(authorityKey: bytes, connection: Connection) -> List[CscaStorage]:
     """Reading from database"""
     try:
         logger.info("Reading CSCA object from database by authority key")
         return connection.getSession() \
-                         .query(CSCAStorage) \
-                         .filter(CSCAStorage.authorityKey == authorityKey) \
+                         .query(CscaStorage) \
+                         .filter(CscaStorage.authorityKey == authorityKey) \
                          .all()
     except Exception as e:
-        raise CSCAStorageError("Problem with writing the object" + e)
+        raise CscaStorageError("Problem with writing the object" + e)
 
-def deleteFromDB_CSCA(CSCAs: List[CSCAStorage], connection: Connection):
+def deleteFromDB_CSCA(CSCAs: List[CscaStorage], connection: Connection):
     """Reading from database"""
     try:
         logger.info("Delete DSCs; size:" + str(len(CSCAs)))

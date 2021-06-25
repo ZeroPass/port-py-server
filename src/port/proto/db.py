@@ -15,7 +15,7 @@ from datetime import datetime
 from port.database.storage.storageManager import Connection
 from port.database.storage.challengeStorage import *
 from port.database.storage.accountStorage import AccountStorage, AccountStorageError
-from port.database.storage.x509Storage import DscStorage, CSCAStorage
+from port.database.storage.x509Storage import DscStorage, CscaStorage
 
 from pymrtd.pki import x509
 from typing import Optional, Tuple
@@ -260,7 +260,7 @@ class DatabaseAPI(StorageAPI):
         assert issuerId is None or isinstance(issuerId, CertificateId)
 
         cs = CSCAStorage(csca, issuerId)
-        if self._dbc.getSession().query(CSCAStorage).filter(CSCAStorage.id == cs.id).count() > 0:
+        if self._dbc.getSession().query(CscaStorage).filter(CscaStorage.id == cs.id).count() > 0:
             raise SeEntryAlreadyExists("CSCA already exists")
 
         self._dbc.getSession().add(cs)
