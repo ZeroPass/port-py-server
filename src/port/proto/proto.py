@@ -1,4 +1,5 @@
 import port.log as log
+
 from . import utils
 from .challenge import CID, Challenge
 from .db import StorageAPI
@@ -10,11 +11,13 @@ from datetime import datetime, timedelta
 
 from pymrtd import ef
 from pymrtd.pki.keys import AAPublicKey, SignatureAlgorithm
-from pymrtd.pki.x509 import Certificate, CscaCertificate, DocumentSignerCertificate
+from pymrtd.pki.x509 import CscaCertificate, DocumentSignerCertificate
 
 from port.database.storage.accountStorage import AccountStorage
+from port.database.storage.x509Storage import CscaStorage
+
 from threading import Timer
-from typing import List, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 class ProtoError(Exception):
     """ General protocol exception """
@@ -103,6 +106,7 @@ class PortProto:
 
         self._mjtimer = Timer(self.maintenanceInterval, self.doMaintenance)
         self._mjtimer.setName('maintenance_job')
+        self._mjtimer.daemon = True # Causes the thread to be canceled by SIGINT
         self._mjtimer.start()
         self._log.debug('Finished maintenance job, next schedule at: {}'
             .format(utils.time_now() + timedelta(seconds=self.maintenanceInterval)))
@@ -351,24 +355,33 @@ class PortProto:
     def __validate_dsc_to_csca(self, dsc: DocumentSignerCertificate):
         """ Find DSC's issuing CSCA and validate DSC with it. """
         # 1. Get CSCA that issued DSC
-        csca = None
+        cscas:Optional[List[CscaStorage]] = None
         dsc_auth_key = dsc.authorityKey
         if dsc_auth_key is not None:
             self._log.verbose("Trying to find CSCA in DB by subject key. DSC auth_key={}".format(dsc_auth_key.hex()))
-            csca = self._db.getCSCAbySubjectKey(dsc_auth_key)
-            if csca is None: self._log.verbose("CSCA not found by DSC auth_key!")
+            cscas = self._db.fetchCscaCertificatesBySubjectKey(dsc_auth_key)
+            if cscas is None: self._log.verbose("CSCA not found by DSC auth_key!")
 
-        if csca is None:
+        if cscas is None:
             self._log.verbose("Trying to find CSCA in DB by DSC issuer field: [{}]".format(dsc.issuer.human_friendly))
-            csca = self._db.getCSCAbySubject(dsc.issuer)
+            csca = self._db.fetchCscaCertificatesBySubject(dsc.issuer)
+
+        csca: Optional[CscaCertificate] = None
+        for c in cscas:
+            if c.notValidAfter >= dsc.notValidAfter:
+                csca = c.getCertificate()
+                break
 
         if csca is None:
-            self._log.error("CSCA not found!")
+            self._log.error("No valid CSCA was found!")
             raise PePreconditionFailed("CSCA not found")
 
-        self._log.verbose("Found CSCA fp={} country={}".format(
-            csca.fingerprint[0:8], utils.code_to_country_name(csca.issuerCountry))
-        )
+        self._log.verbose("Found CSCA country={} serial={} fp={} key_id={}".format(
+            utils.code_to_country_name(csca.issuerCountry),
+            csca.serial_number,
+            csca.fingerprint[0:8],
+            csca.subjectKey.hex() if csca.subjectKey is not None else 'N/A'
+        ))
 
         # 2. Verify CSCA expiration time
         self._log.verbose("Verifying CSCA expiration time. {}".format(utils.format_cert_et(csca)))
