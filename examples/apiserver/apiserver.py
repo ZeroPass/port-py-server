@@ -1,22 +1,26 @@
 #!/usr/bin/python
 import argparse, coloredlogs, os, signal, sys, ssl
+import port.log as log
+
 from collections import defaultdict
+from datetime import datetime, timedelta
 from pathlib import Path
-from port.database.utils import formatAlpha2
-from port.proto.db import SeEntryAlreadyExists
-from port.proto.user import UserId
 
 _script_path = Path(os.path.dirname(sys.argv[0]))
 #sys.path.append(str(_script_path / Path("../../")))
 
-import port.log as log
-from datetime import datetime, timedelta
-from port.settings import Config, DbConfig, ServerConfig
-from port.api import PortApiServer
 from port import proto
+from port.api import PortApiServer
+from port.database.utils import formatAlpha2
+from port.proto.db import SeEntryAlreadyExists
+from port.proto.user import UserId
 from port.proto.types import CertificateId
+from port.settings import Config, DbConfig, ServerConfig
+
 from pymrtd import ef
 from pymrtd.pki import x509
+
+from typing import Tuple
 
 
 class DevProto(proto.PortProto):
@@ -25,12 +29,16 @@ class DevProto(proto.PortProto):
         self._fc = fc
         self._no_tcv = no_tcv
 
-    def createNewChallenge(self, uid: UserId) -> proto.Challenge:
+    def createNewChallenge(self, uid: UserId) -> Tuple[proto.Challenge, datetime]:
         if self._fc:
-            now = datetime.utcnow()
-            c = proto.Challenge.fromhex("47E4EE7F211F73265DD17658F6E21C1318BD6C81F37598E20A2756299542EFCF")
-            self._db.addChallenge(c, now)
-            return c
+            fc = proto.Challenge.fromhex("47E4EE7F211F73265DD17658F6E21C1318BD6C81F37598E20A2756299542EFCF")
+            c, cct = super().createNewChallenge(uid)
+            if c == fc:
+                return (c,cct)
+            self._db.deleteChallenge(c.id)
+            cet = self._get_challenge_expiration(datetime.utcnow())
+            self._db.addChallenge(uid, fc, cet)
+            return (fc, cet)
         return super().createNewChallenge(uid)
 
     def _get_default_account_expiration(self):

@@ -48,14 +48,15 @@ def certColumns(issuerCertTable: Optional[str] = None):
 csca = Table('csca', metadata, *certColumns())
 dsc  = Table('dsc', metadata, *certColumns(issuerCertTable='csca'))
 
-challenges = Table('challenges', metadata,
+protoChallenges = Table('protoChallenges', metadata,
     Column('id', Integer, primary_key=True),
-    Column('challenge', String, nullable=False),
-    Column("createTime", DateTime(timezone=True), nullable=False)
+    Column('uid', LargeBinary(20), ForeignKey('accounts.uid'), unique=True),
+    Column('challenge', LargeBinary(32), nullable=False),
+    Column("expires", DateTime(timezone=True), nullable=False)
 )
 
 accounts = Table('accounts', metadata,
-    Column('uid', LargeBinary, primary_key=True), # uid = UserId
+    Column('uid', LargeBinary(20), primary_key=True), # uid = UserId
     Column('sod', LargeBinary, nullable=False),
     Column('aaPublicKey', LargeBinary, nullable=False),
     Column('sigAlgo', LargeBinary, nullable=True),
@@ -128,13 +129,13 @@ class PortDatabaseConnection:
         mapper(CscaStorage, csca)
 
         # challenge
-        mapper(ChallengeStorage, challenges)
+        mapper(ChallengeStorage, protoChallenges)
 
         # account
         mapper(AccountStorage, accounts)
 
         #creating tables
-        Base.metadata.create_all(self.connectionObj, tables=[crl, dsc, csca, challenges, accounts])
+        Base.metadata.create_all(self.connectionObj, tables=[crl, dsc, csca, protoChallenges, accounts])
 
     @staticmethod
     def __buildUrl(dialect:str, host:str, db: str, username: str, password: str):

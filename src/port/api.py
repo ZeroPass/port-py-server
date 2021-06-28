@@ -75,11 +75,14 @@ class PortApiServer:
         Function returns challenge that passport needs to sign.
         Challenge is base64 encoded.
         :param uid: base64 encoded UserId to generate the challenge for
+        :return:
+                'challenge' - base64 encoded challenge
+                'expires'   - unix timestamp of time when challenge will expire
         """
         try:
             uid = try_deser(lambda: proto.UserId.fromBase64(uid))
-            c   = self._proto.createNewChallenge(uid)
-            return { "challenge": c.toBase64() }
+            c, cet = self._proto.createNewChallenge(uid)
+            return { "challenge": c.toBase64(), "expires": int(cet.timestamp()) }
         except Exception as e:
             return self.__handle_exception(e)
 

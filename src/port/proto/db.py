@@ -1,4 +1,5 @@
 import logging
+
 from .challenge import CID, Challenge
 from .user import UserId
 from .types import CertificateId
@@ -6,6 +7,7 @@ from .types import CertificateId
 from abc import ABC, abstractmethod
 from asn1crypto import x509
 from datetime import datetime
+from operator import or_
 
 from port.database.storage.storageManager import PortDatabaseConnection
 from port.database.storage.challengeStorage import *
@@ -28,11 +30,12 @@ class SeEntryAlreadyExists(StorageAPIError):
 class StorageAPI(ABC):
     ''' Abstract storage interface for user data and MRTD trustchain certificates (CSCA, DSC) '''
 
+    # Proto challenge methods
     @abstractmethod
     def getChallenge(self, cid: CID) -> Tuple[Challenge, datetime]:
         """
-        Function fetches challenge from db and returns
-        challenge and time of creation.
+        Function fetches proto challenge from db and returns
+        challenge and expiration time.
 
         :param cid: Challenge id
         :return: Tuple[Challenge, datetime]
@@ -40,13 +43,25 @@ class StorageAPI(ABC):
             DatabaseAPIError: If challenge is not found
         """
 
-    # Proto challenge methods
     @abstractmethod
-    def addChallenge(self, challenge: Challenge, timedate: datetime) -> None:
+    def findChallengeByUID(self, uid: UserId) -> Optional[Tuple[Challenge, datetime]]:
+        """
+        Function tries to find proto challenge by user ID in the db, and returns
+        challenge and expiration time.
+
+        :param uid: User ID to searche the challenge for
+        :return: Optional[Tuple[Challenge, datetime]]
+        """
+        pass
+
+    @abstractmethod
+    def addChallenge(self, uid: UserId, challenge: Challenge, expires: datetime) -> None:
         """
         Add challenge to storage.
+        :param uid: User ID for which the challenge was created
         :param challenge:
-        :param timdate: Challenge crate Date and time
+        :param expires: The challenge expiration datetime.
+        :raise: SeEntryAlreadyExists if challenge already exists for user
         """
         pass
 
@@ -57,8 +72,8 @@ class StorageAPI(ABC):
     @abstractmethod
     def deleteExpiredChallenges(self, time: datetime) -> None:
         """
-        Deletes expired challenges that have createTime less than time.
-        :param time:
+        Deletes all expired challenges from storage.
+        :param time: Challenges that have expiration time less then time are deleted.
         """
         pass
 
@@ -85,6 +100,7 @@ class StorageAPI(ABC):
         """ Get account's credentials expiry """
         pass
 
+    # EMRTD PKI certificates methods
     @abstractmethod
     def addCscaCertificate(self, csca: CscaCertificate, issuerId: Optional[CertificateId] = None) -> CertificateId:
         """
@@ -162,7 +178,7 @@ class DatabaseAPI(StorageAPI):
     def getChallenge(self, cid: CID) -> Tuple[Challenge, datetime]:
         """
         Function fetches challenge from db and returns
-        challenge and time of creation.
+        challenge and expiration time.
 
         :param cid: Challenge id
         :return: Tuple[Challenge, datetime]
@@ -170,25 +186,52 @@ class DatabaseAPI(StorageAPI):
             DatabaseAPIError: If challenge is not found
         """
         assert isinstance(cid, CID)
-        result = self._dbc.getSession() \
+        cs = self._dbc.getSession() \
            .query(ChallengeStorage) \
-           .filter(ChallengeStorage.id == str(cid)) \
-           .all()
+           .filter(ChallengeStorage.id == cid) \
+           .first()
 
-        if len(result) == 0:
+        if cs is None:
             raise SeEntryNotFound("Challenge not found")
-
-        cs = result[0]
-        c = cs.getChallenge()
-        t = cs.createTime
+        c = cs.challenge
+        t = cs.expires
         return (c, t)
 
-    def addChallenge(self, challenge: Challenge, timedate: datetime) -> None:
-        assert isinstance(challenge, Challenge)
-        assert isinstance(timedate, datetime)
-        cs = ChallengeStorage.fromChallenge(challenge, timedate)
+    def findChallengeByUID(self, uid: UserId) -> Optional[Tuple[Challenge, datetime]]:
+        """
+        Function tries to find proto challenge by user ID in the db, and returns
+        challenge and expiration time.
 
-        if self._dbc.getSession().query(ChallengeStorage).filter(ChallengeStorage.id == challenge.id).count() > 0:
+        :param uid: User ID to searche the challenge for
+        :return: Optional[Tuple[Challenge, datetime]]
+        """
+        assert isinstance(uid, UserId)
+        cs = self._dbc.getSession() \
+           .query(ChallengeStorage) \
+           .filter(ChallengeStorage.uid == uid) \
+           .first()
+
+        if cs is None:
+            return None
+        c = cs.challenge
+        t = cs.expires
+        return (c, t)
+
+    def addChallenge(self, uid: UserId, challenge: Challenge, expires: datetime) -> None:
+        """
+        Add challenge to storage.
+        :param uid: User ID for which the challenge was created
+        :param challenge:
+        :param expires: The challenge expiration datetime.
+        :raise: SeEntryAlreadyExists if challenge already exists for user
+        """
+        assert isinstance(challenge, Challenge)
+        assert isinstance(expires, datetime)
+        cs = ChallengeStorage(uid, challenge, expires)
+
+        if self._dbc.getSession().query(ChallengeStorage) \
+            .filter(or_(ChallengeStorage.id == challenge.id, ChallengeStorage.uid == uid))\
+            .count() > 0:
             raise SeEntryAlreadyExists("Challenge already exists")
 
         self._dbc.getSession().add(cs)
@@ -206,7 +249,7 @@ class DatabaseAPI(StorageAPI):
         assert isinstance(time, datetime)
         self._dbc.getSession() \
                  .query(ChallengeStorage) \
-                 .filter(ChallengeStorage.createTime < time) \
+                 .filter(ChallengeStorage.expires < time) \
                  .delete()
         self._dbc.getSession().commit()
 
@@ -237,12 +280,12 @@ class DatabaseAPI(StorageAPI):
 
     def getAccount(self, uid: UserId) -> AccountStorage:
         assert isinstance(uid, UserId)
-        accounts = self._dbc.getSession().query(AccountStorage).filter(AccountStorage.uid == uid).all()
-        if len(accounts) == 0:
+        accnt = self._dbc.getSession().query(AccountStorage).filter(AccountStorage.uid == uid).all()
+        if accnt is None:
             self._log.debug(":getAccountExpiry(): Account not found")
             raise SeEntryNotFound("Account not found.")
-        assert isinstance(accounts[0], AccountStorage)
-        return accounts[0]
+        assert isinstance(accnt, AccountStorage)
+        return accnt
 
     def deleteAccount(self, uid: UserId) -> None:
         assert isinstance(uid, UserId)
@@ -251,13 +294,13 @@ class DatabaseAPI(StorageAPI):
 
     def getAccountExpiry(self, uid: UserId) -> datetime:
         assert isinstance(uid, UserId)
-        items = self._dbc.getSession().query(AccountStorage).filter(AccountStorage.uid == uid).all()
-        if len(items) == 0:
+        accnt = self._dbc.getSession().query(AccountStorage).filter(AccountStorage.uid == uid).first()
+        if accnt is None:
             self._log.debug(":getAccountExpiry(): Account not found")
             raise SeEntryNotFound("Account not found.")
 
-        assert isinstance(items[0].getValidUntil(), datetime)
-        return items[0].getValidUntil()
+        assert isinstance(accnt.getValidUntil(), datetime)
+        return accnt.getValidUntil()
 
     def addCscaCertificate(self, csca: CscaCertificate, issuerId: Optional[CertificateId] = None) -> CertificateId:
         """
@@ -331,21 +374,20 @@ class DatabaseAPI(StorageAPI):
         """ Get DSC by it's issuer and serial number. """
         assert isinstance(issuer, x509.Name)
         assert isinstance(serial, int)
-        dscs = self._dbc.getSession() \
+        dsc = self._dbc.getSession() \
             .query(DscStorage) \
-            .filter(DscStorage.issuer == issuer.human_friendly, \
-                DscStorage.serial == str(serial) \
-            ).all()
-        return dscs[0].getCertificate() if len(dscs) != 0 else None
+            .filter(DscStorage.issuer == issuer.human_friendly, DscStorage.serial == str(serial)) \
+            .first()
+        return dsc.getCertificate() if dsc is not None else None
 
     def getDSCbySubjectKey(self, subjectKey: bytes) -> Optional[DocumentSignerCertificate]:
         """ Get DSC by it's subject key. """
         assert isinstance(subjectKey, bytes)
-        dscs = self._dbc.getSession() \
+        dsc = self._dbc.getSession() \
             .query(DscStorage) \
             .filter(DscStorage.subjectKey == subjectKey) \
-            .all()
-        return dscs[0].getCertificate() if len(dscs) != 0 else None
+            .first()
+        return dsc.getCertificate() if dsc is not None else None
 
 
 class MemoryDBError(StorageAPIError):
@@ -357,9 +399,9 @@ class MemoryDB(StorageAPI):
     The data is stored in memory (RAM) and gets deleted as instance of MemoryDB is destroyed.
     The purpose of MemoryDB is testing of port proto without needing to set up (or reset) proper database.
     Internally data is stored as dictionary in 4 categories:
-        proto_challenges -> Dictionary[CID, Tuple[Challenge, datetime]]
+        proto_challenges -> Dictionary[CID, Tuple[UserId, Challenge, datetime - expires]]
         accounts         -> Dictionary[UserId, AccountStorage]
-        cscas            -> Set[CscaCertificate]
+        cscas            -> Set[List[CscaCertificate]]
         dscs             -> Set[DocumentSignerCertificate]
     '''
 
@@ -375,25 +417,50 @@ class MemoryDB(StorageAPI):
     def getChallenge(self, cid: CID) -> Tuple[Challenge, datetime]:
         """
         Function fetches challenge from db and returns
-        challenge and time of creation.
+        challenge and expiration time.
 
         :param cid: Challenge id
         :return: Tuple[Challenge, datetime]
-        :raises:
-            MemoryDBError: If challenge is not found
+        :raises: SeEntryAlreadyExists if challenge is not found
         """
         assert isinstance(cid, CID)
         try:
-            return self._d['proto_challenges'][cid]
+            _, c, et = self._d['proto_challenges'][cid]
+            return (c, et)
         except Exception as e:
             raise SeEntryNotFound("Challenge not found") from e
 
-    def addChallenge(self, challenge: Challenge, timedate: datetime) -> None:
+    def findChallengeByUID(self, uid: UserId) -> Optional[Tuple[Challenge, datetime]]:
+        """
+        Function tries to find proto challenge by user ID in the db, and returns
+        challenge and expiration time.
+
+        :param uid: User ID to searche the challenge for
+        :return: Optional[Tuple[Challenge, datetime]]
+        """
+        assert isinstance(uid, UserId)
+        for _, (suid, c, et) in self._d['proto_challenges'].items():
+            if suid == uid:
+                return (c, et)
+        return None
+
+    def addChallenge(self, uid: UserId, challenge: Challenge, expires: datetime) -> None:
+        """
+        Add challenge to storage.
+        :param uid: User ID for which the challenge was created
+        :param challenge:
+        :param expires: The challenge expiration datetime.
+        :raise: SeEntryAlreadyExists if challenge already exists for user
+        """
         assert isinstance(challenge, Challenge)
-        assert isinstance(timedate, datetime)
+        assert isinstance(expires, datetime)
         if challenge.id in self._d['proto_challenges']:
-            raise MemoryDBError("Challenge already exists")
-        self._d['proto_challenges'][challenge.id] = (challenge, timedate)
+            raise SeEntryAlreadyExists("Challenge already exists")
+
+        for _, (suid, _, _) in self._d['proto_challenges'].items():
+            if suid == uid:
+                raise SeEntryAlreadyExists("Challenge already exists")
+        self._d['proto_challenges'][challenge.id] = (uid, challenge, expires)
 
     def deleteChallenge(self, cid: CID) -> None:
         assert isinstance(cid, CID)
@@ -402,9 +469,9 @@ class MemoryDB(StorageAPI):
 
     def deleteExpiredChallenges(self, time: datetime) -> None:
         assert isinstance(time, datetime)
-        d = { cid:(c, createTime)
-            for cid, (c, createTime) in self._d['proto_challenges'].items()
-            if createTime >= time }
+        d = { cid:(uid, c, cet)
+            for cid, (uid, c, cet) in self._d['proto_challenges'].items()
+            if cet >= time }
         self._d['proto_challenges'] = d
 
     def accountExists(self, uid: UserId) -> bool:

@@ -111,12 +111,26 @@ class PortProto:
         self._log.debug('Finished maintenance job, next schedule at: {}'
             .format(utils.time_now() + timedelta(seconds=self.maintenanceInterval)))
 
-    def createNewChallenge(self, uid: UserId) -> Challenge:
+    def createNewChallenge(self, uid: UserId) -> Tuple[Challenge, datetime]:
+        """
+        Returns new proto challenge for user ID.
+        If non-expired challenge is found in the db for the user, that challenge is returned instead.
+        :param uid: The user ID to generate the challenge for.
+        :return: Challenge and expiration time
+        """
         now = utils.time_now()
-        c   = Challenge.generate(now, uid)
-        self._db.addChallenge(c, now)
+        cet = self._db.findChallengeByUID(uid)
+        if cet is not None: # return found challenge if still valid
+            if self._has_challenge_expired(cet[1], now):
+                self._db.deleteChallenge(cet[0].id)
+            else:
+                return cet
+        # Let's generate new challenge, as non was found or already expired.
+        c  = Challenge.generate(now, uid)
+        et = self._get_challenge_expiration(now)
+        self._db.addChallenge(uid, c, et)
         self._log.debug("New challenge created cid={}".format(c.id))
-        return c
+        return (c, et)
 
     def cancelChallenge(self, cid: CID) -> Union[None, dict]:
         self._db.deleteChallenge(cid)
@@ -267,16 +281,9 @@ class PortProto:
             if aaPubKey.isEcKey() and sigAlgo is None:
                 raise PeMissingParam("Missing param sigAlgo")
 
-            c, cet = self._db.getChallenge(cid)
-
-            # Verify challenge expiration time
-            def get_past(datetime: datetime):
-                datetime = datetime.replace(tzinfo=None)
-                return datetime - timedelta(seconds=self.cttl)
-
-            ret = get_past(utils.time_now())
-            cet = cet.replace(tzinfo=None)
-            if utils.has_expired(cet, ret):
+            # Verify if challenge has expired expiration time
+            c, cct = self._db.getChallenge(cid)
+            if self._has_challenge_expired(cct, utils.time_now()):
                 self._db.deleteChallenge(cid)
                 raise PeChallengeExpired("Challenge has expired")
 
@@ -393,6 +400,24 @@ class PortProto:
         self._log.verbose("Verifying CSCA issued DSC ...")
         dsc.verify(issuing_cert=csca)
 
+    def _get_challenge_expiration(self, createTime: datetime) -> datetime:
+        """
+        Calculates challenge expiration time from the time when challenge was created.
+        :param createTime: The challenge create time.
+        """
+        createTime = createTime.replace(tzinfo=None)
+        return createTime + timedelta(seconds=self.cttl)
+
+    def _has_challenge_expired(self, expireTime: datetime, datetime: datetime) -> bool:
+        """
+        Verifies if challenge create time is already in the range of challenge expiration interval.
+        :param expireTime: The challenge expiration time.
+        :param datetime: The date and time to compare expiration against. (Should be current datetime)
+        """
+        expireTime = expireTime.replace(tzinfo=None)
+        datetime   = datetime.replace(tzinfo=None)
+        return utils.has_expired(expireTime, datetime)
+
     def __validate_certificate_path(self, sod: ef.SOD):
         """Verification of issuer certificate from SOD file"""
         self._log.debug("Validating path CSCA => DSC => SOD ...")
@@ -483,5 +508,5 @@ class PortProto:
 
     def __purgeExpiredChallenges(self):
         self._log.debug('Purging expired challenges')
-        now = utils.time_now() - timedelta(seconds=self.cttl)
+        now = utils.time_now()
         self._db.deleteExpiredChallenges(now)

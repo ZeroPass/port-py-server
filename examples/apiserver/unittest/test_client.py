@@ -47,7 +47,9 @@ def requestChallenge(url: str, uid: UserId) -> Challenge:
         url, data=json.dumps(payload), headers=headers).json()
     if "error" in response:
         raise Exception(response['error'])
-    return Challenge.fromBase64(response['result']['challenge'])
+    c   = Challenge.fromBase64(response['result']['challenge'])
+    cet = datetime.utcfromtimestamp(response['result']['expires'])
+    return (c, cet)
 
 def requestRegister(url: str, uid: UserId, sod: ef.SOD, dg15: ef.DG15, cid: CID, csigs: List[bytes]):
     payload = {
@@ -142,8 +144,8 @@ def main():
         print("Pong: {}\n".format(pong))
 
         print("Requesting challenge from server ...")
-        c = requestChallenge(url, tvUid)
-        print("Server returned challenge: {}\n".format(c.hex()))
+        c, cet = requestChallenge(url, tvUid)
+        print("Server returned challenge={} expires={}\n".format(c.hex(), cet))
         assert c == sigc
 
 
@@ -158,8 +160,8 @@ def main():
 
 
         print("Requesting new challenge from server for login ...")
-        c = requestChallenge(url, tvUid)
-        print("Server returned challenge: {}\n".format(c.hex()))
+        c, cet = requestChallenge(url, tvUid)
+        print("Server returned challenge={} expires={}\n".format(c.hex(), cet))
         assert c == sigc
 
         print("Logging in ...")
