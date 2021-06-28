@@ -114,7 +114,7 @@ class PortDatabaseConnection:
 
         #imports - to avoid circle imports
         from port.database.storage.crlStorage import CrlStorage
-        from port.database.storage.x509Storage import DscStorage, CSCAStorage
+        from port.database.storage.x509Storage import DscStorage, CscaStorage
         from port.database.storage.challengeStorage import ChallengeStorage
         from port.database.storage.accountStorage import AccountStorage
 
@@ -125,7 +125,7 @@ class PortDatabaseConnection:
         mapper(DscStorage, dsc)
 
         # CSCAStorage
-        mapper(CSCAStorage, csca)
+        mapper(CscaStorage, csca)
 
         # challenge
         mapper(ChallengeStorage, challenges)
