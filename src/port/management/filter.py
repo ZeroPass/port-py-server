@@ -19,8 +19,8 @@ class FilterError(Exception):
 class Filter:
     """Filtration of CSCA, eCSCA and DSCs"""
 
-    from port.database.storage.storageManager import Connection
-    def __init__(self, crl: CertificateRevocationList, connection: Connection):
+    from port.database.storage.storageManager import PortDatabaseConnection
+    def __init__(self, crl: CertificateRevocationList, connection: PortDatabaseConnection):
         """Start the process"""
         try:
             self._log = logging.getLogger(Filter.__name__)
@@ -35,26 +35,26 @@ class Filter:
         """Get human readable issuer"""
         return crl.issuer.human_friendly
 
-    def findConnectedCertificatesUnderCSCA(self, CSCA, connection: Connection) -> List[DscStorage]:
+    def findConnectedCertificatesUnderCSCA(self, CSCA, connection: PortDatabaseConnection) -> List[DscStorage]:
         """Find connected certificates by both modes"""
         DSCsMode1 = self.checkByIssuerDSC(CSCA.subject, connection)
         DSCsMode2 = self.checkBySubjectKeyDSC(CSCA.subjectKey, connection)
         return DSCsMode1 + DSCsMode2
 
-    def findConnectedCertificatesCSCAtoLCSCA(self, CSCA, connection: Connection):
+    def findConnectedCertificatesCSCAtoLCSCA(self, CSCA, connection: PortDatabaseConnection):
         """Find connected certificates: if two CSCA have the same subjectKey"""
         return readFromDB_CSCA_authorityKey(CSCA.subjectKey, connection)
 
-    def checkByIssuerDSC(self, issuer: str, connection: Connection) -> List[DscStorage]:
+    def checkByIssuerDSC(self, issuer: str, connection: PortDatabaseConnection) -> List[DscStorage]:
         """Check connection between certificates by first mode (issuer and serial number)"""
         return readFromDB_DSC_issuer(issuer, connection)
 
-    def checkBySubjectKeyDSC(self, subjectKey: bytes, connection: Connection) -> List[DscStorage]:
+    def checkBySubjectKeyDSC(self, subjectKey: bytes, connection: PortDatabaseConnection) -> List[DscStorage]:
         """Check connection between certificate by second mode (CSCA subject key t0 DSC authority key) //subject key is actually authority key in the DSC"""
         return readFromDB_DSC_authorityKey(subjectKey, connection)
 
 
-    def deleteCertificateByIssuerAndSerialNumber(self, issuer, serialNumber, connection: Connection) -> None:
+    def deleteCertificateByIssuerAndSerialNumber(self, issuer, serialNumber, connection: PortDatabaseConnection) -> None:
         """Find in database certificates with selected issuer and serial number"""
         self._log.debug("Find linked certificates with issuer: " + issuer + " and serial number:" + str(serialNumber))
 

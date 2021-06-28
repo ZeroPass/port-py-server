@@ -1,7 +1,7 @@
 import datetime
 import logging
 from typing import List, Optional
-from port.database.storage.storageManager import Connection
+from port.database.storage.storageManager import PortDatabaseConnection
 from pymrtd.pki.x509 import Certificate, CscaCertificate, DocumentSignerCertificate
 from port.database.utils import formatAlpha2
 from port.proto.types import CertificateId
@@ -54,7 +54,9 @@ class CertificateStorage(object):
 class CscaStorage(CertificateStorage):
     _type = CscaCertificate
 
-def writeToDB_CSCA(csca: CscaCertificate, connection: Connection):
+
+
+def writeToDB_CSCA(csca: CscaCertificate, connection: PortDatabaseConnection):
     """Write to database with ORM"""
     try:
         logger.info("Writing CSCA object to database. Country: " + csca.issuerCountry)
@@ -64,7 +66,7 @@ def writeToDB_CSCA(csca: CscaCertificate, connection: Connection):
     except Exception:
         raise CscaStorageError("Problem with writing the object")
 
-def readFromDB_CSCA_issuer_serialNumber(issuer: str, serialNumber: int, connection: Connection) -> List[CscaStorage]:
+def readFromDB_CSCA_issuer_serialNumber(issuer: str, serialNumber: int, connection: PortDatabaseConnection) -> List[CscaStorage]:
     """Reading from database"""
     try:
         logger.info("Reading CSCA object from database. Issuer:" + issuer + ", serial number: " + str(serialNumber))
@@ -76,7 +78,7 @@ def readFromDB_CSCA_issuer_serialNumber(issuer: str, serialNumber: int, connecti
     except Exception as e:
         raise CscaStorageError("Problem with writing the object" + e)
 
-def readFromDB_CSCA_authorityKey(authorityKey: bytes, connection: Connection) -> List[CscaStorage]:
+def readFromDB_CSCA_authorityKey(authorityKey: bytes, connection: PortDatabaseConnection) -> List[CscaStorage]:
     """Reading from database"""
     try:
         logger.info("Reading CSCA object from database by authority key")
@@ -87,7 +89,7 @@ def readFromDB_CSCA_authorityKey(authorityKey: bytes, connection: Connection) ->
     except Exception as e:
         raise CscaStorageError("Problem with writing the object" + e)
 
-def deleteFromDB_CSCA(CSCAs: List[CscaStorage], connection: Connection):
+def deleteFromDB_CSCA(CSCAs: List[CscaStorage], connection: PortDatabaseConnection):
     """Reading from database"""
     try:
         logger.info("Delete DSCs; size:" + str(len(CSCAs)))
@@ -131,7 +133,7 @@ class DscStorage(CertificateStorage):
 #         return DocumentSignerCertificate.load(self.object)
 
 
-def writeToDB_DSC(dsc: DocumentSignerCertificate, connection: Connection):
+def writeToDB_DSC(dsc: DocumentSignerCertificate, connection: PortDatabaseConnection):
     """Write to database with ORM"""
     try:
         logger.info("Writing DSC object to database. Country: " + dsc.issuerCountry)
@@ -142,7 +144,7 @@ def writeToDB_DSC(dsc: DocumentSignerCertificate, connection: Connection):
     except Exception as e:
         raise DscStorageError("Couldn't write DSC storage to DB: " + str(e))
 
-def readFromDB_DSC_issuer_serialNumber(issuer: str, serialNumber: int, connection: Connection) -> List[DscStorage]:
+def readFromDB_DSC_issuer_serialNumber(issuer: str, serialNumber: int, connection: PortDatabaseConnection) -> List[DscStorage]:
     """Reading from database"""
     try:
         logger.info("Reading DSC object from database. Issuer:" + issuer + ", serial number: " + str(serialNumber))
@@ -154,7 +156,7 @@ def readFromDB_DSC_issuer_serialNumber(issuer: str, serialNumber: int, connectio
     except Exception as e:
         raise DscStorageError("Problem with writing the object" + e)
 
-def readFromDB_DSC_issuer(issuer: str, connection: Connection) -> List[DscStorage]:
+def readFromDB_DSC_issuer(issuer: str, connection: PortDatabaseConnection) -> List[DscStorage]:
     """Reading from database"""
     try:
         logger.info("Reading DSC object from database. Issuer:" + issuer)
@@ -165,7 +167,7 @@ def readFromDB_DSC_issuer(issuer: str, connection: Connection) -> List[DscStorag
     except Exception:
         raise DscStorageError("Problem with writing the object")
 
-def readFromDB_DSC_authorityKey(authorityKey: bytes, connection: Connection) -> List[DscStorage]:
+def readFromDB_DSC_authorityKey(authorityKey: bytes, connection: PortDatabaseConnection) -> List[DscStorage]:
     """Reading from database"""
     try:
         logger.info("Reading DSC object from database with authority key.")
@@ -176,7 +178,7 @@ def readFromDB_DSC_authorityKey(authorityKey: bytes, connection: Connection) -> 
     except Exception:
         raise DscStorageError("Problem with writing the object")
 
-def deleteFromDB_DSC(dscs: List[DscStorage],connection: Connection):
+def deleteFromDB_DSC(dscs: List[DscStorage],connection: PortDatabaseConnection):
     """Reading from database"""
     try:
         logger.info("Delete DSCs; size:" + str(len(dscs)))

@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from asn1crypto import x509
 from datetime import datetime
 
-from port.database.storage.storageManager import Connection
+from port.database.storage.storageManager import PortDatabaseConnection
 from port.database.storage.challengeStorage import *
 from port.database.storage.accountStorage import AccountStorage
 from port.database.storage.x509Storage import DscStorage, CscaStorage
@@ -146,10 +146,18 @@ class DatabaseAPI(StorageAPI):
     to expose Connection interface to StorageAPI without mixing two interfaces.
     '''
 
-    def __init__(self, user: str, pwd: str, db: str):
-        """Creating connection to the database and initialization of main structures"""
+    def __init__(self, dialect:str, host:str, db: str, username: str, password: str):
+        '''
+        Creates new ORM database connection.
+        :param dialect: The database dialect e.g.:  mariadb, mysql, oracle, postgresql, sqlite.
+        :param host: The database urlhost. Can be empty string in case of sqlite.
+        :param db: The database path.
+        :param username: The database username.
+        :param password: The database password.
+        :raises: PortDbConnectionError on error.
+        '''
         self._log = logging.getLogger(DatabaseAPI.__name__)
-        self._dbc = Connection(user, pwd, db)
+        self._dbc = PortDatabaseConnection(dialect, host, db, username, password)
 
     def getChallenge(self, cid: CID) -> Tuple[Challenge, datetime]:
         """

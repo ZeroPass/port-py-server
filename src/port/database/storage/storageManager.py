@@ -10,7 +10,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.sql.schema import ForeignKey
 Base = declarative_base()
 
-class ConnectionError(Exception):
+class PortDbConnectionError(Exception):
     pass
 
 """Database structures"""
@@ -66,21 +66,26 @@ accounts = Table('accounts', metadata,
     Column('isValid', Boolean)
 )
 
-class Connection:
+class PortDatabaseConnection:
     """Manage ORM connection to save/load objects in database"""
 
     connectionObj = None
     metaData = None
     session = None
 
-    def __init__(self, user: str, password: str, db: str, host='localhost', port=5432):
-        """When we initialize the instance we meed to send connection and metadata instances to the object"""
+    def __init__(self, dialect:str, host:str, db: str, username: str, password: str):
+        '''
+        Creates new ORM database connection.
+        :param dialect: The database dialect e.g.:  mariadb, mysql, oracle, postgresql, sqlite.
+        :param host: The database urlhost. Can be empty string in case of sqlite.
+        :param db: The database path.
+        :param username: The database username.
+        :param password: The database password.
+        :raises: PortDbConnectionError on error.
+        '''
         try:
-            # We connect with the help of the PostgreSQL URL
-            url = 'postgresql://{}:{}@{}:{}/{}'
-            url = url.format(user, password, host, port, db)
-
             # The return value of create_engine() is our connection object
+            url = PortDatabaseConnection.__buildUrl(dialect, host, db, username, password)
             self.connectionObj = sqlalchemy.create_engine(url, client_encoding='utf8', echo=True)
 
             # We then bind the connection to MetaData()
@@ -94,7 +99,7 @@ class Connection:
             self.initTables()
 
         except Exception as e:
-            raise ConnectionError(e)
+            raise PortDbConnectionError(e)
 
     def getEngine(self):
         """ It returns engline object"""
@@ -131,7 +136,17 @@ class Connection:
         #creating tables
         Base.metadata.create_all(self.connectionObj, tables=[crl, dsc, csca, challenges, accounts])
 
-def truncateAll(connection: Connection):
+    @staticmethod
+    def __buildUrl(dialect:str, host:str, db: str, username: str, password: str):
+        url = '{}://'.format(dialect)
+        if len(username) != 0:
+            url += '{}:{}'.format(username, password)
+        if len(host) != 0:
+            url += '@{}'.format(host)
+        url += '/{}'.format(db)
+        return url
+
+def truncateAll(connection: PortDatabaseConnection):
     """Truncate all tables"""
     try:
         sql_raw_query = 'select \'TRUNCATE table "\' || tablename || \'" cascade;\' from pg_tables where schemaname=\'public\';'

@@ -1,6 +1,6 @@
 import logging
 
-from port.database.storage.storageManager import Connection
+from port.database.storage.storageManager import PortDatabaseConnection
 from port.settings import *
 
 from pymrtd.pki.crl import CertificateRevocationList
@@ -44,7 +44,7 @@ class CrlStorage(object):
 #Storage management functions
 #
 
-def writeToDB_CRL(crl: CertificateRevocationList, issuerCountry: str, connection: Connection):
+def writeToDB_CRL(crl: CertificateRevocationList, connection: PortDatabaseConnection):
     """Write to database with ORM"""
     try:
         logger.info("Writing CRL object to database. Country: " + crl.issuerCountry)

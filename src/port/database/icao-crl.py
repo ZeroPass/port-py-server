@@ -1,12 +1,12 @@
 import re
 from ldif3 import LDIFParser
 from asn1crypto import crl, x509
-from port.database import Connection
+from .storage.storageManager import PortDatabaseConnection
 #from database.storage.DSC import CertX509
-from pymrtd.pki.crl import writeToDB, readFromDB
+from .storage.crlStorage import writeToDB_CRL, readFromDB_CRL
 from pymrtd.pki.crl import CertificateRevocationList
 
-conn = Connection("nejko", "nejko", "icao")
+conn = PortDatabaseConnection("postgresql", "localhost:5432", "port", "nejko", "nejko", )
 
 certificateList = {}
 revocationList = {}
@@ -28,9 +28,9 @@ for dn, entry in parser.parse():
         revocationListInObject.__class__ = CertificateRevocationList
         revocationListInObject.__init__()
 
-        writeToDB(revocationListInObject, conn)
+        writeToDB_CRL(revocationListInObject, conn)
         #conn.writeToDB(revocationListInObject, conn)
-        readFromDB("kva", conn)
+        readFromDB_CRL(conn)
 
         ##print("country:" + countryCode
         ##      + ",created: " + revocationList[countryCode].last_update.strftime("%Y-%m-%d %H:%M")

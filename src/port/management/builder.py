@@ -17,7 +17,7 @@ from datetime import datetime
 
 #from pymrtd import ef
 from pymrtd.pki.ml import CscaMasterList
-from port.database.storage.storageManager import Connection, truncateAll
+from port.database.storage.storageManager import PortDatabaseConnection, truncateAll
 
 from port.settings import *
 
@@ -46,18 +46,18 @@ class Builder:
 
         self._log = logging.getLogger(Builder.__name__)
 
-        conn = Connection(config.database.user, config.database.pwd, config.database.db)
+        conn = PortDatabaseConnection('postgresql', 'localhost:5432', config.database.db, config.database.user, config.database.pwd)
         self.clearDatabase(conn)
         self.parseDscCrlFile(dscCrlFile, conn)
         self.parseCSCAFile(cscaFile, conn)
         self.processCRL(conn)
 
 
-    def clearDatabase(self, connection: Connection):
+    def clearDatabase(self, connection: PortDatabaseConnection):
         """Clear database"""
         truncateAll(connection)
 
-    def parseDscCrlFile(self, dscCrlFile, connection: Connection):
+    def parseDscCrlFile(self, dscCrlFile, connection: PortDatabaseConnection):
         """Parsing DSC/CRL file"""
         parser = LDIFParser(dscCrlFile)
         for dn, entry in parser.parse():
@@ -80,7 +80,7 @@ class Builder:
                 writeToDB_CRL(revocationList, countryCode, connection)
 
 
-    def verifyCSCAandWrite(self, csca: CscaCertificate, issuingCert: CscaCertificate, connection: Connection):
+    def verifyCSCAandWrite(self, csca: CscaCertificate, issuingCert: CscaCertificate, connection: PortDatabaseConnection):
         try:
             #is CSCA still valid?
             if not csca.isValidOn(datetime.utcnow()):
@@ -96,7 +96,7 @@ class Builder:
             self._log.error("Certificate is not valid anymore or verification failed.")
             self._log.exception(e)
 
-    def parseCSCAFile(self, CSCAFile, connection: Connection):
+    def parseCSCAFile(self, CSCAFile, connection: PortDatabaseConnection):
         """Parsing CSCA file"""
         parser = LDIFParser(CSCAFile)
         for dn, entry in parser.parse():
@@ -151,7 +151,7 @@ class Builder:
 
 
     #gledam subject key, ce ga ni gledam issucer in serial key
-    def iterateCRL(self, crl: CrlStorageError, connection: Connection):
+    def iterateCRL(self, crl: CrlStorageError, connection: PortDatabaseConnection):
         try:
             #f = open("test.crl", "wb")
             #r = crl.dump()
@@ -163,7 +163,7 @@ class Builder:
             raise BuilderError("Error in iterateCRL function: " + e)
 
 
-    def processCRL(self, connection: Connection):
+    def processCRL(self, connection: PortDatabaseConnection):
         """Iterate through CRL and delete revocated certificates"""
         try:
             crlArray = readFromDB_CRL(connection)

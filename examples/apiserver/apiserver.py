@@ -264,7 +264,7 @@ def main():
         if args['mdb_pkd'] and not args['dev_no_tcv']:
             load_pkd_to_mdb(db, args['mdb_pkd'])
     else:
-        db = proto.DatabaseAPI(config.database.user, config.database.pwd, config.database.db)
+        db = proto.DatabaseAPI('postgresql', 'localhost:5432', config.database.db, config.database.user, config.database.pwd)
 
     # Setup and run server
     if args["dev"]:
