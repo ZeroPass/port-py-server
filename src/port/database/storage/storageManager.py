@@ -8,6 +8,7 @@ from sqlalchemy.sql import func
 #creating base class from template
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.sql.schema import ForeignKey
+from sqlalchemy.sql.sqltypes import BigInteger
 Base = declarative_base()
 
 class PortDbConnectionError(Exception):

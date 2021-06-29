@@ -3,8 +3,8 @@ import logging
 from typing import List, Optional
 from port.database.storage.storageManager import PortDatabaseConnection
 from pymrtd.pki.x509 import Certificate, CscaCertificate, DocumentSignerCertificate
-from port.database.utils import formatAlpha2
 from port.proto.types import CertificateId
+from port.proto.utils import format_alpha2
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ class CertificateStorage(object):
 
     def __init__(self, cert: Certificate, issuerId: Optional[CertificateId] = None):
         self.id             = CertificateId.fromCertificate(cert)
-        self.country        = formatAlpha2(cert.issuerCountry)
+        self.country        = format_alpha2(cert.issuerCountry)
         self.notValidBefore = cert.notValidBefore
         self.notValidAfter  = cert.notValidAfter
         self.issuerId       = issuerId

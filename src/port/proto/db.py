@@ -13,7 +13,7 @@ from port.database.storage.storageManager import PortDatabaseConnection
 from port.database.storage.challengeStorage import *
 from port.database.storage.accountStorage import AccountStorage
 from port.database.storage.x509Storage import DscStorage, CscaStorage
-from port.database.utils import formatAlpha2
+from port.proto.utils import format_alpha2
 
 from pymrtd.pki.x509 import CscaCertificate, DocumentSignerCertificate
 from typing import List, Optional, Tuple
@@ -310,7 +310,7 @@ class DatabaseAPI(StorageAPI):
         :return: The csca CertificateId
         """
         self._log.debug("Inserting new CSCA into database C={} serial={}"
-            .format(formatAlpha2(csca.issuerCountry), csca.serial_number))
+            .format(format_alpha2(csca.issuerCountry), csca.serial_number))
 
         assert isinstance(csca, CscaCertificate)
         assert issuerId is None or isinstance(issuerId, CertificateId)
@@ -357,7 +357,7 @@ class DatabaseAPI(StorageAPI):
         :return: The dsc CertificateId
         """
         self._log.debug("Inserting new DSC into database C={} serial={}"
-            .format(formatAlpha2(dsc.issuerCountry), dsc.serial_number))
+            .format(format_alpha2(dsc.issuerCountry), dsc.serial_number))
 
         assert isinstance(dsc, DocumentSignerCertificate)
         assert isinstance(issuerId, CertificateId)
@@ -508,7 +508,7 @@ class MemoryDB(StorageAPI):
         :return: The csca CertificateId
         """
         self._log.debug("Inserting new CSCA into database C={} serial={}"
-            .format(formatAlpha2(csca.issuerCountry), csca.serial_number))
+            .format(format_alpha2(csca.issuerCountry), csca.serial_number))
 
         assert isinstance(csca, CscaCertificate)
         assert issuerId is None or isinstance(issuerId, CertificateId)
@@ -554,7 +554,7 @@ class MemoryDB(StorageAPI):
         :return: The dsc CertificateId
         """
         self._log.debug("Inserting new CSCA into database C={} serial={}"
-            .format(formatAlpha2(dsc.issuerCountry), dsc.serial_number))
+            .format(format_alpha2(dsc.issuerCountry), dsc.serial_number))
 
         assert isinstance(dsc, DocumentSignerCertificate)
         assert issuerId is None or isinstance(issuerId, CertificateId)

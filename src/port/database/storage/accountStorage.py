@@ -1,4 +1,3 @@
-from port.database.storage.storageManager import Connection
 from port.proto.user import UserId
 from port.proto.session import Session
 
