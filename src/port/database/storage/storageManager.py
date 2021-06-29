@@ -29,12 +29,12 @@ crl = Table('crl', metadata,
 def certColumns(issuerCertTable: Optional[str] = None):
     hasIssuer = issuerCertTable is not None
     return [
-        Column('id', Integer, primary_key=True),
-        Column('country', String, nullable=False, index=True),
+        Column('id', BigInteger, primary_key=True),
+        Column('country', String(2), nullable=False, index=True),
         Column('serial', String),
         Column('notValidBefore', DateTime, nullable=False),
         Column('notValidAfter', DateTime, nullable=False),
-        Column('issuerId', Integer,
+        Column('issuerId', BigInteger,
             ForeignKey(issuerCertTable + '.id') if hasIssuer else None,
             nullable = (not hasIssuer)
         ),
