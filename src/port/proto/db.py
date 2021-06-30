@@ -1,5 +1,4 @@
 import logging
-
 from .challenge import CID, Challenge
 from .user import UserId
 from .types import CertificateId
@@ -7,15 +6,15 @@ from .types import CertificateId
 from abc import ABC, abstractmethod
 from asn1crypto import x509
 from datetime import datetime
-from operator import or_
 
 from port.database.storage.storageManager import PortDatabaseConnection
 from port.database.storage.challengeStorage import *
 from port.database.storage.accountStorage import AccountStorage
 from port.database.storage.x509Storage import DscStorage, CscaStorage
-from port.proto.utils import format_alpha2
+from port.proto.utils import format_alpha2, int_to_bytes
 
 from pymrtd.pki.x509 import CscaCertificate, DocumentSignerCertificate
+from sqlalchemy import and_, or_
 from typing import List, Optional, Tuple
 
 class StorageAPIError(Exception):
@@ -102,35 +101,69 @@ class StorageAPI(ABC):
 
     # EMRTD PKI certificates methods
     @abstractmethod
-    def addCscaCertificate(self, csca: CscaCertificate, issuerId: Optional[CertificateId] = None) -> CertificateId:
+    def addCsca(self, csca: CscaCertificate, issuerId: Optional[CertificateId] = None) -> CertificateId:
         """
         Inserts new CSCA certificate into database
         :param csca: CSCA certificate to insert into database.
         :param issuerId: The CSCA issuerId in case the CSCA is linked (Optional).
-        :return: The csca CertificateId
+        :return: The CSCA CertificateId
         """
         pass
 
     @abstractmethod
-    def fetchCscaCertificatesBySubject(self, subject: x509.Name) -> Optional[List[CscaStorage]]:
+    def findCsca(self, id: CertificateId)-> Optional[CscaStorage]:
         """
-        Returns list of CSCA storage objects that match the subject param.
-        :param subject: Certificate subject name to search for.
+        Returns CSCA certificate storage objects that match the id.
+        :param id: The certificate id to search for.
         :return: list of CscaStorage, or None if no CSCA certificate was found.
         """
         pass
 
     @abstractmethod
-    def fetchCscaCertificatesBySubjectKey(self, subjectKey: bytes) -> Optional[List[CscaStorage]]:
+    def findCscaBySerial(self, issuer: x509.Name, serial: int) -> Optional[CscaStorage]:
         """
-        Returns list of CSCA storage objects that match subjectKey.
+        Returns CSCA certificate storage objects that match the certificate serial number.
+        :param issuer: CSCA issuer name.
+        :param serial: CSCA serial number to search for.
+        :return: CscaStorage, or None if no CSCA certificate was found.
+        """
+        pass
+
+    @abstractmethod
+    def findCscaCertificates(self, subject: x509.Name, subjectKey: Optional[bytes])-> Optional[List[CscaStorage]]:
+        """
+        Returns list of CSCA certificate storage objects that match eather the subject param or country code and subjectKey param.
+        If the subjectKey is provided then the function first tries to query for the CSCAs by searching for CSCAs with specific
+        subject country code and subjectKey. The reason for this is that querying by subject column might return invalid CSCA
+        i.e. valid CSCAs for the country but invalid public key - invalid subjectKey, as the subject field can be the same between country's CSCAs.
+
+        :param subject: Certificate subject name to search for.
         :param subjectKey: Certificate subject key to search for.
         :return: list of CscaStorage, or None if no CSCA certificate was found.
         """
         pass
 
     @abstractmethod
-    def addDscCertificate(self, dsc: DocumentSignerCertificate, issuerId: CertificateId) -> CertificateId:
+    def findCscaCertificatesBySubject(self, subject: x509.Name) -> Optional[List[CscaStorage]]:
+        """
+        Returns list of CSCA certificate storage objects that match the subject param.
+        :param subject: Certificate subject name to search for.
+        :return: list of CscaStorage, or None if no CSCA certificate was found.
+        """
+        pass
+
+    @abstractmethod
+    def findCscaCertificatesBySubjectKey(self, country: str, subjectKey: bytes) -> Optional[List[CscaStorage]]:
+        """
+        Returns list of CSCA certificate storage objects that match subjectKey.
+        :param country: iso alpha-2 country code of the country that issued the CSCA.
+        :param subjectKey: Certificate subject key to search for.
+        :return: list of CscaStorage, or None if no CSCA certificate was found.
+        """
+        pass
+
+    @abstractmethod
+    def addDsc(self, dsc: DocumentSignerCertificate, issuerId: CertificateId) -> CertificateId:
         """
         Inserts new DSC certificate into database
         :param dsc: DSC certificate to insert into database.
@@ -140,16 +173,32 @@ class StorageAPI(ABC):
         pass
 
     @abstractmethod
-    def getDSCbySerialNumber(self, issuer: x509.Name, serialNumber: int) -> Optional[DocumentSignerCertificate]:
-        """Get DSC"""
+    def findDsc(self, id: CertificateId) -> Optional[DscStorage]:
+        """
+        Returns DSC certificate storage that matches the certificate id.
+        :param id: The DSC certificate id.
+        :returns: DscStorage
+        """
         pass
 
     @abstractmethod
-    def getDSCbySubjectKey(self, subjectKey: bytes) -> Optional[DocumentSignerCertificate]:
-        """Get DSC"""
+    def findDscBySerial(self, issuer: x509.Name, serial: int) -> Optional[DscStorage]:
+        """
+        Returns DSC certificate storage that matches the issuer name and serial number.
+        :param issuer: The DSC certificate issuer.
+        :param serial: The DSC certificate serial number.
+        :returns: DscStorage
+        """
         pass
 
-
+    @abstractmethod
+    def findDscBySubjectKey(self, subjectKey: bytes) -> Optional[DscStorage]:
+        """
+        Returns DSC certificate storage that matches the subjectKey.
+        :param subjectKey: The DSC certificate subject key.
+        :returns: DscStorage
+        """
+        pass
 
 
 class DatabaseAPIError(StorageAPIError):
@@ -302,7 +351,7 @@ class DatabaseAPI(StorageAPI):
         assert isinstance(accnt.getValidUntil(), datetime)
         return accnt.getValidUntil()
 
-    def addCscaCertificate(self, csca: CscaCertificate, issuerId: Optional[CertificateId] = None) -> CertificateId:
+    def addCsca(self, csca: CscaCertificate, issuerId: Optional[CertificateId] = None) -> CertificateId:
         """
         Inserts new CSCA into database
         :param csca: CSCA certificate to insert into database.
@@ -323,9 +372,67 @@ class DatabaseAPI(StorageAPI):
         self._dbc.getSession().commit()
         return cs.id
 
-    def fetchCscaCertificatesBySubject(self, subject: x509.Name) -> Optional[List[CscaStorage]]:
+    def findCsca(self, id: CertificateId)-> Optional[CscaStorage]:
         """
-        Returns list of CSCA storage objects that match the subject param.
+        Returns CSCA certificate storage objects that match the id.
+        :param id: The certificate id to search for.
+        :return: list of CscaStorage, or None if no CSCA certificate was found.
+        """
+        assert isinstance(id, CertificateId)
+        return self._dbc.getSession() \
+            .query(CscaStorage) \
+            .filter(CscaStorage.id == id) \
+            .first()
+
+    def findCscaBySerial(self, issuer: x509.Name, serial: int) -> Optional[CscaStorage]:
+        """
+        Returns CSCA certificate storage objects that match the certificate serial number.
+        :param issuer: CSCA issuer name.
+        :param serial: CSCA serial number to search for.
+        :return: CscaStorage, or None if no CSCA certificate was found.
+        """
+        assert isinstance(issuer, x509.Name)
+        assert isinstance(serial, int)
+        serial = int_to_bytes(serial)
+        return self._dbc.getSession() \
+            .query(CscaStorage) \
+            .filter(CscaStorage.issuer == issuer.human_friendly, CscaStorage.serial == serial) \
+            .first()
+
+    def findCscaCertificates(self, subject: x509.Name, subjectKey: Optional[bytes])-> Optional[List[CscaStorage]]:
+        """
+        Returns list of CSCA certificate storage objects that match eather the subject param or country code and subjectKey param.
+        If the subjectKey is provided then the function first tries to query for the CSCAs by searching for CSCAs with specific
+        subject country code and subjectKey. The reason for this is that querying by subject column might return invalid CSCA
+        i.e. valid CSCAs for the country but invalid public key - invalid subjectKey, as the subject field can be the same between country's CSCAs.
+
+        :param subject: Certificate subject name to search for.
+        :param subjectKey: Certificate subject key to search for.
+        :return: list of CscaStorage, or None if no CSCA certificate was found.
+        """
+        assert isinstance(subject, x509.Name)
+
+        # Try first to find CSCAs by subjectKey because
+        # searching for subject might return invalid CSCAs
+        cscas: Optional[List[CscaStorage]] = None
+        if subjectKey is not None:
+            assert isinstance(subjectKey, bytes)
+            country = format_alpha2(subject.native['country_name'])
+            cscas = self._dbc.getSession() \
+                .query(CscaStorage) \
+                .filter(CscaStorage.country == country, CscaStorage.subjectKey == subjectKey) \
+                .all()
+
+        if cscas is None:
+            cscas = self._dbc.getSession() \
+                .query(CscaStorage) \
+                .filter(CscaStorage.subject == subject.human_friendly) \
+                .all()
+        return cscas if len(cscas) != 0 else None
+
+    def findCscaCertificatesBySubject(self, subject: x509.Name) -> Optional[List[CscaStorage]]:
+        """
+        Returns list of CSCA certificate storage objects that match the subject param.
         :param subject: Certificate subject name to search for.
         :return: list of CscaStorage, or None if no CSCA certificate was found.
         """
@@ -336,20 +443,22 @@ class DatabaseAPI(StorageAPI):
             .all()
         return cscas if len(cscas) != 0 else None
 
-    def fetchCscaCertificatesBySubjectKey(self, subjectKey: bytes) -> Optional[List[CscaStorage]]:
+    def findCscaCertificatesBySubjectKey(self, country: str, subjectKey: bytes) -> Optional[List[CscaStorage]]:
         """
-        Returns list of CSCA storage objects that match subjectKey.
+        Returns list of CSCA certificate storage objects that match subjectKey.
+        :param country: iso alpha-2 country code of the country that issued the CSCA.
         :param subjectKey: Certificate subject key to search for.
         :return: list of CscaStorage, or None if no CSCA certificate was found.
         """
         assert isinstance(subjectKey, bytes)
+        country = format_alpha2(country)
         cscas = self._dbc.getSession() \
             .query(CscaStorage) \
-            .filter(CscaStorage.subjectKey == subjectKey) \
+            .filter(CscaStorage.country == country, CscaStorage.subjectKey == subjectKey) \
             .all()
         return cscas if len(cscas) != 0 else None
 
-    def addDscCertificate(self, dsc: DocumentSignerCertificate, issuerId: CertificateId) -> CertificateId:
+    def addDsc(self, dsc: DocumentSignerCertificate, issuerId: CertificateId) -> CertificateId:
         """
         Inserts new DSC certificate into database
         :param dsc: DSC certificate to insert into database.
@@ -370,24 +479,45 @@ class DatabaseAPI(StorageAPI):
         self._dbc.getSession().commit()
         return ds.id
 
-    def getDSCbySerialNumber(self, issuer: x509.Name, serial: int) -> Optional[DocumentSignerCertificate]:
-        """ Get DSC by it's issuer and serial number. """
+    def findDsc(self, id: CertificateId) -> Optional[DscStorage]:
+        """
+        Returns DSC certificate storage that matches the certificate id.
+        :param id: The DSC certificate id.
+        :returns: DscStorage
+        """
+        assert isinstance(id, CertificateId)
+        return self._dbc.getSession() \
+            .query(DscStorage) \
+            .filter(DscStorage.id == id) \
+            .first()
+
+    def findDscBySerial(self, issuer: x509.Name, serial: int) -> Optional[DscStorage]:
+        """
+        Returns DSC certificate storage that matches the issuer name and serial number.
+        :param issuer: The DSC certificate issuer.
+        :param serial: The DSC certificate serial number.
+        :returns: DscStorage
+        """
         assert isinstance(issuer, x509.Name)
         assert isinstance(serial, int)
-        dsc = self._dbc.getSession() \
+        serial = int_to_bytes(serial)
+        return self._dbc.getSession() \
             .query(DscStorage) \
-            .filter(DscStorage.issuer == issuer.human_friendly, DscStorage.serial == str(serial)) \
+            .filter(DscStorage.issuer == issuer.human_friendly, DscStorage.serial == serial) \
             .first()
-        return dsc.getCertificate() if dsc is not None else None
 
-    def getDSCbySubjectKey(self, subjectKey: bytes) -> Optional[DocumentSignerCertificate]:
-        """ Get DSC by it's subject key. """
+    def findDscBySubjectKey(self, subjectKey: bytes) -> Optional[DscStorage]:
+        """
+        Returns DSC certificate storage that matches the subjectKey.
+        :param subjectKey: The DSC certificate subject key.
+        :returns: DscStorage
+        """
+        pass
         assert isinstance(subjectKey, bytes)
-        dsc = self._dbc.getSession() \
+        return self._dbc.getSession() \
             .query(DscStorage) \
             .filter(DscStorage.subjectKey == subjectKey) \
             .first()
-        return dsc.getCertificate() if dsc is not None else None
 
 
 class MemoryDBError(StorageAPIError):
@@ -401,8 +531,8 @@ class MemoryDB(StorageAPI):
     Internally data is stored as dictionary in 4 categories:
         proto_challenges -> Dictionary[CID, Tuple[UserId, Challenge, datetime - expires]]
         accounts         -> Dictionary[UserId, AccountStorage]
-        cscas            -> Set[List[CscaCertificate]]
-        dscs             -> Set[DocumentSignerCertificate]
+        cscas            -> Set[List[CscaStorage]]
+        dscs             -> Set[DscStorage]
     '''
 
     def __init__(self):
@@ -500,7 +630,7 @@ class MemoryDB(StorageAPI):
         a = self.getAccount(uid)
         return a.validUntil
 
-    def addCscaCertificate(self, csca: CscaCertificate, issuerId: Optional[CertificateId] = None) -> CertificateId:
+    def addCsca(self, csca: CscaCertificate, issuerId: Optional[CertificateId] = None) -> CertificateId:
         """
         Adds new CSCA into database
         :param csca: CSCA certificate to insert into database.
@@ -520,7 +650,58 @@ class MemoryDB(StorageAPI):
         self._d['cscas'].add(cs)
         return cs.id
 
-    def fetchCscaCertificatesBySubject(self, subject: x509.Name) -> Optional[List[CscaStorage]]:
+    def findCsca(self, id: CertificateId)-> Optional[CscaStorage]:
+        """
+        Returns CSCA certificate storage objects that match the id.
+        :param id: The certificate id to search for.
+        :return: list of CscaStorage, or None if no CSCA certificate was found.
+        """
+        assert isinstance(id, CertificateId)
+        for csca in self._d['cscas']:
+            if csca.id == id:
+                return csca
+        return None
+
+    def findCscaBySerial(self, issuer: x509.Name, serial: int) -> Optional[CscaStorage]:
+        """
+        Returns CSCA certificate storage objects that match the certificate serial number.
+        :param issuer: CSCA issuer name.
+        :param serial: CSCA serial number to search for.
+        :return:
+        """
+        serial = int_to_bytes(serial)
+        for csca in self._d['cscas']:
+            if csca.issuer == issuer and csca.serial == serial:
+                return csca
+        return None
+
+    def findCscaCertificates(self, subject: x509.Name, subjectKey: Optional[bytes])-> Optional[List[CscaStorage]]:
+        """
+        Returns list of CSCA certificate storage objects that match eather the subject param or country code and subjectKey param.
+        If the subjectKey is provided then the function first tries to query for the CSCAs by searching for CSCAs with specific
+        subject country code and subjectKey. The reason for this is that querying by subject column might return invalid CSCA
+        i.e. valid CSCAs for the country but invalid public key - invalid subjectKey, as the subject field can be the same between country's CSCAs.
+
+        :param subject: Certificate subject name to search for.
+        :param subjectKey: Certificate subject key to search for.
+        :return: list of CscaStorage, or None if no CSCA certificate was found.
+        """
+        assert isinstance(subject, x509.Name)
+        if subjectKey is None:
+            subjectKey = b''
+        cscas = []
+        country = format_alpha2(subject.native['country_name'])
+        for csca in self._d['cscas']:
+            if csca.subject == subject.human_friendly or \
+               (csca.country == country and csca.subjectKey == subjectKey):
+                cscas.append(csca)
+
+        # Filter out cscas with different subject key
+        if len(subjectKey) > 0:
+            cscas = [ c for c in cscas if c.subjectKey == subjectKey]
+        return cscas if len(cscas) != 0 else None
+
+    def findCscaCertificatesBySubject(self, subject: x509.Name) -> Optional[List[CscaStorage]]:
         """
         Returns list of CSCA storage objects that match the subject param.
         :param subject: Certificate subject name to search for.
@@ -533,20 +714,22 @@ class MemoryDB(StorageAPI):
                 cscas.append(csca)
         return cscas if len(cscas) != 0 else None
 
-    def fetchCscaCertificatesBySubjectKey(self, subjectKey: bytes) -> Optional[List[CscaStorage]]:
+    def findCscaCertificatesBySubjectKey(self, country: str, subjectKey: bytes) -> Optional[List[CscaStorage]]:
         """
         Returns list of CSCA storage objects that match subjectKey.
+        :param country: iso alpha-2 country code of the country that issued the CSCA.
         :param subjectKey: Certificate subject key to search for.
         :return: list of CscaStorage, or None if no CSCA certificate was found.
         """
         assert isinstance(subjectKey, bytes)
         cscas = []
+        country = format_alpha2(country)
         for csca in self._d['cscas']:
-            if csca.subjectKey == subjectKey:
+            if csca.country == country and csca.subjectKey == subjectKey:
                 cscas.append(csca)
         return cscas if len(cscas) != 0 else None
 
-    def addDscCertificate(self, dsc: DocumentSignerCertificate, issuerId: CertificateId) -> CertificateId:
+    def addDsc(self, dsc: DocumentSignerCertificate, issuerId: CertificateId) -> CertificateId:
         """
         Adds new DSC certificate into database
         :param csca: DSC certificate to insert into database.
@@ -566,8 +749,25 @@ class MemoryDB(StorageAPI):
         self._d['dscs'].add(ds)
         return ds.id
 
-    def getDSCbySerialNumber(self, issuer: x509.Name, serial: int) -> Optional[DocumentSignerCertificate]:
-        """Get DSC"""
+    def findDsc(self, id: CertificateId) -> Optional[DscStorage]:
+        """
+        Returns DSC certificate storage that matches the certificate id.
+        :param id: The DSC certificate id.
+        :returns: DscStorage
+        """
+        assert isinstance(id, CertificateId)
+        for dsc in self._d['dscs']:
+            if dsc.id == id:
+                return dsc
+        return None
+
+    def findDscBySerial(self, issuer: x509.Name, serial: int) -> Optional[DscStorage]:
+        """
+        Returns DSC certificate storage that matches the issuer name and serial number.
+        :param issuer: The DSC certificate issuer.
+        :param serial: The DSC certificate serial number.
+        :returns: DscStorage
+        """
         assert isinstance(issuer, x509.Name)
         assert isinstance(serial, int)
         for dsc in self._d['dscs']:
@@ -575,8 +775,12 @@ class MemoryDB(StorageAPI):
                 return dsc
         return None
 
-    def getDSCbySubjectKey(self, subjectKey: bytes) -> Optional[DocumentSignerCertificate]:
-        """Get DSC"""
+    def findDscBySubjectKey(self, subjectKey: bytes) -> Optional[DscStorage]:
+        """
+        Returns DSC certificate storage that matches the subjectKey.
+        :param subjectKey: The DSC certificate subject key.
+        :returns: DscStorage
+        """
         assert isinstance(subjectKey, bytes)
         for dsc in self._d['dscs']:
             if dsc.subjectKey == subjectKey:

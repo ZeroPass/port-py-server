@@ -11,10 +11,10 @@ from datetime import datetime, timedelta
 
 from pymrtd import ef
 from pymrtd.pki.keys import AAPublicKey, SignatureAlgorithm
-from pymrtd.pki.x509 import CscaCertificate, DocumentSignerCertificate
+from pymrtd.pki.x509 import CertificateVerificationError, CscaCertificate, DocumentSignerCertificate
 
 from port.database.storage.accountStorage import AccountStorage
-from port.database.storage.x509Storage import CscaStorage
+from port.database.storage.x509Storage import CscaStorage, DscStorage
 
 from threading import Timer
 from typing import List, Optional, Tuple, Union
@@ -314,11 +314,15 @@ class PortProto:
             self.__verify_sod_contains_hash_of(sod, dg15)
             self.__validate_certificate_path(sod)
             self._log.success("eMRTD trust chain was successfully verified!")
-        except:
-            self._log.error("Failed to verify eMRTD certificate trust chain!")
+        except CertificateVerificationError as e:
+            self._log.error("Failed to verify eMRTD certificate trust chain! e={}".format(e))
+            raise PePreconditionFailed("Trustchain verification failed")
+        except Exception as e:
+            self._log.error("Failed to verify eMRTD certificate trust chain! e={}".format(e))
+            self._log.exception(e)
             raise
 
-    def __get_dsc_by_issuer_and_serial_number(self, issuer: Name, serialNumber: int, sod: ef.SOD) -> Tuple[Union[DocumentSignerCertificate, None], bool]:
+    def __get_dsc_by_issuer_and_serial_number(self, issuer: Name, serialNumber: int, sod: ef.SOD) -> Tuple[Optional[DocumentSignerCertificate], bool]:
         """
         Get DSC from SOD or from database if not found ind SOD.
         :param issuer:
@@ -329,9 +333,9 @@ class PortProto:
                        DSC found in DB should be considered already validated.
         """
         # Try to find DSC in database
-        dsc = self._db.getDSCbySerialNumber(issuer, serialNumber)
+        dsc = self._db.findDscBySerial(issuer, serialNumber)
         if dsc is not None:
-            return (dsc, False)
+            return (dsc.getCertificate(), False)
 
         # DSC not found in database, try to find it in SOD file
         for dsc in sod.dsCertificates:
@@ -339,7 +343,7 @@ class PortProto:
                 return (dsc, True) # DSC should be validated to issuing CSCA
         return (None, False)
 
-    def __get_dsc_by_subject_key(self, subjectKey: bytes, sod: ef.SOD) -> Tuple[Union[DocumentSignerCertificate, None], bool]:
+    def __get_dsc_by_subject_key(self, subjectKey: bytes, sod: ef.SOD) -> Tuple[Optional[DocumentSignerCertificate], bool]:
         """
         Get DSC from SOD or from database if not found ind SOD.
         :param subjectKey:
@@ -349,9 +353,9 @@ class PortProto:
                        DSC found in DB should be considered as already validated.
         """
         # Try to find DSC in database
-        dsc = self._db.getDSCbySubjectKey(subjectKey)
+        dsc = self._db.findDscBySubjectKey(subjectKey)
         if dsc is not None:
-            return (dsc, False)
+            return (dsc.getCertificate(), False)
 
         # DSC not found in database, try to find it in SOD file
         for dsc in sod.dsCertificates:
@@ -362,17 +366,9 @@ class PortProto:
     def __validate_dsc_to_csca(self, dsc: DocumentSignerCertificate):
         """ Find DSC's issuing CSCA and validate DSC with it. """
         # 1. Get CSCA that issued DSC
-        cscas:Optional[List[CscaStorage]] = None
-        dsc_auth_key = dsc.authorityKey
-        if dsc_auth_key is not None:
-            self._log.verbose("Trying to find CSCA in DB by subject key. DSC auth_key={}".format(dsc_auth_key.hex()))
-            cscas = self._db.fetchCscaCertificatesBySubjectKey(dsc_auth_key)
-            if cscas is None: self._log.verbose("CSCA not found by DSC auth_key!")
-
-        if cscas is None:
-            self._log.verbose("Trying to find CSCA in DB by DSC issuer field: [{}]".format(dsc.issuer.human_friendly))
-            csca = self._db.fetchCscaCertificatesBySubject(dsc.issuer)
-
+        self._log.verbose("Trying to find the DSC issuing CSCA in DB. DSC issuer=[{}] auth_key={}"
+            .format(dsc.issuer.human_friendly, dsc.authorityKey.hex() if dsc.authorityKey is not None else None))
+        cscas:Optional[List[CscaStorage]] = self._db.findCscaCertificates(dsc.issuer, dsc.authorityKey)
         csca: Optional[CscaCertificate] = None
         for c in cscas:
             if c.notValidAfter >= dsc.notValidAfter:
