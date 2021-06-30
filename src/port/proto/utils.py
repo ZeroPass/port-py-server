@@ -56,3 +56,21 @@ def format_alpha3(code: str):
     if len(code) != 3 and code != 'D':
         raise ValueError("Invalid ISO-3166 Alpha-3 country code: " + code)
     return code
+
+def int_to_bytes(num: int, signed: bool = False) -> bytes:
+    """
+    Encodes integer num to big-endian bytes.
+    :param num: The number to encode
+    :param signed: The signed argument determines whether two's complement is used to represent the integer.
+    :returns: Big-endian encoded bytes.
+    """
+    return num.to_bytes((num.bit_length() + 7) // 8, byteorder='big', signed=signed)
+
+def bytes_to_int(data: bytes, signed: bool = False) -> int:
+    """
+    Decodes big-endian integer from bytes.
+    :param data: The byte data decode the integer number from.
+    :param signed: The signed argument indicates whether two's complement is used to represent the integer.
+    :returns: Decoded integer number.
+    """
+    return int.from_bytes(data, byteorder='big', signed=signed)

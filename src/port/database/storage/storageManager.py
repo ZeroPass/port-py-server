@@ -27,35 +27,39 @@ crl = Table('crl', metadata,
     Column('signatureHashAlgorithm', String)
 )
 
+# x.509 certificate table scheme
 def certColumns(issuerCertTable: Optional[str] = None):
     hasIssuer = issuerCertTable is not None
     return [
         Column('id', BigInteger, primary_key=True),
-        Column('country', String(2), nullable=False, index=True),
-        Column('serial', String),
+        Column('country', String(2), nullable=False, index=True), # ISO alpha 2 country code
+        Column('serial', LargeBinary(20), nullable=False),
         Column('notValidBefore', DateTime, nullable=False),
         Column('notValidAfter', DateTime, nullable=False),
         Column('issuerId', BigInteger,
             ForeignKey(issuerCertTable + '.id') if hasIssuer else None,
             nullable = (not hasIssuer)
         ),
-        Column('issuer', String),
-        Column('authorityKey', LargeBinary),
+        Column('issuer', String, nullable=(not hasIssuer)),
+        Column('authorityKey', LargeBinary, nullable=True),
         Column('subject', String, nullable=False),
-        Column('subjectKey', LargeBinary),
+        Column('subjectKey', LargeBinary, nullable=True),
         Column('certificate', LargeBinary, nullable=False)
     ]
 
+# tables of country CSCA and DSC certificates
 csca = Table('csca', metadata, *certColumns())
 dsc  = Table('dsc', metadata, *certColumns(issuerCertTable='csca'))
 
+# table for storing Port protocol challenges used for passport active authentication
 protoChallenges = Table('protoChallenges', metadata,
     Column('id', Integer, primary_key=True),
-    Column('uid', LargeBinary(20), ForeignKey('accounts.uid'), unique=True),
+    Column('uid', LargeBinary(20), ForeignKey('accounts.uid'), unique=True, nullable=False),
     Column('challenge', LargeBinary(32), nullable=False),
     Column("expires", DateTime(timezone=True), nullable=False)
 )
 
+# table contains info about attested accounts
 accounts = Table('accounts', metadata,
     Column('uid', LargeBinary(20), primary_key=True), # uid = UserId
     Column('sod', LargeBinary, nullable=False),

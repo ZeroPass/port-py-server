@@ -1,10 +1,11 @@
 import datetime
 import logging
 from typing import List, Optional
+
 from port.database.storage.storageManager import PortDatabaseConnection
 from pymrtd.pki.x509 import Certificate, CscaCertificate, DocumentSignerCertificate
 from port.proto.types import CertificateId
-from port.proto.utils import format_alpha2
+from port.proto.utils import format_alpha2, int_to_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -19,14 +20,14 @@ class CertificateStorage(object):
     """Storage class for """
     id: CertificateId
     country: str
-    serial: str
+    serial: bytes
     notValidBefore: datetime
     notValidAfter: datetime
     issuerId: Optional[CertificateId]
     issuer: str
-    authorityKey: str
+    authorityKey: bytes
     subject: str
-    subjectKey: str
+    subjectKey: bytes
     certificate: bytes
 
     _type = None
@@ -34,6 +35,7 @@ class CertificateStorage(object):
     def __init__(self, cert: Certificate, issuerId: Optional[CertificateId] = None):
         self.id             = CertificateId.fromCertificate(cert)
         self.country        = format_alpha2(cert.issuerCountry)
+        self.serial         = int_to_bytes(cert.serial_number)
         self.notValidBefore = cert.notValidBefore
         self.notValidAfter  = cert.notValidAfter
         self.issuerId       = issuerId
@@ -42,10 +44,6 @@ class CertificateStorage(object):
         self.subject        = cert.subject.human_friendly
         self.subjectKey     = cert.subjectKey
         self.certificate    = cert.dump()
-        try:
-            self.serial = str(cert.serial_number)
-        except:
-            self.serial = ""
 
     def getCertificate(self):
         """Returns object"""
