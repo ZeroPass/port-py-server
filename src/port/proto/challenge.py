@@ -5,7 +5,7 @@ from .types import IIntegerId
 from datetime import datetime
 from cryptography.hazmat.primitives.hashes import Hash, SHA512_256
 from cryptography.hazmat.backends import default_backend
-from math import log
+from port.proto.utils import int_to_bytes
 from typing import cast, Union
 
 class CID(IIntegerId):
@@ -51,8 +51,7 @@ class Challenge(bytes):
     @staticmethod
     def generate(time: datetime, extraData: bytes) -> "Challenge":
         assert isinstance(time, datetime)
-        ts = int(time.timestamp())
-        ts = ts.to_bytes((ts.bit_length() + 7) // 8, 'big')
+        ts = int_to_bytes(int(time.timestamp()))
         rs = os.urandom(Challenge._hash_algo.digest_size)
 
         h = Hash(Challenge._hash_algo(), backend=default_backend())
