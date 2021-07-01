@@ -57,16 +57,18 @@ def format_alpha3(code: str):
         raise ValueError("Invalid ISO-3166 Alpha-3 country code: " + code)
     return code
 
-def int_to_bytes(num: int, signed: bool = False) -> bytes:
+def int_to_bytes(num: int, signed: bool = True) -> bytes:
     """
     Encodes integer num to big-endian bytes.
     :param num: The number to encode
     :param signed: The signed argument determines whether two's complement is used to represent the integer.
     :returns: Big-endian encoded bytes.
     """
-    return num.to_bytes((num.bit_length() + 7) // 8, byteorder='big', signed=signed)
+    # https://stackoverflow.com/questions/21017698/converting-int-to-bytes-in-python-3/54141411#54141411
+    length = ((num + ((num * signed) < 0)).bit_length() + 7 + signed) // 8
+    return num.to_bytes(length, byteorder='big', signed=signed)
 
-def bytes_to_int(data: bytes, signed: bool = False) -> int:
+def bytes_to_int(data: bytes, signed: bool = True) -> int:
     """
     Decodes big-endian integer from bytes.
     :param data: The byte data decode the integer number from.
