@@ -9,7 +9,7 @@ from port import proto
 from port.settings import Config
 
 from pymrtd import ef
-from typing import Callable, List, Union
+from typing import Callable, List, NoReturn, Union
 
 from werkzeug.wrappers import Request, Response
 from werkzeug.serving import run_simple
@@ -66,7 +66,7 @@ class PortApiServer:
             pong = int.from_bytes(os.urandom(4), 'big')
             return { "pong": pong }
         except Exception as e:
-            return self.__handle_exception(e)
+            self.__handle_exception(e)
 
     # API: port.getChallenge
     @portapi
@@ -84,11 +84,11 @@ class PortApiServer:
             c, cet = self._proto.createNewChallenge(uid)
             return { "challenge": c.toBase64(), "expires": int(cet.timestamp()) }
         except Exception as e:
-            return self.__handle_exception(e)
+            self.__handle_exception(e)
 
     # API: port.cancelChallenge
     @portapi
-    def cancelChallenge(self, challenge: str) -> Union[None, dict]:
+    def cancelChallenge(self, challenge: str) -> None:
         """
         Function erases challenge from server.
         :param challenge: base64 encoded string
@@ -100,7 +100,7 @@ class PortApiServer:
             self._proto.cancelChallenge(challenge.id)
             return None
         except Exception as e:
-            return self.__handle_exception(e)
+            self.__handle_exception(e)
 
     # API: port.register
     @portapi
@@ -133,7 +133,7 @@ class PortApiServer:
             uid, sk, set = self._proto.register(uid, sod, dg15, cid, csigs, dg14)
             return { "uid": uid.toBase64(), "session_key": sk.toBase64(), "expires": int(set.timestamp()) }
         except Exception as e:
-            return self.__handle_exception(e)
+            self.__handle_exception(e)
 
     # API: port.login
     @portapi
@@ -158,7 +158,7 @@ class PortApiServer:
             sk, set = self._proto.login(uid, cid, csigs, dg1)
             return { "session_key": sk.toBase64(), "expires": int(set.timestamp()) }
         except Exception as e:
-            return self.__handle_exception(e)
+            self.__handle_exception(e)
 
     # API: port.sayHello
     @portapi
@@ -177,7 +177,7 @@ class PortApiServer:
             msg = self._proto.sayHello(uid, mac)
             return { "msg": msg }
         except Exception as e:
-            return self.__handle_exception(e)
+            self.__handle_exception(e)
 
 # Request handler
     @Request.application
@@ -190,7 +190,7 @@ class PortApiServer:
             return Response(response.json, mimetype='application/json')
         return Response()
 
-    def __handle_exception(self, e: Exception)-> dict:
+    def __handle_exception(self, e: Exception)-> NoReturn:
         if isinstance(e, proto.ProtoError):
             self._log.debug("Request proto error: {}".format(e))
             raise JSONRPCDispatchException(e.code, str(e))
