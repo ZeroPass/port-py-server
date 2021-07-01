@@ -315,8 +315,8 @@ class PortProto:
             self.__validate_certificate_path(sod)
             self._log.success("eMRTD trust chain was successfully verified!")
         except CertificateVerificationError as e:
-            self._log.error("Failed to verify eMRTD certificate trust chain! e={}".format(e))
-            raise PePreconditionFailed("Trustchain verification failed")
+            self._log.error("Failed to verify eMRTD certificate trust chain: {}".format(e))
+            raise PePreconditionFailed("Trustchain verification failed") from e
         except Exception as e:
             self._log.error("Failed to verify eMRTD certificate trust chain! e={}".format(e))
             self._log.exception(e)

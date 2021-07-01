@@ -28,7 +28,7 @@ class Filter:
             for item in crl['tbs_cert_list']['revoked_certificates']:
                 self.deleteCertificateByIssuerAndSerialNumber(issuer, item["user_certificate"], connection)
         except Exception as e:
-            raise FilterError("Error in iterateCRL function: " + e)
+            raise FilterError("Error in iterateCRL function: " + e) from e
 
 
     def getIssuer(self, crl: CertificateRevocationList):

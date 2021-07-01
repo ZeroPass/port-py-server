@@ -18,7 +18,7 @@ def try_deser(f):
     try:
         return f()
     except:
-        raise proto.ProtoError("Bad parameter")
+        raise proto.ProtoError("Bad parameter") from None
 
 def _b64csigs_to_bcsigs(str_csigs: List[str]) -> List[bytes]:
     """ Convert list of base64 encoded signatures to list of byte signatures """
@@ -192,19 +192,19 @@ class PortApiServer:
 
     def __handle_exception(self, e: Exception)-> NoReturn:
         if isinstance(e, proto.ProtoError):
-            self._log.debug("Request proto error: {}".format(e))
-            raise JSONRPCDispatchException(e.code, str(e))
+            self._log.warning("Request proto error: {}".format(e))
+            raise JSONRPCDispatchException(e.code, str(e)) from e
 
         if isinstance(e, proto.SeEntryNotFound):
-            self._log.debug("Request storage error: {}".format(e))
-            raise JSONRPCDispatchException(404, str(e))
+            self._log.warning("Request storage error: {}".format(e))
+            raise JSONRPCDispatchException(404, str(e)) from e
 
         if isinstance(e, proto.SeEntryAlreadyExists):
-            self._log.debug("Request storage error: {}".format(e))
-            raise JSONRPCDispatchException(409, str(e))
+            self._log.warning("Request storage error: {}".format(e))
+            raise JSONRPCDispatchException(409, str(e)) from e
 
         self._log.error("Unhandled exception encountered, e={}".format(e))
-        raise JSONRPCDispatchException(500, "Internal Server Error")
+        raise JSONRPCDispatchException(500, "Internal Server Error") from e
 
     def __init_api(self):
         self._req_disp = Dispatcher()

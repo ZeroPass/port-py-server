@@ -160,7 +160,7 @@ class Builder:
             #for key in crl['tbs_cert_list']['revoked_certificates']:
             Filter(crl, connection)
         except Exception as e:
-            raise BuilderError("Error in iterateCRL function: " + e)
+            raise BuilderError("Error in iterateCRL function: " + e) from e
 
 
     def processCRL(self, connection: PortDatabaseConnection):
@@ -173,4 +173,4 @@ class Builder:
         except CrlStorageError as e:
             self._log.error("Exception description:" + e)
         except Exception as e:
-            raise Exception("Unknown error.")
+            raise Exception("Unknown error.") from e

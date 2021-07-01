@@ -61,8 +61,8 @@ def writeToDB_CSCA(csca: CscaCertificate, connection: PortDatabaseConnection):
         connection.getSession().add(CscaStorage(csca))
         connection.getSession().commit()
 
-    except Exception:
-        raise CscaStorageError("Problem with writing the object")
+    except Exception as e:
+        raise CscaStorageError("Problem with writing the object") from e
 
 def readFromDB_CSCA_issuer_serialNumber(issuer: str, serialNumber: int, connection: PortDatabaseConnection) -> List[CscaStorage]:
     """Reading from database"""
@@ -74,7 +74,7 @@ def readFromDB_CSCA_issuer_serialNumber(issuer: str, serialNumber: int, connecti
                                  CscaStorage.serial == str(serialNumber.native)
                          ).all()
     except Exception as e:
-        raise CscaStorageError("Problem with writing the object" + e)
+        raise CscaStorageError("Problem with writing the object") from e
 
 def readFromDB_CSCA_authorityKey(authorityKey: bytes, connection: PortDatabaseConnection) -> List[CscaStorage]:
     """Reading from database"""
@@ -85,7 +85,7 @@ def readFromDB_CSCA_authorityKey(authorityKey: bytes, connection: PortDatabaseCo
                          .filter(CscaStorage.authorityKey == authorityKey) \
                          .all()
     except Exception as e:
-        raise CscaStorageError("Problem with writing the object" + e)
+        raise CscaStorageError("Problem with writing the object") from e
 
 def deleteFromDB_CSCA(CSCAs: List[CscaStorage], connection: PortDatabaseConnection):
     """Reading from database"""
@@ -100,7 +100,7 @@ def deleteFromDB_CSCA(CSCAs: List[CscaStorage], connection: PortDatabaseConnecti
                 logger.error("Action delete failed. No item in database or object was not CSCA.")
         connection.getSession().commit()
     except Exception as e:
-        raise DscStorageError("Problem with writing the object" + e)
+        raise DscStorageError("Problem with writing the object") from e
 
 class DscStorage(CertificateStorage):
     _type = DocumentSignerCertificate
@@ -140,7 +140,7 @@ def writeToDB_DSC(dsc: DocumentSignerCertificate, connection: PortDatabaseConnec
         connection.getSession().commit()
 
     except Exception as e:
-        raise DscStorageError("Couldn't write DSC storage to DB: " + str(e))
+        raise DscStorageError("Couldn't write DSC storage to DB") from e
 
 def readFromDB_DSC_issuer_serialNumber(issuer: str, serialNumber: int, connection: PortDatabaseConnection) -> List[DscStorage]:
     """Reading from database"""
@@ -152,7 +152,7 @@ def readFromDB_DSC_issuer_serialNumber(issuer: str, serialNumber: int, connectio
                     DscStorage.serial == str(serialNumber.native)
             ).all()
     except Exception as e:
-        raise DscStorageError("Problem with writing the object" + e)
+        raise DscStorageError("Problem with writing the object") from e
 
 def readFromDB_DSC_issuer(issuer: str, connection: PortDatabaseConnection) -> List[DscStorage]:
     """Reading from database"""
@@ -162,8 +162,8 @@ def readFromDB_DSC_issuer(issuer: str, connection: PortDatabaseConnection) -> Li
                          .query(DscStorage) \
                          .filter(DscStorage.issuer == issuer) \
                          .all()
-    except Exception:
-        raise DscStorageError("Problem with writing the object")
+    except Exception as e:
+        raise DscStorageError("Problem with writing the object") from e
 
 def readFromDB_DSC_authorityKey(authorityKey: bytes, connection: PortDatabaseConnection) -> List[DscStorage]:
     """Reading from database"""
@@ -173,8 +173,8 @@ def readFromDB_DSC_authorityKey(authorityKey: bytes, connection: PortDatabaseCon
                          .query(DscStorage) \
                          .filter(DscStorage.authorityKey == authorityKey) \
                          .all()
-    except Exception:
-        raise DscStorageError("Problem with writing the object")
+    except Exception as e:
+        raise DscStorageError("Problem with writing the object") from e
 
 def deleteFromDB_DSC(dscs: List[DscStorage],connection: PortDatabaseConnection):
     """Reading from database"""
@@ -190,4 +190,4 @@ def deleteFromDB_DSC(dscs: List[DscStorage],connection: PortDatabaseConnection):
                 logger.error("Action delete failed. No item in database or object was not DSC. error={}".format(str(e)))
         connection.getSession().commit()
     except Exception as e:
-        raise DscStorageError("Problem with writing the object. error={}".format(str(e)))
+        raise DscStorageError("Problem with writing the object. error={}".format(str(e))) from e
