@@ -1,4 +1,4 @@
-from .utils import int_count_bytes
+from .utils import bytes_to_int, int_count_bytes
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.hashes import Hash, SHA512_256
 from pymrtd import ef
@@ -12,20 +12,20 @@ class IIntegerId(int):
     def __new__(cls, id: Union[int, bytes, str], *args, **kwargs):
         if isinstance(id, int):
             if not (cls.min <= id <= cls.max):
-                raise ValueError("integer out of range to construct {}".format(cls.__name__))
+                raise ValueError("integer out of range to construct {}. id_value={}".format(cls.__name__, id))
         elif isinstance(id, bytes):
             # check if we have required number of bytes
             mn = max(abs(cls.min), abs(cls.max))
             nb = int_count_bytes(mn)
             if len(id) < nb:
                 raise ValueError("not enough bytes to construct {}".format(cls.__name__))
-            id = int.from_bytes(id[0:nb], 'big')
+            id = bytes_to_int(id[0:nb], signed=True)
         elif isinstance(id, str):
             id = int(id, *args)
             if not (cls.min <= id <= cls.max):
                 raise ValueError("out of range to construct {}".format(cls.__name__))
         else:
-            raise ValueError("invalid type to construct {}".format(cls.__name__))
+            raise ValueError("invalid type to construct {}. id_type={}".format(cls.__name__, type(id)))
         return cast(cls, super().__new__(cls, id))
 
     @classmethod
@@ -44,8 +44,8 @@ class CertificateId(IIntegerId):
     over x509.Certificate ASN.1 DER encoded bytes
     """
 
-    min = 0
-    max = 0xFFFFFFFFFFFFFFFF
+    min = -9223372036854775808 # min 64 bit int
+    max = 9223372036854775807  # max 64 bit int
 
     @classmethod
     def fromCertificate(cls, crt: x509.Certificate) -> "CertificateId":
@@ -60,8 +60,8 @@ class SodId(IIntegerId):
     over SOD ASN.1 DER encoded bytes
     """
 
-    min = 0
-    max = 0xFFFFFFFFFFFFFFFF
+    min = -9223372036854775808 # min 64 bit int
+    max = 9223372036854775807  # max 64 bit int
 
     @classmethod
     def fromSOD(cls, sod: ef.SOD) -> "SodId":

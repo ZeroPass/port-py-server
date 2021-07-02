@@ -10,8 +10,8 @@ from typing import cast, Union
 
 class CID(IIntegerId):
     """ Represents challenge id """
-    min = -0xFFFFFFFF
-    max = 0xFFFFFFFF
+    min = -2147483648
+    max = 2147483647
 
 class ChallengeError(Exception):
     pass
