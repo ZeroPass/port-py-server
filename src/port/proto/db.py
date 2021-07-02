@@ -224,6 +224,15 @@ class DatabaseAPI(StorageAPI):
         self._log = logging.getLogger(DatabaseAPI.__name__)
         self._dbc = PortDatabaseConnection(dialect, host, db, username, password)
 
+    def _commit(self):
+        try:
+            self._dbc.getSession().commit()
+        except Exception as e:
+            self._log.error("An exception was encountered while tryping to commit to db!")
+            self._log.exception(e)
+            self._dbc.getSession().rollback()
+            raise DatabaseAPIError(e) from None
+
     def getChallenge(self, cid: CID) -> Tuple[Challenge, datetime]:
         """
         Function fetches challenge from db and returns
@@ -284,7 +293,7 @@ class DatabaseAPI(StorageAPI):
             raise SeEntryAlreadyExists("Challenge already exists")
 
         self._dbc.getSession().add(cs)
-        self._dbc.getSession().commit()
+        self._commit()
 
     def deleteChallenge(self, cid: CID) -> None:
         assert isinstance(cid, CID)
@@ -292,7 +301,7 @@ class DatabaseAPI(StorageAPI):
                  .query(ChallengeStorage) \
                  .filter(ChallengeStorage.id == cid) \
                  .delete()
-        self._dbc.getSession().commit()
+        self._commit()
 
     def deleteExpiredChallenges(self, time: datetime) -> None:
         assert isinstance(time, datetime)
@@ -300,7 +309,7 @@ class DatabaseAPI(StorageAPI):
                  .query(ChallengeStorage) \
                  .filter(ChallengeStorage.expires < time) \
                  .delete()
-        self._dbc.getSession().commit()
+        self._commit()
 
     def accountExists(self, uid: UserId) -> bool:
         assert isinstance(uid, UserId)
@@ -311,8 +320,7 @@ class DatabaseAPI(StorageAPI):
 
     def addOrUpdateAccount(self, account: AccountStorage) -> None:
         assert isinstance(account, AccountStorage)
-        s = self._dbc.getSession()
-        accnts = s.query(AccountStorage).filter(AccountStorage.uid == account.uid)
+        accnts = self._dbc.getSession().query(AccountStorage).filter(AccountStorage.uid == account.uid)
         if accnts.count() > 0:
             accnts[0].uid         = account.uid
             accnts[0].sod         = account.sod
@@ -324,8 +332,8 @@ class DatabaseAPI(StorageAPI):
             accnts[0].loginCount  = account.loginCount
             accnts[0].isValid     = account.isValid
         else:
-            s.add(account)
-        s.commit()
+            self._dbc.getSession().add(account)
+        self._commit()
 
     def getAccount(self, uid: UserId) -> AccountStorage:
         assert isinstance(uid, UserId)
@@ -340,6 +348,7 @@ class DatabaseAPI(StorageAPI):
         assert isinstance(uid, UserId)
         self._dbc.getSession().query(AccountStorage).filter(AccountStorage.uid == uid).delete()
         self._dbc.getSession().commit()
+        self._commit()
 
     def getAccountExpiry(self, uid: UserId) -> datetime:
         assert isinstance(uid, UserId)
@@ -369,7 +378,7 @@ class DatabaseAPI(StorageAPI):
             raise SeEntryAlreadyExists("CSCA already exists")
 
         self._dbc.getSession().add(cs)
-        self._dbc.getSession().commit()
+        self._commit()
         return cs.id
 
     def findCsca(self, id: CertificateId)-> Optional[CscaStorage]:
@@ -476,7 +485,7 @@ class DatabaseAPI(StorageAPI):
             raise SeEntryAlreadyExists("DSC already exists")
 
         self._dbc.getSession().add(ds)
-        self._dbc.getSession().commit()
+        self._commit()
         return ds.id
 
     def findDsc(self, id: CertificateId) -> Optional[DscStorage]:
