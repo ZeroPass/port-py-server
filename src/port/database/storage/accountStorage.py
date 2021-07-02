@@ -12,12 +12,15 @@ class AccountStorageError(Exception):
 
 class AccountStorage(object):
     """Class for interaction between code structure and database"""
-    _uid = None
-    _publicKey = None
-    _validUntil = None
-    _SOD = None
-    _SKey= None
-    _isValid = None
+    uid: UserId
+    sod: bytes
+    aaPublicKey: bytes
+    sigAlgo: bytes
+    dg1: bytes
+    session: bytes
+    validUntil: datetime
+    loginCount: int
+    isValid: bool
 
     def __init__(self, uid: UserId, sod: ef.SOD, aaPublicKey: AAPublicKey, sigAlgo: Union[SignatureAlgorithm, None], dg1: Union[ef.DG1, None], session: Session, validUntil: datetime, loginCount: int = 0):
         """Initialization object"""
