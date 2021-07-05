@@ -16,7 +16,7 @@ from port.proto.utils import int_to_bytes
 
 from pymrtd.pki.x509 import Certificate, CscaCertificate, DocumentSignerCertificate
 from sqlalchemy import or_
-from typing import List, Optional, Tuple
+from typing import Final, List, Optional, Tuple
 
 class StorageAPIError(Exception):
     pass
@@ -26,6 +26,12 @@ class SeEntryNotFound(StorageAPIError):
 
 class SeEntryAlreadyExists(StorageAPIError):
     pass
+
+seAccountNotFound: Final   = SeEntryNotFound("Account not found")
+seChallengeExists: Final   = SeEntryAlreadyExists("Challenge already exists")
+seChallengeNotFound: Final = SeEntryNotFound("Challenge not found")
+seCscaExists: Final        = SeEntryAlreadyExists("CSCA already exists")
+seDscExists: Final         = SeEntryAlreadyExists("DSC already exists")
 
 class StorageAPI(ABC):
     ''' Abstract storage interface for user data and MRTD trustchain certificates (CSCA, DSC) '''
@@ -251,7 +257,7 @@ class DatabaseAPI(StorageAPI):
            .first()
 
         if cs is None:
-            raise SeEntryNotFound("Challenge not found")
+            raise seChallengeNotFound
         c = cs.challenge
         t = cs.expires
         return (c, t)
@@ -291,7 +297,7 @@ class DatabaseAPI(StorageAPI):
         if self._dbc.getSession().query(ChallengeStorage) \
             .filter(or_(ChallengeStorage.id == challenge.id, ChallengeStorage.uid == uid))\
             .count() > 0:
-            raise SeEntryAlreadyExists("Challenge already exists")
+            raise seChallengeExists
 
         self._dbc.getSession().add(cs)
         self._commit()
@@ -341,7 +347,7 @@ class DatabaseAPI(StorageAPI):
         accnt = self._dbc.getSession().query(AccountStorage).filter(AccountStorage.uid == uid).all()
         if accnt is None:
             self._log.debug(":getAccountExpiry(): Account not found")
-            raise SeEntryNotFound("Account not found.")
+            raise seAccountNotFound
         assert isinstance(accnt, AccountStorage)
         return accnt
 
@@ -356,7 +362,7 @@ class DatabaseAPI(StorageAPI):
         accnt = self._dbc.getSession().query(AccountStorage).filter(AccountStorage.uid == uid).first()
         if accnt is None:
             self._log.debug(":getAccountExpiry(): Account not found")
-            raise SeEntryNotFound("Account not found.")
+            raise seAccountNotFound
 
         assert isinstance(accnt.getValidUntil(), datetime)
         return accnt.getValidUntil()
@@ -376,7 +382,7 @@ class DatabaseAPI(StorageAPI):
 
         cs = CscaStorage(csca, issuerId)
         if self._dbc.getSession().query(CscaStorage).filter(CscaStorage.id == cs.id).count() > 0:
-            raise SeEntryAlreadyExists("CSCA already exists")
+            raise seCscaExists
 
         self._dbc.getSession().add(cs)
         self._commit()
@@ -461,7 +467,7 @@ class DatabaseAPI(StorageAPI):
         :return: list of CscaStorage, or None if no CSCA certificate was found.
         """
         assert isinstance(subjectKey, bytes)
-        country = format_alpha2(country)
+        assert isinstance(country, CountryCode)
         cscas = self._dbc.getSession() \
             .query(CscaStorage) \
             .filter(CscaStorage.country == country, CscaStorage.subjectKey == subjectKey) \
@@ -483,7 +489,7 @@ class DatabaseAPI(StorageAPI):
 
         ds = DscStorage(dsc, issuerId)
         if self._dbc.getSession().query(DscStorage).filter(DscStorage.id == ds.id).count() > 0:
-            raise SeEntryAlreadyExists("DSC already exists")
+            raise seDscExists
 
         self._dbc.getSession().add(ds)
         self._commit()
@@ -568,7 +574,7 @@ class MemoryDB(StorageAPI):
             _, c, et = self._d['proto_challenges'][cid]
             return (c, et)
         except Exception as e:
-            raise SeEntryNotFound("Challenge not found") from e
+            raise seChallengeNotFound from e
 
     def findChallengeByUID(self, uid: UserId) -> Optional[Tuple[Challenge, datetime]]:
         """
@@ -595,11 +601,11 @@ class MemoryDB(StorageAPI):
         assert isinstance(challenge, Challenge)
         assert isinstance(expires, datetime)
         if challenge.id in self._d['proto_challenges']:
-            raise SeEntryAlreadyExists("Challenge already exists")
+            raise seChallengeExists
 
         for _, (suid, _, _) in self._d['proto_challenges'].items():
             if suid == uid:
-                raise SeEntryAlreadyExists("Challenge already exists")
+                raise seChallengeExists
         self._d['proto_challenges'][challenge.id] = (uid, challenge, expires)
 
     def deleteChallenge(self, cid: CID) -> None:
@@ -625,7 +631,7 @@ class MemoryDB(StorageAPI):
     def getAccount(self, uid: UserId) -> AccountStorage:
         assert isinstance(uid, UserId)
         if uid not in self._d['accounts']:
-            raise SeEntryNotFound("Account not found")
+            raise seAccountNotFound
         return self._d['accounts'][uid]
 
     def deleteAccount(self, uid: UserId) -> None:
@@ -636,7 +642,7 @@ class MemoryDB(StorageAPI):
     def getAccountExpiry(self, uid: UserId) -> datetime:
         assert isinstance(uid, UserId)
         if uid not in self._d['accounts']:
-            raise SeEntryNotFound("Account not found")
+            raise seAccountNotFound
         a = self.getAccount(uid)
         return a.validUntil
 
@@ -656,7 +662,7 @@ class MemoryDB(StorageAPI):
         cs = CscaStorage(csca, issuerId)
         for c in self._d['cscas']:
             if c.id == cs.id:
-                raise SeEntryAlreadyExists("CSCA already exists")
+                raise seCscaExists
         self._d['cscas'].add(cs)
         return cs.id
 
@@ -755,7 +761,7 @@ class MemoryDB(StorageAPI):
         ds = DscStorage(dsc, issuerId)
         for c in self._d['dscs']:
             if c.id == ds.id:
-                raise SeEntryAlreadyExists("DSC already exists")
+                raise seDscExists
         self._d['dscs'].add(ds)
         return ds.id
 

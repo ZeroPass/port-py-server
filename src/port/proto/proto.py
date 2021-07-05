@@ -17,7 +17,7 @@ from port.database.storage.accountStorage import AccountStorage
 from port.database.storage.x509Storage import CscaStorage, DscStorage
 
 from threading import Timer
-from typing import List, Optional, Tuple, Union
+from typing import Final, List, Optional, Tuple, Union
 
 class ProtoError(Exception):
     """ General protocol exception """
@@ -61,6 +61,24 @@ class PeSigVerifyFailed(ProtoError):
 class PeMacVerifyFailed(ProtoError):
     """ Session mac verification error """
     code = 401
+
+peAccountAlreadyRegistered: Final     = PeAccountConflict("Account already registered")
+peAccountExpired: Final               = PeCredentialsExpired("Account has expired")
+peChallengeExpired: Final             = PeChallengeExpired("Challenge has expired")
+peChallengeVerificationFailed: Final  = PeSigVerifyFailed("Challenge signature verification failed")
+peCscaExpired: Final                  = PePreconditionFailed("CSCA has expired")
+peCscaNotFound: Final                 = PePreconditionFailed("CSCA not found")
+peDscExpired: Final                   = PePreconditionFailed("DSC has expired")
+peDscNotFound: Final                  = PePreconditionFailed("DSC not found")
+peDg1Required: Final                  = PePreconditionRequired("EF.DG1 required")
+peDg14Required: Final                 = PePreconditionRequired("EF.DG14 required")
+peMissingAAInfoInDg14: Final          = PePreconditionRequired("Missing ActiveAuthenticationInfo in DG14 file")
+peMissingParamAASigAlgo: Final        = PeMissingParam("Missing param aaSigAlgo")
+peUnknownPathSodToDsc: Final          = PePreconditionFailed("Unknown connection path from SOD to DSC")
+peTrustchainVerificationFailed: Final = PePreconditionFailed("Trustchain verification failed")
+
+def peInvalidDgFile(dgNumber: ef.dg.DataGroupNumber) -> PePreconditionFailed:
+    return PePreconditionFailed("Invalid EF.{} file".format(dgNumber.native))
 
 
 class PortProto:
@@ -151,7 +169,7 @@ class PortProto:
         if self._db.accountExists(uid):
             et = self._db.getAccountExpiry(uid)
             if not utils.has_expired(et, utils.time_now()):
-                raise PeAccountConflict("Account already registered")
+                raise peAccountAlreadyRegistered
             self._log.debug("Account has expired, registering new credentials")
 
         # 2. Verify emrtd PKI trust chain
@@ -162,9 +180,9 @@ class PortProto:
         aaPubKey = dg15.aaPublicKey
         if aaPubKey.isEcKey():
             if dg14 is None:
-                raise PePreconditionRequired("DG14 required")
+                raise peDg14Required
             elif dg14.aaSignatureAlgo is None:
-                raise PePreconditionRequired("Missing ActiveAuthenticationInfo in DG14 file")
+                raise peMissingAAInfoInDg14
             sigAlgo = dg14.aaSignatureAlgo
 
         self.__verify_challenge(cid, aaPubKey, csigs, sigAlgo)
@@ -210,7 +228,7 @@ class PortProto:
         self._log.debug("Logging-in account with uid={} login_count={}".format(uid.hex(), a.loginCount))
         if a.loginCount >= 1 and a.dg1 is None and dg1 is None:
             self._log.error("Login cannot continue due to max no. of anonymous logins and no DG1 file was provided!")
-            raise PePreconditionRequired("File DG1 required")
+            raise peDg1Required
 
         # 2. If we got DG1 verify SOD contains its hash,
         #    and assign it to the account
@@ -222,7 +240,7 @@ class PortProto:
 
         # 3. Verify account credentials haven't expired
         if utils.has_expired(a.validUntil, utils.time_now()):
-            raise PeCredentialsExpired("Account has expired")
+            raise peAccountExpired
 
         # 4. Verify challenge
         self.__verify_challenge(cid, a.getAAPublicKey(), csigs, a.getSigAlgo())
@@ -279,19 +297,19 @@ class PortProto:
         try:
             self._log.debug("Verifying challenge cid={}".format(cid))
             if aaPubKey.isEcKey() and sigAlgo is None:
-                raise PeMissingParam("Missing param sigAlgo")
+                raise peMissingParamAASigAlgo
 
             # Verify if challenge has expired expiration time
             c, cct = self._db.getChallenge(cid)
             if self._has_challenge_expired(cct, utils.time_now()):
                 self._db.deleteChallenge(cid)
-                raise PeChallengeExpired("Challenge has expired")
+                raise peChallengeExpired
 
             # Verify challenge signatures
             ccs = [c[0:8], c[8:16], c[16:24], c[24:32]]
             for idx, sig in enumerate(csigs):
                 if not aaPubKey.verifySignature(ccs[idx], sig, sigAlgo):
-                    raise PeSigVerifyFailed("Challenge signature verification failed")
+                    raise peChallengeVerificationFailed
             self._log.success("Challenge signed with eMRTD was successfully verified!")
         except:
             self._log.error("Challenge verification failed!")
@@ -316,7 +334,7 @@ class PortProto:
             self._log.success("eMRTD trust chain was successfully verified!")
         except CertificateVerificationError as e:
             self._log.error("Failed to verify eMRTD certificate trust chain: {}".format(e))
-            raise PePreconditionFailed("Trustchain verification failed") from e
+            raise peTrustchainVerificationFailed from e
         except Exception as e:
             self._log.error("Failed to verify eMRTD certificate trust chain! e={}".format(e))
             self._log.exception(e)
@@ -376,8 +394,7 @@ class PortProto:
                 break
 
         if csca is None:
-            self._log.error("No valid CSCA was found!")
-            raise PePreconditionFailed("CSCA not found")
+            raise peCscaNotFound
 
         self._log.verbose("Found CSCA country={} serial={} fp={} key_id={}".format(
             utils.code_to_country_name(csca.issuerCountry),
@@ -390,7 +407,7 @@ class PortProto:
         self._log.verbose("Verifying CSCA expiration time. {}".format(utils.format_cert_et(csca)))
         if not csca.isValidOn(utils.time_now()):
             self._log.error("CSCA has expired!")
-            raise PePreconditionFailed("CSCA has expired")
+            raise peCscaExpired
 
         # 3. verify CSCA really issued DSC
         self._log.verbose("Verifying CSCA issued DSC ...")
@@ -434,17 +451,17 @@ class PortProto:
                 self._log.verbose("Getting DSC which issued SOD by subject_key={}".format(keyid.hex()))
                 dsc, validateDSC = self.__get_dsc_by_subject_key(keyid, sod)
             else:
-                raise PePreconditionFailed("Unknown connection path from SOD to DSC")
+                raise peUnknownPathSodToDsc
 
             if dsc is None:
-                raise PePreconditionFailed("DSC not found")
+                raise peDscNotFound
 
             self._log.verbose("Got DSC fp={} issuer_country={}, validating path to CSCA required: {}"
                 .format(dsc.fingerprint[0:8], utils.code_to_country_name(dsc.issuerCountry), validateDSC))
 
             self._log.verbose("Verifying DSC expiration time. {}".format(utils.format_cert_et(dsc)))
             if not dsc.isValidOn(utils.time_now()):
-                raise PePreconditionFailed("DSC has expired")
+                raise peDscExpired
             elif validateDSC:
                 self.__validate_dsc_to_csca(dsc) # validate CSCA has issued DSC
             dscs.append(dsc)
@@ -470,7 +487,7 @@ class PortProto:
 
         # Validation of dg hash value in SOD
         if not sod.ldsSecurityObject.contains(dg):
-            raise PePreconditionFailed("Invalid {} file".format(dg.number.native))
+            raise peInvalidDgFile(dg.number)
         self._log.debug("{} file is valid!".format(dg.number.native))
 
     def _get_default_account_expiration(self):
