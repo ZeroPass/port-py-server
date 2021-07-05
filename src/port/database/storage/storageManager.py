@@ -79,7 +79,7 @@ class PortDatabaseConnection:
     metaData = None
     session = None
 
-    def __init__(self, dialect:str, host:str, db: str, username: str, password: str):
+    def __init__(self, dialect:str, host:str, db: str, username: str, password: str, debugLogging=False):
         '''
         Creates new ORM database connection.
         :param dialect: The database dialect e.g.:  mariadb, mysql, oracle, postgresql, sqlite.
@@ -87,12 +87,13 @@ class PortDatabaseConnection:
         :param db: The database path.
         :param username: The database username.
         :param password: The database password.
+        :param debugLogging: If True, the sqlalchemy engine will log all statements.``
         :raises: PortDbConnectionError on error.
         '''
         try:
             # The return value of create_engine() is our connection object
             url = PortDatabaseConnection.__buildUrl(dialect, host, db, username, password)
-            self.connectionObj = sqlalchemy.create_engine(url, client_encoding='utf8', echo=True)
+            self.connectionObj = sqlalchemy.create_engine(url, encoding='utf-8', echo=debugLogging)
 
             # We then bind the connection to MetaData()
             self.metaData = MetaData(bind=self.connectionObj)
@@ -105,7 +106,7 @@ class PortDatabaseConnection:
             self.initTables()
 
         except Exception as e:
-            raise PortDbConnectionError(e)
+            raise PortDbConnectionError(e) from e
 
     def getEngine(self):
         """ It returns engline object"""
@@ -159,4 +160,4 @@ def truncateAll(connection: PortDatabaseConnection):
         for result in connection.getEngine().execute(sql_raw_query):
             connection.getEngine().execute(result[0])
     except Exception as e:
-        raise IOError("Failed to truncate: " + str(e))
+        raise IOError("Failed to truncate DB") from e
