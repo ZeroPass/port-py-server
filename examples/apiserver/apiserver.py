@@ -13,8 +13,7 @@ from port import proto
 from port.api import PortApiServer
 from port.proto.db import SeEntryAlreadyExists
 from port.proto.user import UserId
-from port.proto.utils import format_alpha2
-from port.proto.types import CertificateId
+from port.proto.types import CertificateId, CountryCode
 from port.settings import Config, DbConfig, ServerConfig
 
 from pymrtd import ef
@@ -186,7 +185,7 @@ def load_pkd_to_mdb(mdb: proto.MemoryDB, pkd_path: Path):
             if cert.ca:
                 if 'key_cert_sign' not in ku:
                     l.warning("CSCA doesn't have key_cert_sign constrain. C={} serial={} key_id={}"
-                        .format(format_alpha2(cert.issuerCountry), cert.serial_number, cert.subjectKey.hex()))
+                        .format(CountryCode(cert.issuerCountry), cert.serial_number, cert.subjectKey.hex()))
                 cert.__class__ = x509.CscaCertificate
                 if cert.subjectKey is not None:
                     cscas_sk[cert.subjectKey].append(cert)
@@ -197,13 +196,13 @@ def load_pkd_to_mdb(mdb: proto.MemoryDB, pkd_path: Path):
                 issuerId = get_issuer_id(cert)
                 if issuerId == None:
                     l.warning("Skipping DSC certificate because no issuing CSCA was found. C={} serial={} key_id={}"
-                        .format(format_alpha2(cert.issuerCountry), cert.serial_number, cert.subjectKey.hex()))
+                        .format(CountryCode(cert.issuerCountry), cert.serial_number, cert.subjectKey.hex()))
                     continue
                 mdb.addDscCertificate(cert, issuerId)
                 cert_count+=1
             else:
                 l.warning("Skipping certificate because it is not CA but has key_cert_sign constrain. C={} serial={} key_id={}"
-                    .format(format_alpha2(cert.issuerCountry), cert.serial_number, cert.subjectKey.hex()))
+                    .format(CountryCode(cert.issuerCountry), cert.serial_number, cert.subjectKey.hex()))
         except SeEntryAlreadyExists:
             pass
         except Exception as e:
@@ -221,7 +220,7 @@ def load_pkd_to_mdb(mdb: proto.MemoryDB, pkd_path: Path):
                     issuerId = get_issuer_id(csca)
                     if issuerId is None:
                         l.warning("Skipping LCSA because no issuing CSCA was found. LCSCA C={} serial={} key_id={}"
-                            .format(format_alpha2(csca.issuerCountry), csca.serial_number, csca.subjectKey.hex()))
+                            .format(CountryCode(csca.issuerCountry), csca.serial_number, csca.subjectKey.hex()))
                         continue
                 try:
                     mdb.addCscaCertificate(csca, issuerId)
@@ -230,7 +229,7 @@ def load_pkd_to_mdb(mdb: proto.MemoryDB, pkd_path: Path):
                     pass
                 except Exception as e:
                     l.warning("Could not add CSCA certificate CSCA C={} serial={} key_id={}"
-                        .format(format_alpha2(csca.issuerCountry), csca.serial_number, csca.subjectKey.hex()))
+                        .format(CountryCode(csca.issuerCountry), csca.serial_number, csca.subjectKey.hex()))
                     l.exception(e)
         return count
 

@@ -1,14 +1,12 @@
-import datetime
-import logging
-from typing import List, Optional
+import datetime, logging
 
 from port.database.storage.storageManager import PortDatabaseConnection
+from port.proto.types import CertificateId, CountryCode
+from port.proto.utils import bytes_to_int, int_to_bytes
+
 from pymrtd.pki.x509 import Certificate, CscaCertificate, DocumentSignerCertificate
-from port.proto.types import CertificateId
-from port.proto.utils import format_alpha2, int_to_bytes
 
-logger = logging.getLogger(__name__)
-
+from typing import List, Optional
 
 class CscaStorageError(Exception):
     pass
@@ -19,7 +17,7 @@ class DscStorageError(Exception):
 class CertificateStorage(object):
     """Storage class for """
     id: CertificateId
-    country: str
+    country: CountryCode
     serial: bytes
     notValidBefore: datetime
     notValidAfter: datetime
@@ -34,7 +32,7 @@ class CertificateStorage(object):
 
     def __init__(self, cert: Certificate, issuerId: Optional[CertificateId] = None):
         self.id             = CertificateId.fromCertificate(cert)
-        self.country        = format_alpha2(cert.issuerCountry)
+        self.country        = CountryCode(cert.issuerCountry)
         self.serial         = int_to_bytes(cert.serial_number)
         self.notValidBefore = cert.notValidBefore
         self.notValidAfter  = cert.notValidAfter
@@ -57,7 +55,7 @@ class CscaStorage(CertificateStorage):
 def writeToDB_CSCA(csca: CscaCertificate, connection: PortDatabaseConnection):
     """Write to database with ORM"""
     try:
-        logger.info("Writing CSCA object to database. Country: " + csca.issuerCountry)
+        logger.info("Writing CSCA object to database. Country: " + CountryCode(csca.issuerCountry))
         connection.getSession().add(CscaStorage(csca))
         connection.getSession().commit()
 
@@ -134,7 +132,7 @@ class DscStorage(CertificateStorage):
 def writeToDB_DSC(dsc: DocumentSignerCertificate, connection: PortDatabaseConnection):
     """Write to database with ORM"""
     try:
-        logger.info("Writing DSC object to database. Country: " + dsc.issuerCountry)
+        logger.info("Writing DSC object to database. Country: " + CountryCode(dsc.issuerCountry))
         a = DscStorage(dsc)
         connection.getSession().add(a)
         connection.getSession().commit()

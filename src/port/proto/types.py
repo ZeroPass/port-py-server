@@ -1,4 +1,4 @@
-from .utils import bytes_to_int, int_count_bytes
+from .utils import bytes_to_int, format_alpha2, int_count_bytes
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.hashes import Hash, SHA512_256
 from pymrtd import ef
@@ -69,3 +69,9 @@ class SodId(IIntegerId):
         h.update(sod.dump())
         return cls(h.finalize())
 
+class CountryCode(str):
+    """
+    Class represents ISO-3166 Alpha-2 country code
+    """
+    def __new__(cls, content):
+      return super().__new__(cls, format_alpha2(content))

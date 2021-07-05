@@ -1,7 +1,8 @@
 import logging
+
 from .challenge import CID, Challenge
 from .user import UserId
-from .types import CertificateId
+from .types import CertificateId, CountryCode
 
 from abc import ABC, abstractmethod
 from asn1crypto import x509
@@ -11,10 +12,10 @@ from port.database.storage.storageManager import PortDatabaseConnection
 from port.database.storage.challengeStorage import *
 from port.database.storage.accountStorage import AccountStorage
 from port.database.storage.x509Storage import DscStorage, CscaStorage
-from port.proto.utils import format_alpha2, int_to_bytes
+from port.proto.utils import int_to_bytes
 
-from pymrtd.pki.x509 import CscaCertificate, DocumentSignerCertificate
-from sqlalchemy import and_, or_
+from pymrtd.pki.x509 import Certificate, CscaCertificate, DocumentSignerCertificate
+from sqlalchemy import or_
 from typing import List, Optional, Tuple
 
 class StorageAPIError(Exception):
@@ -153,7 +154,7 @@ class StorageAPI(ABC):
         pass
 
     @abstractmethod
-    def findCscaCertificatesBySubjectKey(self, country: str, subjectKey: bytes) -> Optional[List[CscaStorage]]:
+    def findCscaCertificatesBySubjectKey(self, country: CountryCode, subjectKey: bytes) -> Optional[List[CscaStorage]]:
         """
         Returns list of CSCA certificate storage objects that match subjectKey.
         :param country: iso alpha-2 country code of the country that issued the CSCA.
@@ -368,7 +369,7 @@ class DatabaseAPI(StorageAPI):
         :return: The csca CertificateId
         """
         self._log.debug("Inserting new CSCA into database C={} serial={}"
-            .format(format_alpha2(csca.issuerCountry), csca.serial_number))
+            .format(CountryCode(csca.issuerCountry), csca.serial_number))
 
         assert isinstance(csca, CscaCertificate)
         assert issuerId is None or isinstance(issuerId, CertificateId)
@@ -426,7 +427,7 @@ class DatabaseAPI(StorageAPI):
         cscas: Optional[List[CscaStorage]] = None
         if subjectKey is not None:
             assert isinstance(subjectKey, bytes)
-            country = format_alpha2(subject.native['country_name'])
+            country = CountryCode(subject.native['country_name'])
             cscas = self._dbc.getSession() \
                 .query(CscaStorage) \
                 .filter(CscaStorage.country == country, CscaStorage.subjectKey == subjectKey) \
@@ -452,7 +453,7 @@ class DatabaseAPI(StorageAPI):
             .all()
         return cscas if len(cscas) != 0 else None
 
-    def findCscaCertificatesBySubjectKey(self, country: str, subjectKey: bytes) -> Optional[List[CscaStorage]]:
+    def findCscaCertificatesBySubjectKey(self, country: CountryCode, subjectKey: bytes) -> Optional[List[CscaStorage]]:
         """
         Returns list of CSCA certificate storage objects that match subjectKey.
         :param country: iso alpha-2 country code of the country that issued the CSCA.
@@ -475,7 +476,7 @@ class DatabaseAPI(StorageAPI):
         :return: The dsc CertificateId
         """
         self._log.debug("Inserting new DSC into database C={} serial={}"
-            .format(format_alpha2(dsc.issuerCountry), dsc.serial_number))
+            .format(CountryCode(dsc.issuerCountry), dsc.serial_number))
 
         assert isinstance(dsc, DocumentSignerCertificate)
         assert isinstance(issuerId, CertificateId)
@@ -647,7 +648,7 @@ class MemoryDB(StorageAPI):
         :return: The csca CertificateId
         """
         self._log.debug("Inserting new CSCA into database C={} serial={}"
-            .format(format_alpha2(csca.issuerCountry), csca.serial_number))
+            .format(CountryCode(csca.issuerCountry), csca.serial_number))
 
         assert isinstance(csca, CscaCertificate)
         assert issuerId is None or isinstance(issuerId, CertificateId)
@@ -699,7 +700,7 @@ class MemoryDB(StorageAPI):
         if subjectKey is None:
             subjectKey = b''
         cscas = []
-        country = format_alpha2(subject.native['country_name'])
+        country = CountryCode(subject.native['country_name'])
         for csca in self._d['cscas']:
             if csca.subject == subject.human_friendly or \
                (csca.country == country and csca.subjectKey == subjectKey):
@@ -723,7 +724,7 @@ class MemoryDB(StorageAPI):
                 cscas.append(csca)
         return cscas if len(cscas) != 0 else None
 
-    def findCscaCertificatesBySubjectKey(self, country: str, subjectKey: bytes) -> Optional[List[CscaStorage]]:
+    def findCscaCertificatesBySubjectKey(self, country: CountryCode, subjectKey: bytes) -> Optional[List[CscaStorage]]:
         """
         Returns list of CSCA storage objects that match subjectKey.
         :param country: iso alpha-2 country code of the country that issued the CSCA.
@@ -731,8 +732,8 @@ class MemoryDB(StorageAPI):
         :return: list of CscaStorage, or None if no CSCA certificate was found.
         """
         assert isinstance(subjectKey, bytes)
+        assert isinstance(country, CountryCode)
         cscas = []
-        country = format_alpha2(country)
         for csca in self._d['cscas']:
             if csca.country == country and csca.subjectKey == subjectKey:
                 cscas.append(csca)
@@ -746,7 +747,7 @@ class MemoryDB(StorageAPI):
         :return: The dsc CertificateId
         """
         self._log.debug("Inserting new CSCA into database C={} serial={}"
-            .format(format_alpha2(dsc.issuerCountry), dsc.serial_number))
+            .format(CountryCode(dsc.issuerCountry), dsc.serial_number))
 
         assert isinstance(dsc, DocumentSignerCertificate)
         assert issuerId is None or isinstance(issuerId, CertificateId)
