@@ -344,7 +344,10 @@ class DatabaseAPI(StorageAPI):
 
     def getAccount(self, uid: UserId) -> AccountStorage:
         assert isinstance(uid, UserId)
-        accnt = self._dbc.getSession().query(AccountStorage).filter(AccountStorage.uid == uid).all()
+        accnt = self._dbc.getSession() \
+            .query(AccountStorage) \
+            .filter(AccountStorage.uid == uid) \
+            .first()
         if accnt is None:
             self._log.debug(":getAccountExpiry(): Account not found")
             raise seAccountNotFound
@@ -353,8 +356,10 @@ class DatabaseAPI(StorageAPI):
 
     def deleteAccount(self, uid: UserId) -> None:
         assert isinstance(uid, UserId)
-        self._dbc.getSession().query(AccountStorage).filter(AccountStorage.uid == uid).delete()
-        self._dbc.getSession().commit()
+        self._dbc.getSession() \
+            .query(AccountStorage) \
+            .filter(AccountStorage.uid == uid) \
+            .delete()
         self._commit()
 
     def getAccountExpiry(self, uid: UserId) -> datetime:
