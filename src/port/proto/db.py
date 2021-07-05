@@ -363,9 +363,7 @@ class DatabaseAPI(StorageAPI):
         if accnt is None:
             self._log.debug(":getAccountExpiry(): Account not found")
             raise seAccountNotFound
-
-        assert isinstance(accnt.getValidUntil(), datetime)
-        return accnt.getValidUntil()
+        return accnt.validUntil
 
     def addCsca(self, csca: CscaCertificate, issuerId: Optional[CertificateId] = None) -> CertificateId:
         """
@@ -528,7 +526,6 @@ class DatabaseAPI(StorageAPI):
         :param subjectKey: The DSC certificate subject key.
         :returns: DscStorage
         """
-        pass
         assert isinstance(subjectKey, bytes)
         return self._dbc.getSession() \
             .query(DscStorage) \

@@ -383,10 +383,14 @@ class PortProto:
 
     def __validate_dsc_to_csca(self, dsc: DocumentSignerCertificate):
         """ Find DSC's issuing CSCA and validate DSC with it. """
-        # 1. Get CSCA that issued DSC
+        # 1. Get CSCA which issued DSC
         self._log.verbose("Trying to find the DSC issuing CSCA in DB. DSC issuer=[{}] auth_key={}"
             .format(dsc.issuer.human_friendly, dsc.authorityKey.hex() if dsc.authorityKey is not None else None))
-        cscas:Optional[List[CscaStorage]] = self._db.findCscaCertificates(dsc.issuer, dsc.authorityKey)
+
+        cscas: Optional[List[CscaStorage]] = self._db.findCscaCertificates(dsc.issuer, dsc.authorityKey)
+        if cscas is None:
+            raise peCscaNotFound
+
         csca: Optional[CscaCertificate] = None
         for c in cscas:
             if c.notValidAfter >= dsc.notValidAfter:
