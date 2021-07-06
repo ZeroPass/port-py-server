@@ -15,33 +15,33 @@ class AccountStorage(object):
     uid: UserId
     sod: bytes
     aaPublicKey: bytes
-    sigAlgo: bytes
+    aaSigAlgo: bytes
     dg1: bytes
     session: bytes
     validUntil: datetime
     loginCount: int
     isValid: bool
 
-    def __init__(self, uid: UserId, sod: ef.SOD, aaPublicKey: AAPublicKey, sigAlgo: Union[SignatureAlgorithm, None], dg1: Union[ef.DG1, None], session: Session, validUntil: datetime, loginCount: int = 0):
+    def __init__(self, uid: UserId, sod: ef.SOD, aaPublicKey: AAPublicKey, aaSigAlgo: Union[SignatureAlgorithm, None], dg1: Union[ef.DG1, None], session: Session, validUntil: datetime, loginCount: int = 0):
         """Initialization object"""
         assert isinstance(uid, UserId)
         assert isinstance(sod, ef.SOD)
         assert isinstance(aaPublicKey, AAPublicKey)
-        assert isinstance(sigAlgo, (SignatureAlgorithm, type(None)))
+        assert isinstance(aaSigAlgo, (SignatureAlgorithm, type(None)))
         assert isinstance(dg1, (ef.DG1, type(None)))
         assert isinstance(session, Session)
         assert isinstance(validUntil, datetime)
         assert isinstance(loginCount, int)
 
-        if sigAlgo is not None:
-            sigAlgo = sigAlgo.dump()
+        if aaSigAlgo is not None:
+            aaSigAlgo = aaSigAlgo.dump()
         if dg1 is not None:
             dg1 = dg1.dump()
 
         self.uid         = uid
         self.sod         = sod.dump()
         self.aaPublicKey = aaPublicKey.dump()
-        self.sigAlgo     = sigAlgo
+        self.aaSigAlgo   = aaSigAlgo
         self.dg1         = dg1
         self.session     = session.bytes()
         self.validUntil  = validUntil
@@ -55,10 +55,10 @@ class AccountStorage(object):
     def getAAPublicKey(self) -> AAPublicKey:
         return AAPublicKey.load(self.aaPublicKey)
 
-    def getSigAlgo(self) -> Union[SignatureAlgorithm, None]:
-        if self.sigAlgo is None:
+    def getAASigAlgo(self) -> Union[SignatureAlgorithm, None]:
+        if self.aaSigAlgo is None:
             return None
-        return SignatureAlgorithm.load(self.sigAlgo)
+        return SignatureAlgorithm.load(self.aaSigAlgo)
 
     def getDG1(self) -> Union[ef.DG1, None]:
         if self.dg1 is None:

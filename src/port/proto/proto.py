@@ -208,7 +208,7 @@ class PortProto:
         self._log.verbose("login_count={}".format(a.loginCount))
         self._log.verbose("dg1=None")
         self._log.verbose("pubkey={}".format(a.aaPublicKey.hex()))
-        self._log.verbose("sigAlgo={}".format("None" if aaSigAlgo is None else a.sigAlgo.hex()))
+        self._log.verbose("sigAlgo={}".format("None" if aaSigAlgo is None else a.aaSigAlgo.hex()))
         self._log.verbose("session={}".format(s.bytes().hex()))
 
         # 6. Return user id, session key and session expiry date
@@ -246,7 +246,7 @@ class PortProto:
             raise peAccountExpired
 
         # 4. Verify challenge
-        self.__verify_challenge(cid, a.getAAPublicKey(), csigs, a.getSigAlgo())
+        self.__verify_challenge(cid, a.getAAPublicKey(), csigs, a.getAASigAlgo())
         self._db.deleteChallenge(cid) # Verifying has succeeded, delete challenge from db
 
         # 5. Generate session key and session
