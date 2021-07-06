@@ -1,18 +1,71 @@
-from typing import Optional
 import sqlalchemy
-from sqlalchemy import Table, Column, Integer, String, DateTime, MetaData, LargeBinary, Boolean
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    Integer,
+    LargeBinary,
+    MetaData,
+    String,
+    Table,
+    Text,
+    TypeDecorator,
+    VARBINARY
+)
+from sqlalchemy.ext.compiler import compiles
+from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import mapper, sessionmaker
 from sqlalchemy.orm.session import Session
-from sqlalchemy.sql import func
 
-#creating base class from template
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.sql.schema import ForeignKey
-from sqlalchemy.sql.sqltypes import BigInteger
-Base = declarative_base()
+from port.proto.challenge import Challenge, CID
+from port.proto.types import CertificateId, CountryCode, SodId
+from port.proto.user import UserId
 
-class PortDbConnectionError(Exception):
-    pass
+from typing import Optional
+
+@compiles(VARBINARY, "postgresql")
+def compile_varbinary_postgresql(type_, compiler, **kw):
+    return "BYTEA"
+
+class CertIdSqlType(TypeDecorator): # CertificateId
+    impl = BigInteger
+    cache_ok = True
+    def process_result_value(self, value, dialect):
+        return CertificateId(value) if value is not None else value
+
+class ChallengeSqlType(TypeDecorator):
+    impl = LargeBinary(32)
+    cache_ok = True
+    def process_result_value(self, value, dialect):
+        return Challenge(value) if value is not None else value
+
+class CidSqlType(TypeDecorator):
+    impl = Integer
+    cache_ok = True
+    def process_result_value(self, value, dialect):
+        return CID(value) if value is not None else value
+
+class CountryCodeSqlType(TypeDecorator):
+    # ISO-3166 Alpha-2 country code
+    impl = String(2)
+    cache_ok = True
+    def process_result_value(self, value, dialect):
+        return CountryCode(value) if value is not None else value
+
+class SodIdSqlType(TypeDecorator):
+    impl = BigInteger
+    cache_ok = True
+    def process_result_value(self, value, dialect):
+        return SodId(value) if value is not None else value
+
+class UserIdSqlType(TypeDecorator):
+    impl = VARBINARY(20)
+    cache_ok = True
+    def process_result_value(self, value, dialect):
+        return UserId(value) if value is not None else value
+
 
 """Database structures"""
 metadata = MetaData()
@@ -31,46 +84,51 @@ crl = Table('crl', metadata,
 def certColumns(issuerCertTable: Optional[str] = None):
     hasIssuer = issuerCertTable is not None
     return [
-        Column('id', BigInteger, primary_key=True),
-        Column('country', String(2), nullable=False, index=True), # ISO alpha 2 country code
-        Column('serial', LargeBinary(20), nullable=False),
-        Column('notValidBefore', DateTime, nullable=False),
-        Column('notValidAfter', DateTime, nullable=False),
-        Column('issuerId', BigInteger,
+        Column('id'            , CertIdSqlType            , primary_key=True, autoincrement=False),
+        Column('country'       , CountryCodeSqlType()     , nullable=False  , index=True         ),
+        Column('serial'        , VARBINARY(20)            , nullable=False  , index=True         ),
+        Column('notValidBefore', DateTime(timezone=False) , nullable=False                       ),
+        Column('notValidAfter' , DateTime(timezone=False) , nullable=False                       ),
+        Column('issuerId'      , CertIdSqlType,
             ForeignKey(issuerCertTable + '.id') if hasIssuer else None,
-            nullable = (not hasIssuer)
+            nullable = (not hasIssuer), index=True
         ),
-        Column('issuer', String, nullable=(not hasIssuer)),
-        Column('authorityKey', LargeBinary, nullable=True),
-        Column('subject', String, nullable=False),
-        Column('subjectKey', LargeBinary, nullable=True),
-        Column('certificate', LargeBinary, nullable=False)
+        Column('issuer'      , Text         , nullable=(not hasIssuer) ),
+        Column('authorityKey', VARBINARY(32), nullable=True, index=True),
+        Column('subject'     , Text         , nullable=False           ),
+        Column('subjectKey'  , VARBINARY(32), nullable=True, index=True),
+        Column('certificate' , LargeBinary  , nullable=False           )
     ]
 
 # tables of country CSCA and DSC certificates
 csca = Table('csca', metadata, *certColumns())
-dsc  = Table('dsc', metadata, *certColumns(issuerCertTable='csca'))
+dsc  = Table('dsc' , metadata, *certColumns(issuerCertTable='csca'))
 
 # table for storing Port protocol challenges used for passport active authentication
 protoChallenges = Table('protoChallenges', metadata,
-    Column('id', Integer, primary_key=True),
-    Column('uid', LargeBinary(20), ForeignKey('accounts.uid'), unique=True, nullable=False),
-    Column('challenge', LargeBinary(32), nullable=False),
-    Column("expires", DateTime(timezone=True), nullable=False)
+    Column('id'       , CidSqlType              , primary_key=True, autoincrement=False            ),
+    Column('uid'      , UserIdSqlType()         , nullable=False  , unique=True        , index=True), # ForeignKey('accounts.uid'), must not be set as account might not exist yet
+    Column('challenge', ChallengeSqlType()      , nullable=False                                   ),
+    Column("expires"  , DateTime(timezone=False), nullable=False                                   )
 )
 
 # table contains info about attested accounts
 accounts = Table('accounts', metadata,
-    Column('uid', LargeBinary(20), primary_key=True), # uid = UserId
-    Column('sod', LargeBinary, nullable=False),
-    Column('aaPublicKey', LargeBinary, nullable=False),
-    Column('sigAlgo', LargeBinary, nullable=True),
-    Column('dg1', LargeBinary, nullable=True),
-    Column('session', LargeBinary, nullable=False), # Note: Should be moved to separate table
-    Column('validUntil', DateTime),
-    Column('loginCount', Integer, default=0),
-    Column('isValid', Boolean)
+    Column('uid'        , UserIdSqlType(), primary_key=True), # uid = UserId
+    Column('sod'        , LargeBinary    , nullable=False  ),
+    Column('aaPublicKey', LargeBinary    , nullable=False  ),
+    Column('sigAlgo'    , LargeBinary    , nullable=True   ),
+    Column('dg1'        , LargeBinary    , nullable=True   ),
+    Column('session'    , LargeBinary    , nullable=False  ), # Note: Should be moved to separate table
+    Column('validUntil' , DateTime(timezone=False)         ),
+    Column('loginCount' , Integer        , default=0       ),
+    Column('isValid'    , Boolean                          )
 )
+
+class PortDbConnectionError(Exception):
+    pass
+
+Base = declarative_base()
 
 class PortDatabaseConnection:
     """Manage ORM connection to save/load objects in database"""
