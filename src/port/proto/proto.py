@@ -136,12 +136,15 @@ class PortProto:
         :param uid: The user ID to generate the challenge for.
         :return: Challenge and expiration time
         """
+        self._log.debug("Generating challenge for uid={}".format(uid))
         now = utils.time_now()
         cet = self._db.findChallengeByUID(uid)
         if cet is not None: # return found challenge if still valid
             if self._has_challenge_expired(cet[1], now):
+                self._log.debug("Deleting existing expired challenge from DB")
                 self._db.deleteChallenge(cet[0].id)
             else:
+                self._log.debug("Found existing challenge")
                 return cet
         # Let's generate new challenge, as non was found or already expired.
         c  = Challenge.generate(now, uid)
@@ -176,16 +179,16 @@ class PortProto:
         self.__verify_emrtd_trustchain(sod, dg14, dg15)
 
         # 3. Verify challenge authentication
-        sigAlgo = None
+        aaSigAlgo = None
         aaPubKey = dg15.aaPublicKey
         if aaPubKey.isEcKey():
             if dg14 is None:
                 raise peDg14Required
             elif dg14.aaSignatureAlgo is None:
                 raise peMissingAAInfoInDg14
-            sigAlgo = dg14.aaSignatureAlgo
+            aaSigAlgo = dg14.aaSignatureAlgo
 
-        self.__verify_challenge(cid, aaPubKey, csigs, sigAlgo)
+        self.__verify_challenge(cid, aaPubKey, csigs, aaSigAlgo)
         self._db.deleteChallenge(cid) # Verifying has succeeded, delete challenge from db
 
         # 4. Generate session key and session
@@ -194,7 +197,7 @@ class PortProto:
 
         # 5. Insert account into db
         et = self._get_default_account_expiration()
-        a = AccountStorage(uid, sod, aaPubKey, sigAlgo, None, s, et)
+        a = AccountStorage(uid, sod, aaPubKey, aaSigAlgo, None, s, et)
         self._db.addOrUpdateAccount(a)
 
         self._log.debug("New account created: uid={}".format(uid.hex()))
@@ -205,7 +208,7 @@ class PortProto:
         self._log.verbose("login_count={}".format(a.loginCount))
         self._log.verbose("dg1=None")
         self._log.verbose("pubkey={}".format(a.aaPublicKey.hex()))
-        self._log.verbose("sigAlgo={}".format("None" if sigAlgo is None else a.sigAlgo.hex()))
+        self._log.verbose("sigAlgo={}".format("None" if aaSigAlgo is None else a.sigAlgo.hex()))
         self._log.verbose("session={}".format(s.bytes().hex()))
 
         # 6. Return user id, session key and session expiry date
@@ -285,7 +288,7 @@ class PortProto:
             msg = "Hi, {} {}!".format(dg1.mrz.surname, dg1.mrz.name)
         return msg
 
-    def __verify_challenge(self, cid: CID, aaPubKey: AAPublicKey, csigs: List[bytes], sigAlgo: SignatureAlgorithm = None ) -> None:
+    def __verify_challenge(self, cid: CID, aaPubKey: AAPublicKey, csigs: List[bytes], aaSigAlgo: SignatureAlgorithm = None ) -> None:
         """
         Check if signature is correct and the time frame is OK
         :raises:
@@ -296,7 +299,7 @@ class PortProto:
 
         try:
             self._log.debug("Verifying challenge cid={}".format(cid))
-            if aaPubKey.isEcKey() and sigAlgo is None:
+            if aaPubKey.isEcKey() and aaSigAlgo is None:
                 raise peMissingParamAASigAlgo
 
             # Verify if challenge has expired expiration time
@@ -308,7 +311,7 @@ class PortProto:
             # Verify challenge signatures
             ccs = [c[0:8], c[8:16], c[16:24], c[24:32]]
             for idx, sig in enumerate(csigs):
-                if not aaPubKey.verifySignature(ccs[idx], sig, sigAlgo):
+                if not aaPubKey.verifySignature(ccs[idx], sig, aaSigAlgo):
                     raise peChallengeVerificationFailed
             self._log.success("Challenge signed with eMRTD was successfully verified!")
         except:
@@ -335,6 +338,9 @@ class PortProto:
         except CertificateVerificationError as e:
             self._log.error("Failed to verify eMRTD certificate trust chain: {}".format(e))
             raise peTrustchainVerificationFailed from e
+        except ProtoError as e:
+            self._log.error("Failed to verify eMRTD certificate trust chain: {}".format(e))
+            raise
         except Exception as e:
             self._log.error("Failed to verify eMRTD certificate trust chain! e={}".format(e))
             self._log.exception(e)
