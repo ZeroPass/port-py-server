@@ -3,6 +3,8 @@ from typing import NamedTuple
 
 
 class DbConfig(NamedTuple):
+    dialect: str #database dialect, e.g.: postgresql, mysql ...
+    url: str
     user: str
     pwd: str
     db: str
