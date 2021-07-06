@@ -82,6 +82,9 @@ def parse_args():
     ap.add_argument("--mdb", default=False,
         action='store_true', help="use MemoryDB for database. --db-* args will be ignored")
 
+    ap.add_argument("--mrtd-pkd", default=None,
+        type=Path, help="path to eMRTD PKD root folder to load PKI certificates from. e.g.: CSCA, DSC, CRLs...")
+
     ap.add_argument("--dev", default=False,
         action='store_true', help="start development version of server")
 
@@ -89,7 +92,7 @@ def parse_args():
         action='store_true', help="dev option: use pre-set fixed challenge instead of random generated")
 
     ap.add_argument("--dev-no-tcv", default=False,
-        action='store_true', help="dev option: do not verify eMRTD PKI trust-chain")
+        action='store_true', help="dev option: do not verify eMRTD PKI trust-chain.\nOverrides --mrtd-pkd")
 
     ap.add_argument("-k", "--key", default=str(_script_path / "tls/server_key.pem"),
         type=str, help="server TLS private key")
@@ -97,9 +100,6 @@ def parse_args():
     ap.add_argument("--log-level", default=0,
         type=int, help="logging level, [0=verbose, 1=debug, 2=info, 3=warn, 4=error]")
 
-
-    ap.add_argument("--mdb-pkd", default=None,
-        type=Path, help="path to eMRTD PKD root folder")
 
     ap.add_argument("--no-tls", default=False,
         action='store_true', help="do not use secure TLS connection")
@@ -160,9 +160,9 @@ def init_log(logLevel):
     fh.setFormatter(formatter)
     l.addHandler(fh)
 
-def load_pkd_to_mdb(mdb: proto.MemoryDB, pkd_path: Path):
+def load_pkd_to_db(db: proto.StorageAPI, pkd_path: Path):
     l = log.getLogger('port.api.server')
-    l.info("Loading PKD certificates into mdb ...")
+    l.info("Loading PKI certificates into DB ...")
     cert_count = 0
     cscas_sk = defaultdict(list)
     cscas_sub = defaultdict(list)
@@ -205,7 +205,7 @@ def load_pkd_to_mdb(mdb: proto.MemoryDB, pkd_path: Path):
                     l.warning("Skipping DSC certificate because no issuing CSCA was found. C={} serial={} key_id={}"
                         .format(CountryCode(cert.issuerCountry), cert.serial_number, cert.subjectKey.hex()))
                     continue
-                mdb.addDscCertificate(cert, issuerId)
+                db.addDsc(cert, issuerId)
                 cert_count+=1
             else:
                 l.warning("Skipping certificate because it is not CA but has key_cert_sign constrain. C={} serial={} key_id={}"
@@ -213,8 +213,7 @@ def load_pkd_to_mdb(mdb: proto.MemoryDB, pkd_path: Path):
         except SeEntryAlreadyExists:
             pass
         except Exception as e:
-            l.warning("Could not load certificate. C={} serial={} key_id={}"
-                .format(format_alpha2(cert.issuerCountry), cert.serial_number, cert.subjectKey.hex()))
+            l.warning("Could not load certificate: {}".format(cert))
             l.exception(e)
 
     # Now add cscas to the database
@@ -230,7 +229,7 @@ def load_pkd_to_mdb(mdb: proto.MemoryDB, pkd_path: Path):
                             .format(CountryCode(csca.issuerCountry), csca.serial_number, csca.subjectKey.hex()))
                         continue
                 try:
-                    mdb.addCscaCertificate(csca, issuerId)
+                    db.addCsca(csca, issuerId)
                     count+=1
                 except SeEntryAlreadyExists:
                     pass
@@ -277,10 +276,11 @@ def main():
 
     if args['mdb'] and not args['db_dialect']:
         db  = proto.MemoryDB()
-        if args['mdb_pkd'] and not args['dev_no_tcv']:
-            load_pkd_to_mdb(db, args['mdb_pkd'])
     else:
         db = proto.DatabaseAPI(config.database.dialect, config.database.url, config.database.db, config.database.user, config.database.pwd)
+
+    if args['mrtd_pkd'] and not args['dev_no_tcv']:
+            load_pkd_to_db(db, args['mrtd_pkd'])
 
     # Setup and run server
     if args["dev"]:
