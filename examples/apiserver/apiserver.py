@@ -64,14 +64,23 @@ def parse_args():
     ap.add_argument("-c", "--cert", default=str(_script_path / "tls/port_server.cer"),
         type=str, help="server TLS certificate")
 
-    ap.add_argument("--db-user", default="",
+    ap.add_argument("--db-dialect",
+        type=str, help="database dialect e.g.: postgresql, mysql etc...\nOverrides --mdb")
+
+    ap.add_argument("--db-url", default="localhost:5432",
+        type=str, help="database URL")
+
+    ap.add_argument("--db-user",
         type=str, help="database user name")
 
     ap.add_argument("--db-pwd", default="",
         type=str, help="database password")
 
-    ap.add_argument("--db-name", default="",
+    ap.add_argument("--db-name",
         type=str, help="database name")
+
+    ap.add_argument("--mdb", default=False,
+        action='store_true', help="use MemoryDB for database. --db-* args will be ignored")
 
     ap.add_argument("--dev", default=False,
         action='store_true', help="start development version of server")
@@ -88,8 +97,6 @@ def parse_args():
     ap.add_argument("--log-level", default=0,
         type=int, help="logging level, [0=verbose, 1=debug, 2=info, 3=warn, 4=error]")
 
-    ap.add_argument("--mdb", default=False,
-        action='store_true', help="use MemoryDB for database. --db-* args will be ignored")
 
     ap.add_argument("--mdb-pkd", default=None,
         type=Path, help="path to eMRTD PKD root folder")
@@ -253,9 +260,11 @@ def main():
 
     config = Config(
         database = DbConfig(
-            user = args['db_user'],
-            pwd  = args['db_pwd'],
-            db   = args['db_name']
+            dialect = args['db_dialect'],
+            url     = args['db_url'],
+            user    = args['db_user'],
+            pwd     = args['db_pwd'],
+            db      = args['db_name']
         ),
         api_server = ServerConfig(
             host = args['url'],
@@ -266,12 +275,12 @@ def main():
         challenge_ttl = args['challenge_ttl']
     )
 
-    if args['mdb']:
+    if args['mdb'] and not args['db_dialect']:
         db  = proto.MemoryDB()
         if args['mdb_pkd'] and not args['dev_no_tcv']:
             load_pkd_to_mdb(db, args['mdb_pkd'])
     else:
-        db = proto.DatabaseAPI('postgresql', 'localhost:5432', config.database.db, config.database.user, config.database.pwd)
+        db = proto.DatabaseAPI(config.database.dialect, config.database.url, config.database.db, config.database.user, config.database.pwd)
 
     # Setup and run server
     if args["dev"]:
