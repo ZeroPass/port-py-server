@@ -9,7 +9,6 @@ def has_expired(t1: datetime, t2: datetime):
     return t1 < t2
 
 def format_cert_et(cert: Certificate, current_time: datetime = time_now()):
-    """ """
     return "nvb=[{}] nva=[{}] now=[{}]".format(cert.notValidBefore, cert.notValidAfter, current_time)
 
 def code_to_country_name(code: str):
@@ -24,11 +23,11 @@ def code_to_country_name(code: str):
     return c.name
 
 def int_count_bytes(n: int):
-    bytes = 0
-    while(n):
-        bytes += 1
+    ibytes = 0
+    while n:
+        ibytes += 1
         n >>= 8
-    return bytes
+    return ibytes
 
 def format_alpha2(code: str):
     """

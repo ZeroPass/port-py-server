@@ -14,7 +14,7 @@ from pymrtd.pki.keys import AAPublicKey, SignatureAlgorithm
 from pymrtd.pki.x509 import CertificateVerificationError, CscaCertificate, DocumentSignerCertificate
 
 from port.database.storage.accountStorage import AccountStorage
-from port.database.storage.x509Storage import CscaStorage, DscStorage
+from port.database.storage.x509Storage import CscaStorage
 
 from threading import Timer
 from typing import Final, List, Optional, Tuple, Union
@@ -41,7 +41,7 @@ class PeMissingParam(ProtoError):
 
 class PePreconditionFailed(ProtoError):
     """
-    One or more condition in verification of emrtd PKI trustchain failed.
+    One or more condition in verification of eMRTD PKI trustchain failed.
     Or when verifying SOD contains specific DG e.g.: DG1
     """
     code = 412

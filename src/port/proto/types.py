@@ -9,24 +9,24 @@ class IIntegerId(int):
     min:int
     max:int
 
-    def __new__(cls, id: Union[int, bytes, str], *args, **kwargs):
-        if isinstance(id, int):
-            if not (cls.min <= id <= cls.max):
-                raise ValueError("integer out of range to construct {}. id_value={}".format(cls.__name__, id))
-        elif isinstance(id, bytes):
+    def __new__(cls, idValue: Union[int, bytes, str], *args, **kwargs): #pylint: disable=unused-argument
+        if isinstance(idValue, int):
+            if not (cls.min <= idValue <= cls.max): #pylint: disable=superfluous-parens
+                raise ValueError("integer out of range to construct {}. id_value={}".format(cls.__name__, idValue))
+        elif isinstance(idValue, bytes):
             # check if we have required number of bytes
             mn = max(abs(cls.min), abs(cls.max))
             nb = int_count_bytes(mn)
-            if len(id) < nb:
+            if len(idValue) < nb:
                 raise ValueError("not enough bytes to construct {}".format(cls.__name__))
-            id = bytes_to_int(id[0:nb], signed=True)
-        elif isinstance(id, str):
-            id = int(id, *args)
-            if not (cls.min <= id <= cls.max):
+            idValue = bytes_to_int(idValue[0:nb], signed=True)
+        elif isinstance(idValue, str):
+            idValue = int(idValue, *args)
+            if not (cls.min <= idValue <= cls.max): #pylint: disable=superfluous-parens
                 raise ValueError("out of range to construct {}".format(cls.__name__))
         else:
-            raise ValueError("invalid type to construct {}. id_type={}".format(cls.__name__, type(id)))
-        return cast(cls, super().__new__(cls, id))
+            raise ValueError("invalid type to construct {}. id_type={}".format(cls.__name__, type(idValue)))
+        return cast(cls, super().__new__(cls, idValue))
 
     @classmethod
     def fromHex(cls, hexstr: str):
@@ -74,4 +74,4 @@ class CountryCode(str):
     Class represents ISO-3166 Alpha-2 country code
     """
     def __new__(cls, content):
-      return super().__new__(cls, format_alpha2(content))
+        return super().__new__(cls, format_alpha2(content))

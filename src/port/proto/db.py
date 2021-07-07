@@ -1,15 +1,11 @@
 import logging
 
-from .challenge import CID, Challenge
-from .user import UserId
-from .types import CertificateId, CountryCode
-
 from abc import ABC, abstractmethod
 from asn1crypto import x509
 from datetime import datetime
 
 from port.database.storage.storageManager import PortDatabaseConnection
-from port.database.storage.challengeStorage import *
+from port.database.storage.challengeStorage import ChallengeStorage
 from port.database.storage.accountStorage import AccountStorage
 from port.database.storage.x509Storage import DscStorage, CscaStorage
 from port.proto.utils import int_to_bytes
@@ -17,6 +13,10 @@ from port.proto.utils import int_to_bytes
 from pymrtd.pki.x509 import Certificate, CscaCertificate, DocumentSignerCertificate
 from sqlalchemy import or_
 from typing import Final, List, Optional, Tuple
+
+from .challenge import CID, Challenge
+from .user import UserId
+from .types import CertificateId, CountryCode
 
 class StorageAPIError(Exception):
     pass
@@ -58,7 +58,6 @@ class StorageAPI(ABC):
         :param uid: User ID to searche the challenge for
         :return: Optional[Tuple[Challenge, datetime]]
         """
-        pass
 
     @abstractmethod
     def addChallenge(self, uid: UserId, challenge: Challenge, expires: datetime) -> None:
@@ -69,7 +68,6 @@ class StorageAPI(ABC):
         :param expires: The challenge expiration datetime.
         :raise: SeEntryAlreadyExists if challenge already exists for user
         """
-        pass
 
     @abstractmethod
     def deleteChallenge(self, cid: CID) -> None:
@@ -81,7 +79,6 @@ class StorageAPI(ABC):
         Deletes all expired challenges from storage.
         :param time: Challenges that have expiration time less then time are deleted.
         """
-        pass
 
     # User methods
     @abstractmethod
@@ -99,14 +96,12 @@ class StorageAPI(ABC):
     @abstractmethod
     def getAccount(self, uid: UserId) -> AccountStorage:
         """ Get account """
-        pass
 
     @abstractmethod
     def getAccountExpiry(self, uid: UserId) -> datetime:
         """ Get account's credentials expiry """
-        pass
 
-    # EMRTD PKI certificates methods
+    # eMRTD PKI certificates methods
     @abstractmethod
     def addCsca(self, csca: CscaCertificate, issuerId: Optional[CertificateId] = None) -> CertificateId:
         """
@@ -115,16 +110,14 @@ class StorageAPI(ABC):
         :param issuerId: The CSCA issuerId in case the CSCA is linked (Optional).
         :return: The CSCA CertificateId
         """
-        pass
 
     @abstractmethod
-    def findCsca(self, id: CertificateId)-> Optional[CscaStorage]:
+    def findCsca(self, certId: CertificateId)-> Optional[CscaStorage]:
         """
         Returns CSCA certificate storage objects that match the id.
-        :param id: The certificate id to search for.
+        :param certId: The certificate id to search for.
         :return: list of CscaStorage, or None if no CSCA certificate was found.
         """
-        pass
 
     @abstractmethod
     def findCscaBySerial(self, issuer: x509.Name, serial: int) -> Optional[CscaStorage]:
@@ -134,7 +127,6 @@ class StorageAPI(ABC):
         :param serial: CSCA serial number to search for.
         :return: CscaStorage, or None if no CSCA certificate was found.
         """
-        pass
 
     @abstractmethod
     def findCscaCertificates(self, subject: x509.Name, subjectKey: Optional[bytes])-> Optional[List[CscaStorage]]:
@@ -148,7 +140,6 @@ class StorageAPI(ABC):
         :param subjectKey: Certificate subject key to search for.
         :return: list of CscaStorage, or None if no CSCA certificate was found.
         """
-        pass
 
     @abstractmethod
     def findCscaCertificatesBySubject(self, subject: x509.Name) -> Optional[List[CscaStorage]]:
@@ -157,7 +148,6 @@ class StorageAPI(ABC):
         :param subject: Certificate subject name to search for.
         :return: list of CscaStorage, or None if no CSCA certificate was found.
         """
-        pass
 
     @abstractmethod
     def findCscaCertificatesBySubjectKey(self, country: CountryCode, subjectKey: bytes) -> Optional[List[CscaStorage]]:
@@ -167,7 +157,6 @@ class StorageAPI(ABC):
         :param subjectKey: Certificate subject key to search for.
         :return: list of CscaStorage, or None if no CSCA certificate was found.
         """
-        pass
 
     @abstractmethod
     def addDsc(self, dsc: DocumentSignerCertificate, issuerId: CertificateId) -> CertificateId:
@@ -177,16 +166,14 @@ class StorageAPI(ABC):
         :param issuerId: The DSC issuerId.
         :return: The dsc CertificateId
         """
-        pass
 
     @abstractmethod
-    def findDsc(self, id: CertificateId) -> Optional[DscStorage]:
+    def findDsc(self, certId: CertificateId) -> Optional[DscStorage]:
         """
         Returns DSC certificate storage that matches the certificate id.
-        :param id: The DSC certificate id.
+        :param certId: The DSC certificate id.
         :returns: DscStorage
         """
-        pass
 
     @abstractmethod
     def findDscBySerial(self, issuer: x509.Name, serial: int) -> Optional[DscStorage]:
@@ -196,7 +183,6 @@ class StorageAPI(ABC):
         :param serial: The DSC certificate serial number.
         :returns: DscStorage
         """
-        pass
 
     @abstractmethod
     def findDscBySubjectKey(self, subjectKey: bytes) -> Optional[DscStorage]:
@@ -205,7 +191,6 @@ class StorageAPI(ABC):
         :param subjectKey: The DSC certificate subject key.
         :returns: DscStorage
         """
-        pass
 
 
 class DatabaseAPIError(StorageAPIError):
@@ -228,7 +213,7 @@ class DatabaseAPI(StorageAPI):
         :param password: The database password.
         :raises: PortDbConnectionError on error.
         '''
-        self._log = logging.getLogger(DatabaseAPI.__name__)
+        self._log = logging.getLogger('proto.db.api')
         self._dbc = PortDatabaseConnection(dialect, host, db, username, password)
 
     def _commit(self):
@@ -668,15 +653,15 @@ class MemoryDB(StorageAPI):
         self._d['cscas'].add(cs)
         return cs.id
 
-    def findCsca(self, id: CertificateId)-> Optional[CscaStorage]:
+    def findCsca(self, certId: CertificateId)-> Optional[CscaStorage]:
         """
         Returns CSCA certificate storage objects that match the id.
-        :param id: The certificate id to search for.
+        :param certId: The certificate id to search for.
         :return: list of CscaStorage, or None if no CSCA certificate was found.
         """
-        assert isinstance(id, CertificateId)
+        assert isinstance(certId, CertificateId)
         for csca in self._d['cscas']:
-            if csca.id == id:
+            if csca.id == certId:
                 return csca
         return None
 
@@ -767,15 +752,15 @@ class MemoryDB(StorageAPI):
         self._d['dscs'].add(ds)
         return ds.id
 
-    def findDsc(self, id: CertificateId) -> Optional[DscStorage]:
+    def findDsc(self, certId: CertificateId) -> Optional[DscStorage]:
         """
         Returns DSC certificate storage that matches the certificate id.
-        :param id: The DSC certificate id.
+        :param certId: The DSC certificate id.
         :returns: DscStorage
         """
-        assert isinstance(id, CertificateId)
+        assert isinstance(certId, CertificateId)
         for dsc in self._d['dscs']:
-            if dsc.id == id:
+            if dsc.id == certId:
                 return dsc
         return None
 

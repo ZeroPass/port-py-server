@@ -6,7 +6,7 @@ from datetime import datetime
 from cryptography.hazmat.primitives.hashes import Hash, SHA512_256
 from cryptography.hazmat.backends import default_backend
 from port.proto.utils import int_to_bytes
-from typing import cast, Union
+from typing import cast
 
 class CID(IIntegerId):
     """ Represents challenge id """
@@ -32,7 +32,7 @@ class Challenge(bytes):
     @property
     def id(self) -> CID:
         if not hasattr(self, "_id"):
-            self._id = CID(self)
+            self._id = CID(self) #pylint: disable=attribute-defined-outside-init
         return self._id
 
     @staticmethod

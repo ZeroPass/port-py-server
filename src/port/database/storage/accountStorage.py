@@ -7,10 +7,7 @@ from pymrtd.pki.keys import AAPublicKey, SignatureAlgorithm
 from datetime import datetime
 from typing import Union
 
-class AccountStorageError(Exception):
-    pass
-
-class AccountStorage(object):
+class AccountStorage:
     """Class for interaction between code structure and database"""
     uid: UserId
     sod: bytes

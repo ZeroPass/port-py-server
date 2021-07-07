@@ -23,52 +23,58 @@ from port.proto.challenge import Challenge, CID
 from port.proto.types import CertificateId, CountryCode, SodId
 from port.proto.user import UserId
 
-from typing import Optional
+from typing import Final, Optional
 
 @compiles(VARBINARY, "postgresql")
-def compile_varbinary_postgresql(type_, compiler, **kw):
+def compile_varbinary_postgresql(type_, compiler, **kw): #pylint: disable=unused-argument
     return "BYTEA"
 
-class CertIdSqlType(TypeDecorator): # CertificateId
+class CertIdSqlType(TypeDecorator): #pylint: disable=abstract-method
     impl = BigInteger
+    python_type = CertificateId
     cache_ok = True
     def process_result_value(self, value, dialect):
         return CertificateId(value) if value is not None else value
 
-class ChallengeSqlType(TypeDecorator):
+class ChallengeSqlType(TypeDecorator): #pylint: disable=abstract-method
     impl = LargeBinary(32)
+    python_type = Challenge
     cache_ok = True
     def process_result_value(self, value, dialect):
         return Challenge(value) if value is not None else value
 
-class CidSqlType(TypeDecorator):
+class CidSqlType(TypeDecorator): #pylint: disable=abstract-method
     impl = Integer
+    python_type = CID
     cache_ok = True
     def process_result_value(self, value, dialect):
         return CID(value) if value is not None else value
 
-class CountryCodeSqlType(TypeDecorator):
+class CountryCodeSqlType(TypeDecorator): #pylint: disable=abstract-method
     # ISO-3166 Alpha-2 country code
     impl = String(2)
+    python_type = CountryCode
     cache_ok = True
     def process_result_value(self, value, dialect):
         return CountryCode(value) if value is not None else value
 
-class SodIdSqlType(TypeDecorator):
+class SodIdSqlType(TypeDecorator): #pylint: disable=abstract-method
     impl = BigInteger
+    python_type = SodId
     cache_ok = True
     def process_result_value(self, value, dialect):
         return SodId(value) if value is not None else value
 
-class UserIdSqlType(TypeDecorator):
+class UserIdSqlType(TypeDecorator): #pylint: disable=abstract-method
     impl = VARBINARY(20)
+    python_type = UserId
     cache_ok = True
     def process_result_value(self, value, dialect):
         return UserId(value) if value is not None else value
 
 
-"""Database structures"""
-metadata = MetaData()
+# Database structures
+metadata: Final = MetaData()
 crl = Table('crl', metadata,
     Column('id', Integer, primary_key=True),
     Column('object', LargeBinary),
@@ -101,11 +107,11 @@ def certColumns(issuerCertTable: Optional[str] = None):
     ]
 
 # tables of country CSCA and DSC certificates
-csca = Table('csca', metadata, *certColumns())
-dsc  = Table('dsc' , metadata, *certColumns(issuerCertTable='csca'))
+csca: Final = Table('csca', metadata, *certColumns())
+dsc: Final  = Table('dsc' , metadata, *certColumns(issuerCertTable='csca'))
 
 # table for storing Port protocol challenges used for passport active authentication
-protoChallenges = Table('protoChallenges', metadata,
+protoChallenges: Final = Table('proto_challenges', metadata,
     Column('id'       , CidSqlType              , primary_key=True, autoincrement=False            ),
     Column('uid'      , UserIdSqlType()         , nullable=False  , unique=True        , index=True), # ForeignKey('accounts.uid'), must not be set as account might not exist yet
     Column('challenge', ChallengeSqlType()      , nullable=False                                   ),
@@ -113,7 +119,7 @@ protoChallenges = Table('protoChallenges', metadata,
 )
 
 # table contains info about attested accounts
-accounts = Table('accounts', metadata,
+accounts: Final = Table('accounts', metadata,
     Column('uid'        , UserIdSqlType(), primary_key=True), # uid = UserId
     Column('sod'        , LargeBinary    , nullable=False  ),
     Column('aaPublicKey', LargeBinary    , nullable=False  ),

@@ -2,7 +2,7 @@ from datetime import datetime
 from port.proto.challenge import CID, Challenge
 from port.proto.user import UserId
 
-class ChallengeStorage(object):
+class ChallengeStorage:
     """Class for interaction between code structure and database"""
     id: CID
     uid: UserId

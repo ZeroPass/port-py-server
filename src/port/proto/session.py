@@ -70,6 +70,7 @@ class Session:
         cmac = self.getMAC(data)
         return hmac.compare_digest(mac, cmac)
 
+    @staticmethod
     def fromBytes(rawSession: bytes) -> "Session":
         assert isinstance(rawSession, bytes)
 

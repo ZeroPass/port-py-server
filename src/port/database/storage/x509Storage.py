@@ -8,7 +8,7 @@ from pymrtd.pki.x509 import Certificate, CscaCertificate, DocumentSignerCertific
 
 from typing import List, Optional
 
-class CscaStorageError(Exception):
+class CertificateStorage:
     pass
 
 class DscStorageError(Exception):
