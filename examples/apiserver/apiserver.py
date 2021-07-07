@@ -1,6 +1,5 @@
 #!/usr/bin/python
 import argparse, coloredlogs, os, signal, sys, ssl
-import port.log as log
 
 from collections import defaultdict
 from datetime import datetime, timedelta
@@ -10,6 +9,7 @@ _script_path = Path(os.path.dirname(sys.argv[0]))
 #sys.path.append(str(_script_path / Path("../../")))
 
 from port import proto
+from port import log
 from port.api import PortApiServer
 from port.proto.db import SeEntryAlreadyExists
 from port.proto.user import UserId
@@ -43,11 +43,11 @@ class DevProto(proto.PortProto):
     def _get_default_account_expiration(self):
         return proto.utils.time_now() + timedelta(minutes=1)
 
-    def __validate_certificate_path(self, sod: ef.SOD):
-            if not self._no_tcv:
-                super().__validate_certificate_path(sod)
-            else:
-                self._log.warning("Skipping verification of eMRTD certificate trustchain")
+    def __validate_certificate_path(self, sod: ef.SOD): #pylint: disable=unused-private-member
+        if not self._no_tcv:
+            super().__validate_certificate_path(sod)
+        else:
+            self._log.warning("Skipping verification of eMRTD certificate trustchain")
 
 class DevApiServer(PortApiServer):
     def __init__(self, db: proto.StorageAPI, config: Config, fc=False, no_tcv=False):
@@ -132,7 +132,7 @@ def init_log(logLevel):
     l = log.getLogger()
     coloredlogs.install(level=log.getLevelName(logLevel),
         logger=l,
-        fmt='[%(asctime)s] %(levelname)-8s %(name)s %(message)s',
+        fmt='[%(asctime)s] %(levelname)-8s %(thread)-8d %(name)s %(message)s',
         field_styles={
             'asctime': {'color': 'white'},
             'levelname': {'color': 'white', 'bold': True}
@@ -164,7 +164,7 @@ def load_pkd_to_db(db: proto.StorageAPI, pkd_path: Path):
     l = log.getLogger('port.api.server')
     l.info("Loading PKI certificates into DB ...")
     cert_count = 0
-    cscas_sk = defaultdict(list)
+    cscas_sk  = defaultdict(list)
     cscas_sub = defaultdict(list)
 
     def get_issuer_id(cert: x509.Certificate):
@@ -175,7 +175,7 @@ def load_pkd_to_db(db: proto.StorageAPI, pkd_path: Path):
                        cert.notValidAfter <= csca.notValidAfter:
                         return CertificateId.fromCertificate(csca)
 
-        if (cert.issuer.human_friendly in cscas_sub):
+        if cert.issuer.human_friendly in cscas_sub:
             for csca in cscas_sub[cert.issuer.human_friendly]:
                 if cert.notValidBefore >= csca.notValidBefore and \
                    cert.notValidAfter <= csca.notValidAfter:
@@ -225,7 +225,7 @@ def load_pkd_to_db(db: proto.StorageAPI, pkd_path: Path):
                 if csca.self_signed == 'no':
                     issuerId = get_issuer_id(csca)
                     if issuerId is None:
-                        l.warning("Skipping LCSA because no issuing CSCA was found. LCSCA C={} serial={} key_id={}"
+                        l.warning("Skipping LCSCA because no issuing CSCA was found. LCSCA C={} serial={} key_id={}"
                             .format(CountryCode(csca.issuerCountry), csca.serial_number, csca.subjectKey.hex()))
                         continue
                 try:
@@ -254,7 +254,7 @@ def main():
     ctx = None
     if not args['no_tls']:
         ctx = ssl.SSLContext( ssl.PROTOCOL_TLS_SERVER)
-        ctx.options | ssl.OP_SINGLE_ECDH_USE | ssl.OP_NO_TLSv1_2 | ssl.OP_NO_TLSv1_1 | ssl.OP_NO_TLSv1 | ssl.OP_NO_SSLv3 | ssl.OP_NO_SSLv2
+        ctx.options |= ssl.OP_SINGLE_ECDH_USE | ssl.OP_NO_TLSv1_2 | ssl.OP_NO_TLSv1_1 | ssl.OP_NO_TLSv1 | ssl.OP_NO_SSLv3 | ssl.OP_NO_SSLv2
         ctx.load_cert_chain(args['cert'], args['key'])
 
     config = Config(
@@ -280,7 +280,7 @@ def main():
         db = proto.DatabaseAPI(config.database.dialect, config.database.url, config.database.db, config.database.user, config.database.pwd)
 
     if args['mrtd_pkd'] and not args['dev_no_tcv']:
-            load_pkd_to_db(db, args['mrtd_pkd'])
+        load_pkd_to_db(db, args['mrtd_pkd'])
 
     # Setup and run server
     if args["dev"]:
@@ -288,7 +288,7 @@ def main():
     else:
         sapi = PortApiServer(db, config)
 
-    def signal_handler(sig, frame):
+    def signal_handler(sig, frame): #pylint: disable=unused-argument
         print('Stopping server...')
         sapi.stop()
         print('Stopping server... SUCCESS')
