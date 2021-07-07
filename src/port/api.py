@@ -3,13 +3,13 @@ import os, port.log as log
 from base64 import b64decode
 
 from jsonrpc import Dispatcher, JSONRPCResponseManager as JRPCRespMgr
-from jsonrpc.exceptions import JSONRPCDispatchException, JSONRPCServerError, JSONRPCInternalError
+from jsonrpc.exceptions import JSONRPCDispatchException
 
 from port import proto
 from port.settings import Config
 
 from pymrtd import ef
-from typing import Callable, List, NoReturn, Union
+from typing import Callable, List, NoReturn
 
 from werkzeug.wrappers import Request, Response
 from werkzeug.serving import run_simple
@@ -24,7 +24,7 @@ def _b64csigs_to_bcsigs(str_csigs: List[str]) -> List[bytes]:
     """ Convert list of base64 encoded signatures to list of byte signatures """
     csigs = []
     for scsig in str_csigs:
-        csigs.append(try_deser(lambda: b64decode(scsig)))
+        csigs.append(try_deser(lambda sig=scsig: b64decode(sig)))
     return csigs
 
 class PortApiServer:
@@ -41,16 +41,16 @@ class PortApiServer:
 
     def start(self):
         self._proto.start()
-        run_simple(self._conf.host, self._conf.port, self.__handle_request, use_reloader=True, ssl_context=self._conf.ssl_ctx, threaded=True)
+        run_simple(self._conf.host, self._conf.port, self.__handle_request, use_reloader=False, ssl_context=self._conf.ssl_ctx, threaded=True)
 
     def stop(self):
         self._proto.stop()
 
-    def portapi(api_f: Callable): # pylint: disable=no-self-argument
+    def portapi(api_f: Callable): #pylint: disable=no-self-argument
         def wrapped_api_f(self, *args, **kwargs):
-            self.__log_api_call(api_f, **kwargs)
-            ret=api_f(self, *args, **kwargs) # pylint: disable=not-callable
-            self.__log_api_response(api_f, ret)
+            self.__log_api_call(api_f, **kwargs) #pylint: disable=protected-access
+            ret=api_f(self, *args, **kwargs) #pylint: disable=not-callable
+            self.__log_api_response(api_f, ret) #pylint: disable=protected-access
             return ret
         return wrapped_api_f
 
@@ -63,7 +63,7 @@ class PortApiServer:
         Challenge is base64 encoded.
         """
         try:
-            pong = int.from_bytes(os.urandom(4), 'big')
+            pong = (proto.utils.bytes_to_int(os.urandom(4)) + ping) % 0xFFFFFFFF
             return { "pong": pong }
         except Exception as e:
             self.__handle_exception(e)
@@ -120,7 +120,6 @@ class PortApiServer:
                  'session_key' - base64 encoded session key
                  'expires'     - unix timestamp of time when session will expire
         """
-
         try:
             uid   = try_deser(lambda: proto.UserId.fromBase64(uid))
             sod   = try_deser(lambda: ef.SOD.load(b64decode(sod)))
@@ -130,8 +129,8 @@ class PortApiServer:
             if dg14 is not None:
                 dg14 = try_deser(lambda: ef.DG14.load(b64decode(dg14)))
 
-            uid, sk, set = self._proto.register(uid, sod, dg15, cid, csigs, dg14)
-            return { "uid": uid.toBase64(), "session_key": sk.toBase64(), "expires": int(set.timestamp()) }
+            uid, sk, et = self._proto.register(uid, sod, dg15, cid, csigs, dg14)
+            return { "uid": uid.toBase64(), "session_key": sk.toBase64(), "expires": int(et.timestamp()) }
         except Exception as e:
             self.__handle_exception(e)
 
@@ -155,8 +154,8 @@ class PortApiServer:
             if dg1 is not None:
                 dg1 = try_deser(lambda: ef.DG1.load(b64decode(dg1)))
 
-            sk, set = self._proto.login(uid, cid, csigs, dg1)
-            return { "session_key": sk.toBase64(), "expires": int(set.timestamp()) }
+            sk, et = self._proto.login(uid, cid, csigs, dg1)
+            return { "session_key": sk.toBase64(), "expires": int(et.timestamp()) }
         except Exception as e:
             self.__handle_exception(e)
 
