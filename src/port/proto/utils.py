@@ -1,3 +1,5 @@
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.hashes import Hash, SHA512_256
 import pycountry
 from datetime import datetime
 from pymrtd.pki.x509 import Certificate
@@ -75,3 +77,14 @@ def bytes_to_int(data: bytes, signed: bool = True) -> int:
     :returns: Decoded integer number.
     """
     return int.from_bytes(data, byteorder='big', signed=signed)
+
+
+def sha512_256(data: bytes) -> bytes:
+    """
+    Returns hash of SHA-512/256.
+    :param data: data to hash.
+    :return: hash in bytes
+    """
+    h = Hash(SHA512_256(), backend=default_backend())
+    h.update(data)
+    return h.finalize()

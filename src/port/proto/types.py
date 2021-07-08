@@ -1,6 +1,4 @@
-from .utils import bytes_to_int, format_alpha2, int_count_bytes
-from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives.hashes import Hash, SHA512_256
+from .utils import bytes_to_int, format_alpha2, int_count_bytes, sha512_256
 from pymrtd import ef
 from pymrtd.pki import x509
 from typing import cast, Union
@@ -49,9 +47,7 @@ class CertificateId(IIntegerId):
 
     @classmethod
     def fromCertificate(cls, crt: x509.Certificate) -> "CertificateId":
-        h = Hash(SHA512_256(), backend=default_backend())
-        h.update(crt.dump())
-        return cls(h.finalize())
+        return sha512_256(crt.dump())
 
 class SodId(IIntegerId):
     """
@@ -65,9 +61,7 @@ class SodId(IIntegerId):
 
     @classmethod
     def fromSOD(cls, sod: ef.SOD) -> "SodId":
-        h = Hash(SHA512_256(), backend=default_backend())
-        h.update(sod.dump())
-        return cls(h.finalize())
+        return sha512_256(sod.dump())
 
 class CountryCode(str):
     """
