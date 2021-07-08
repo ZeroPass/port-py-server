@@ -6,12 +6,12 @@ logging.addLevelName(logging.SUCCESS, 'SUCCESS')
 logging.VERBOSE = 5  # between NOTSET and DEBUG
 logging.addLevelName(logging.VERBOSE, 'VERBOSE')
 
-from logging import (
+from logging import ( #pylint: disable=wrong-import-position
     FileHandler,
     Formatter,
     getLevelName,
     VERBOSE,
-    DEBUG, 
+    DEBUG,
     INFO,
     SUCCESS,
     WARN,
@@ -20,8 +20,20 @@ from logging import (
     CRITICAL
 )
 
+__all__ = [
+    "getLevelName",
+    "VERBOSE",
+    "DEBUG",
+    "INFO",
+    "SUCCESS",
+    "WARN",
+    "ERROR",
+    "FATAL",
+    "CRITICAL"
+]
 
-def getLogger(name = None):
+
+def getLogger(name = None) -> logging.Logger:
     """
     Install Log class as default logging class and returns new or existing logger by name.
     Note: this will install Log as default logging class for all loggers
