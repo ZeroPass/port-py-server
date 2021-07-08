@@ -12,7 +12,8 @@ from port.proto.utils import int_to_bytes
 
 from pymrtd.pki.x509 import Certificate, CscaCertificate, DocumentSignerCertificate
 from sqlalchemy import or_
-from typing import Final, List, Optional, Tuple
+from sqlalchemy.orm.scoping import scoped_session
+from typing import Final, List, NoReturn, Optional, Tuple
 
 from .challenge import CID, Challenge
 from .user import UserId
@@ -66,7 +67,7 @@ class StorageAPI(ABC):
         :param uid: User ID for which the challenge was created
         :param challenge:
         :param expires: The challenge expiration datetime.
-        :raise: SeEntryAlreadyExists if challenge already exists for user
+        :raises: SeEntryAlreadyExists if challenge already exists for user
         """
 
     @abstractmethod
@@ -193,6 +194,7 @@ class StorageAPI(ABC):
         """
 
 
+
 class DatabaseAPIError(StorageAPIError):
     pass
 
@@ -216,14 +218,14 @@ class DatabaseAPI(StorageAPI):
         self._log = logging.getLogger('proto.db.api')
         self._dbc = PortDatabaseConnection(dialect, host, db, username, password)
 
-    def _commit(self):
-        try:
-            self._dbc.getSession().commit()
-        except Exception as e:
-            self._log.error("An exception was encountered while tryping to commit to db!")
-            self._log.exception(e)
-            self._dbc.getSession().rollback()
-            raise DatabaseAPIError(e) from None
+    @property
+    def __db(self) -> scoped_session:
+        return self._dbc.session
+
+    def __handle_exception(self, e) -> NoReturn:
+        self._log.error('An exception was encountered while trying to transact with DB!')
+        self._log.exception(e)
+        raise DatabaseAPIError(e) from None
 
     def getChallenge(self, cid: CID) -> Tuple[Challenge, datetime]:
         """
@@ -232,20 +234,22 @@ class DatabaseAPI(StorageAPI):
 
         :param cid: Challenge id
         :return: Tuple[Challenge, datetime]
-        :raises:
-            DatabaseAPIError: If challenge is not found
+        :raises: DatabaseAPIError if challenge is not found, or DB connection error.
         """
         assert isinstance(cid, CID)
-        cs = self._dbc.getSession() \
-           .query(ChallengeStorage) \
-           .filter(ChallengeStorage.id == cid) \
-           .first()
+        try:
+            cs = self.__db \
+               .query(ChallengeStorage) \
+               .filter(ChallengeStorage.id == cid) \
+               .first()
 
-        if cs is None:
-            raise seChallengeNotFound
-        c = cs.challenge
-        t = cs.expires
-        return (c, t)
+            if cs is None:
+                raise seChallengeNotFound
+            c = cs.challenge
+            t = cs.expires
+            return (c, t)
+        except Exception as e:
+            self.__handle_exception(e)
 
     def findChallengeByUID(self, uid: UserId) -> Optional[Tuple[Challenge, datetime]]:
         """
@@ -254,18 +258,22 @@ class DatabaseAPI(StorageAPI):
 
         :param uid: User ID to searche the challenge for
         :return: Optional[Tuple[Challenge, datetime]]
+        :raises: DatabaseAPIError on DB connection errors.
         """
         assert isinstance(uid, UserId)
-        cs = self._dbc.getSession() \
-           .query(ChallengeStorage) \
-           .filter(ChallengeStorage.uid == uid) \
-           .first()
+        try:
+            cs = self.__db \
+               .query(ChallengeStorage) \
+               .filter(ChallengeStorage.uid == uid) \
+               .first()
 
-        if cs is None:
-            return None
-        c = cs.challenge
-        t = cs.expires
-        return (c, t)
+            if cs is None:
+                return None
+            c = cs.challenge
+            t = cs.expires
+            return (c, t)
+        except Exception as e:
+            self.__handle_exception(e)
 
     def addChallenge(self, uid: UserId, challenge: Challenge, expires: datetime) -> None:
         """
@@ -273,87 +281,138 @@ class DatabaseAPI(StorageAPI):
         :param uid: User ID for which the challenge was created
         :param challenge:
         :param expires: The challenge expiration datetime.
-        :raise: SeEntryAlreadyExists if challenge already exists for user
+        :raises:
+            SeEntryAlreadyExists if challenge already exists for user
+            DatabaseAPIError on DB connection errors.
         """
         assert isinstance(challenge, Challenge)
         assert isinstance(expires, datetime)
-        cs = ChallengeStorage(uid, challenge, expires)
+        try:
+            cs = ChallengeStorage(uid, challenge, expires)
 
-        if self._dbc.getSession().query(ChallengeStorage) \
-            .filter(or_(ChallengeStorage.id == challenge.id, ChallengeStorage.uid == uid))\
-            .count() > 0:
-            raise seChallengeExists
+            if self.__db.query(ChallengeStorage) \
+                .filter(or_(ChallengeStorage.id == challenge.id, ChallengeStorage.uid == uid))\
+                .count() > 0:
+                raise seChallengeExists
 
-        self._dbc.getSession().add(cs)
-        self._commit()
+            self.__db.add(cs)
+            self.__db.commit()
+        except Exception as e:
+            self.__handle_exception(e)
 
     def deleteChallenge(self, cid: CID) -> None:
+        """
+        :raises: DatabaseAPIError on DB connection errors.
+        """
         assert isinstance(cid, CID)
-        self._dbc.getSession() \
-                 .query(ChallengeStorage) \
-                 .filter(ChallengeStorage.id == cid) \
-                 .delete()
-        self._commit()
+        try:
+            self.__db \
+                .query(ChallengeStorage) \
+                .filter(ChallengeStorage.id == cid) \
+                .delete()
+            self.__db.commit()
+        except Exception as e:
+            self.__handle_exception(e)
 
     def deleteExpiredChallenges(self, time: datetime) -> None:
+        """
+        :raises: DatabaseAPIError on DB connection errors.
+        """
         assert isinstance(time, datetime)
-        self._dbc.getSession() \
-                 .query(ChallengeStorage) \
-                 .filter(ChallengeStorage.expires < time) \
-                 .delete()
-        self._commit()
+        try:
+            self.__db \
+                .query(ChallengeStorage) \
+                .filter(ChallengeStorage.expires < time) \
+                .delete()
+            self.__db.commit()
+        except Exception as e:
+            self.__handle_exception(e)
 
     def accountExists(self, uid: UserId) -> bool:
+        """
+        :raises: DatabaseAPIError on DB connection errors.
+        """
         assert isinstance(uid, UserId)
-        return self._dbc.getSession() \
-            .query(AccountStorage) \
-            .filter(AccountStorage.uid == uid) \
-            .count() > 0
+        try:
+            return self.__db \
+                .query(AccountStorage) \
+                .filter(AccountStorage.uid == uid) \
+                .count() > 0
+        except Exception as e:
+            self.__handle_exception(e)
 
     def addOrUpdateAccount(self, account: AccountStorage) -> None:
+        """
+        :raises: DatabaseAPIError on DB connection errors.
+        """
         assert isinstance(account, AccountStorage)
-        accnts = self._dbc.getSession().query(AccountStorage).filter(AccountStorage.uid == account.uid)
-        if accnts.count() > 0:
-            accnts[0].uid         = account.uid
-            accnts[0].sod         = account.sod
-            accnts[0].aaPublicKey = account.aaPublicKey
-            accnts[0].sod         = account.sod
-            accnts[0].dg1         = account.dg1
-            accnts[0].session     = account.session
-            accnts[0].validUntil  = account.validUntil
-            accnts[0].loginCount  = account.loginCount
-            accnts[0].isValid     = account.isValid
-        else:
-            self._dbc.getSession().add(account)
-        self._commit()
+        try:
+            accnts = self.__db \
+                .query(AccountStorage) \
+                .filter(AccountStorage.uid == account.uid)
+            if accnts.count() > 0:
+                accnts[0].uid         = account.uid
+                accnts[0].sod         = account.sod
+                accnts[0].aaPublicKey = account.aaPublicKey
+                accnts[0].sod         = account.sod
+                accnts[0].dg1         = account.dg1
+                accnts[0].session     = account.session
+                accnts[0].validUntil  = account.validUntil
+                accnts[0].loginCount  = account.loginCount
+                accnts[0].isValid     = account.isValid
+            else:
+                self.__db.add(account)
+            self.__db.commit()
+        except Exception as e:
+            self.__handle_exception(e)
 
     def getAccount(self, uid: UserId) -> AccountStorage:
+        """
+        :raises: DatabaseAPIError on DB connection errors.
+        """
         assert isinstance(uid, UserId)
-        accnt = self._dbc.getSession() \
-            .query(AccountStorage) \
-            .filter(AccountStorage.uid == uid) \
-            .first()
-        if accnt is None:
-            self._log.debug(":getAccountExpiry(): Account not found")
-            raise seAccountNotFound
-        assert isinstance(accnt, AccountStorage)
-        return accnt
+        try:
+            accnt = self.__db \
+                .query(AccountStorage) \
+                .filter(AccountStorage.uid == uid) \
+                .first()
+            if accnt is None:
+                raise seAccountNotFound
+            assert isinstance(accnt, AccountStorage)
+            return accnt
+        except Exception as e:
+            self.__handle_exception(e)
 
     def deleteAccount(self, uid: UserId) -> None:
+        """
+        :raises: DatabaseAPIError on DB connection errors.
+        """
         assert isinstance(uid, UserId)
-        self._dbc.getSession() \
-            .query(AccountStorage) \
-            .filter(AccountStorage.uid == uid) \
-            .delete()
-        self._commit()
+        try:
+            self.__db \
+                .query(AccountStorage) \
+                .filter(AccountStorage.uid == uid) \
+                .delete()
+            self.__db.commit()
+        except Exception as e:
+            self.__handle_exception(e)
 
     def getAccountExpiry(self, uid: UserId) -> datetime:
+        """
+        :raises: DatabaseAPIError on DB connection errors.
+        """
         assert isinstance(uid, UserId)
-        accnt = self._dbc.getSession().query(AccountStorage).filter(AccountStorage.uid == uid).first()
-        if accnt is None:
-            self._log.debug(":getAccountExpiry(): Account not found")
-            raise seAccountNotFound
-        return accnt.validUntil
+        try:
+            accnt = self.__db \
+                .query(AccountStorage) \
+                .filter(AccountStorage.uid == uid) \
+                .first()
+            if accnt is None:
+                self._log.debug(":getAccountExpiry(): Account not found")
+                raise seAccountNotFound
+            return accnt.validUntil
+        except Exception as e:
+            self.__handle_exception(e)
 
     def addCsca(self, csca: CscaCertificate, issuerId: Optional[CertificateId] = None) -> CertificateId:
         """
@@ -361,32 +420,38 @@ class DatabaseAPI(StorageAPI):
         :param csca: CSCA certificate to insert into database.
         :param issuerId: The CSCA issuerId in case the CSCA is linked (Optional).
         :return: The csca CertificateId
+        :raises: DatabaseAPIError on DB connection errors.
         """
         self._log.debug("Inserting new CSCA into database C={} serial={}"
             .format(CountryCode(csca.issuerCountry), csca.serial_number))
 
         assert isinstance(csca, CscaCertificate)
         assert issuerId is None or isinstance(issuerId, CertificateId)
+        try:
+            cs = CscaStorage(csca, issuerId)
+            if self.__db.query(CscaStorage).filter(CscaStorage.id == cs.id).count() > 0:
+                raise seCscaExists
+            self.__db.add(cs)
+            self.__db.commit()
+            return cs.id
+        except Exception as e:
+            self.__handle_exception(e)
 
-        cs = CscaStorage(csca, issuerId)
-        if self._dbc.getSession().query(CscaStorage).filter(CscaStorage.id == cs.id).count() > 0:
-            raise seCscaExists
-
-        self._dbc.getSession().add(cs)
-        self._commit()
-        return cs.id
-
-    def findCsca(self, id: CertificateId)-> Optional[CscaStorage]:
+    def findCsca(self, certId: CertificateId)-> Optional[CscaStorage]:
         """
         Returns CSCA certificate storage objects that match the id.
-        :param id: The certificate id to search for.
+        :param certId: The certificate certId to search for.
         :return: list of CscaStorage, or None if no CSCA certificate was found.
+        :raises: DatabaseAPIError on DB connection errors.
         """
-        assert isinstance(id, CertificateId)
-        return self._dbc.getSession() \
-            .query(CscaStorage) \
-            .filter(CscaStorage.id == id) \
-            .first()
+        assert isinstance(certId, CertificateId)
+        try:
+            return self.__db \
+                .query(CscaStorage) \
+                .filter(CscaStorage.id == certId) \
+                .first()
+        except Exception as e:
+            self.__handle_exception(e)
 
     def findCscaBySerial(self, issuer: x509.Name, serial: int) -> Optional[CscaStorage]:
         """
@@ -394,14 +459,18 @@ class DatabaseAPI(StorageAPI):
         :param issuer: CSCA issuer name.
         :param serial: CSCA serial number to search for.
         :return: CscaStorage, or None if no CSCA certificate was found.
+        :raises: DatabaseAPIError on DB connection errors.
         """
         assert isinstance(issuer, x509.Name)
         assert isinstance(serial, int)
-        serial = int_to_bytes(serial)
-        return self._dbc.getSession() \
-            .query(CscaStorage) \
-            .filter(CscaStorage.issuer == issuer.human_friendly, CscaStorage.serial == serial) \
-            .first()
+        try:
+            serial = int_to_bytes(serial)
+            return self.__db \
+                .query(CscaStorage) \
+                .filter(CscaStorage.issuer == issuer.human_friendly, CscaStorage.serial == serial) \
+                .first()
+        except Exception as e:
+            self.__handle_exception(e)
 
     def findCscaCertificates(self, subject: x509.Name, subjectKey: Optional[bytes])-> Optional[List[CscaStorage]]:
         """
@@ -413,39 +482,46 @@ class DatabaseAPI(StorageAPI):
         :param subject: Certificate subject name to search for.
         :param subjectKey: Certificate subject key to search for.
         :return: list of CscaStorage, or None if no CSCA certificate was found.
+        :raises: DatabaseAPIError on DB connection errors.
         """
         assert isinstance(subject, x509.Name)
+        try:
+            # Try first to find CSCAs by subjectKey because
+            # searching for subject might return invalid CSCAs
+            cscas: Optional[List[CscaStorage]] = None
+            if subjectKey is not None:
+                assert isinstance(subjectKey, bytes)
+                country = CountryCode(subject.native['country_name'])
+                cscas = self.__db \
+                    .query(CscaStorage) \
+                    .filter(CscaStorage.country == country, CscaStorage.subjectKey == subjectKey) \
+                    .all()
 
-        # Try first to find CSCAs by subjectKey because
-        # searching for subject might return invalid CSCAs
-        cscas: Optional[List[CscaStorage]] = None
-        if subjectKey is not None:
-            assert isinstance(subjectKey, bytes)
-            country = CountryCode(subject.native['country_name'])
-            cscas = self._dbc.getSession() \
-                .query(CscaStorage) \
-                .filter(CscaStorage.country == country, CscaStorage.subjectKey == subjectKey) \
-                .all()
-
-        if cscas is None:
-            cscas = self._dbc.getSession() \
-                .query(CscaStorage) \
-                .filter(CscaStorage.subject == subject.human_friendly) \
-                .all()
-        return cscas if len(cscas) != 0 else None
+            if cscas is None:
+                cscas = self.__db \
+                    .query(CscaStorage) \
+                    .filter(CscaStorage.subject == subject.human_friendly) \
+                    .all()
+            return cscas if len(cscas) != 0 else None
+        except Exception as e:
+            self.__handle_exception(e)
 
     def findCscaCertificatesBySubject(self, subject: x509.Name) -> Optional[List[CscaStorage]]:
         """
         Returns list of CSCA certificate storage objects that match the subject param.
         :param subject: Certificate subject name to search for.
         :return: list of CscaStorage, or None if no CSCA certificate was found.
+        :raises: DatabaseAPIError on DB connection errors.
         """
         assert isinstance(subject, x509.Name)
-        cscas = self._dbc.getSession() \
-            .query(CscaStorage) \
-            .filter(CscaStorage.subject == subject.human_friendly) \
-            .all()
-        return cscas if len(cscas) != 0 else None
+        try:
+            cscas = self.__db \
+                .query(CscaStorage) \
+                .filter(CscaStorage.subject == subject.human_friendly) \
+                .all()
+            return cscas if len(cscas) != 0 else None
+        except Exception as e:
+            self.__handle_exception(e)
 
     def findCscaCertificatesBySubjectKey(self, country: CountryCode, subjectKey: bytes) -> Optional[List[CscaStorage]]:
         """
@@ -453,14 +529,18 @@ class DatabaseAPI(StorageAPI):
         :param country: iso alpha-2 country code of the country that issued the CSCA.
         :param subjectKey: Certificate subject key to search for.
         :return: list of CscaStorage, or None if no CSCA certificate was found.
+        :raises: DatabaseAPIError on DB connection errors.
         """
         assert isinstance(subjectKey, bytes)
         assert isinstance(country, CountryCode)
-        cscas = self._dbc.getSession() \
-            .query(CscaStorage) \
-            .filter(CscaStorage.country == country, CscaStorage.subjectKey == subjectKey) \
-            .all()
-        return cscas if len(cscas) != 0 else None
+        try:
+            cscas = self.__db \
+                .query(CscaStorage) \
+                .filter(CscaStorage.country == country, CscaStorage.subjectKey == subjectKey) \
+                .all()
+            return cscas if len(cscas) != 0 else None
+        except Exception as e:
+            self.__handle_exception(e)
 
     def addDsc(self, dsc: DocumentSignerCertificate, issuerId: CertificateId) -> CertificateId:
         """
@@ -468,32 +548,39 @@ class DatabaseAPI(StorageAPI):
         :param dsc: DSC certificate to insert into database.
         :param issuerId: The DSC issuerId.
         :return: The dsc CertificateId
+        :raises: DatabaseAPIError on DB connection errors.
         """
         self._log.debug("Inserting new DSC into database C={} serial={}"
             .format(CountryCode(dsc.issuerCountry), dsc.serial_number))
 
         assert isinstance(dsc, DocumentSignerCertificate)
         assert isinstance(issuerId, CertificateId)
+        try:
+            ds = DscStorage(dsc, issuerId)
+            if self.__db.query(DscStorage).filter(DscStorage.id == ds.id).count() > 0:
+                raise seDscExists
 
-        ds = DscStorage(dsc, issuerId)
-        if self._dbc.getSession().query(DscStorage).filter(DscStorage.id == ds.id).count() > 0:
-            raise seDscExists
+            self.__db.add(ds)
+            self.__db.commit()
+            return ds.id
+        except Exception as e:
+            self.__handle_exception(e)
 
-        self._dbc.getSession().add(ds)
-        self._commit()
-        return ds.id
-
-    def findDsc(self, id: CertificateId) -> Optional[DscStorage]:
+    def findDsc(self, certId: CertificateId) -> Optional[DscStorage]:
         """
         Returns DSC certificate storage that matches the certificate id.
-        :param id: The DSC certificate id.
+        :param certId: The DSC certificate id.
         :returns: DscStorage
+        :raises: DatabaseAPIError on DB connection errors.
         """
-        assert isinstance(id, CertificateId)
-        return self._dbc.getSession() \
-            .query(DscStorage) \
-            .filter(DscStorage.id == id) \
-            .first()
+        assert isinstance(certId, CertificateId)
+        try:
+            return self.__db \
+                .query(DscStorage) \
+                .filter(DscStorage.id == certId) \
+                .first()
+        except Exception as e:
+            self.__handle_exception(e)
 
     def findDscBySerial(self, issuer: x509.Name, serial: int) -> Optional[DscStorage]:
         """
@@ -501,26 +588,35 @@ class DatabaseAPI(StorageAPI):
         :param issuer: The DSC certificate issuer.
         :param serial: The DSC certificate serial number.
         :returns: DscStorage
+        :raises: DatabaseAPIError on DB connection errors.
         """
         assert isinstance(issuer, x509.Name)
         assert isinstance(serial, int)
-        serial = int_to_bytes(serial)
-        return self._dbc.getSession() \
-            .query(DscStorage) \
-            .filter(DscStorage.issuer == issuer.human_friendly, DscStorage.serial == serial) \
-            .first()
+        try:
+            serial = int_to_bytes(serial)
+            return self.__db \
+                .query(DscStorage) \
+                .filter(DscStorage.issuer == issuer.human_friendly, DscStorage.serial == serial) \
+                .first()
+        except Exception as e:
+            self.__handle_exception(e)
 
     def findDscBySubjectKey(self, subjectKey: bytes) -> Optional[DscStorage]:
         """
         Returns DSC certificate storage that matches the subjectKey.
         :param subjectKey: The DSC certificate subject key.
         :returns: DscStorage
+        :raises: DatabaseAPIError on DB connection errors.
         """
         assert isinstance(subjectKey, bytes)
-        return self._dbc.getSession() \
-            .query(DscStorage) \
-            .filter(DscStorage.subjectKey == subjectKey) \
-            .first()
+        try:
+            return self.__db \
+                .query(DscStorage) \
+                .filter(DscStorage.subjectKey == subjectKey) \
+                .first()
+        except Exception as e:
+            self.__handle_exception(e)
+
 
 
 class MemoryDBError(StorageAPIError):
@@ -583,7 +679,7 @@ class MemoryDB(StorageAPI):
         :param uid: User ID for which the challenge was created
         :param challenge:
         :param expires: The challenge expiration datetime.
-        :raise: SeEntryAlreadyExists if challenge already exists for user
+        :raises: SeEntryAlreadyExists if challenge already exists for user
         """
         assert isinstance(challenge, Challenge)
         assert isinstance(expires, datetime)

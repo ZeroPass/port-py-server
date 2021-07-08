@@ -5,6 +5,7 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    future,
     Integer,
     LargeBinary,
     MetaData,
@@ -14,9 +15,10 @@ from sqlalchemy import (
     TypeDecorator,
     VARBINARY
 )
+
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import mapper, sessionmaker
+from sqlalchemy.orm import mapper, sessionmaker, scoped_session
 from sqlalchemy.orm.session import Session
 
 from port.proto.challenge import Challenge, CID
@@ -134,16 +136,22 @@ accounts: Final = Table('accounts', metadata,
 class PortDbConnectionError(Exception):
     pass
 
-Base = declarative_base()
-
 class PortDatabaseConnection:
     """Manage ORM connection to save/load objects in database"""
 
-    connectionObj = None
-    metaData = None
-    session = None
+    _engine = None
+    _session = None
+    _base = None
 
-    def __init__(self, dialect:str, host:str, db: str, username: str, password: str, debugLogging=False):
+    @property
+    def engine(self) -> future.Engine:
+        return self._engine
+
+    @property
+    def session(self) -> scoped_session:
+        return self._session
+
+    def __init__(self, dialect:str, host:str, db: str, username: str, password: str, connectionRecycle: int = 3600, debugLogging: bool = False, logPool: bool = True):
         '''
         Creates new ORM database connection.
         :param dialect: The database dialect e.g.:  mariadb, mysql, oracle, postgresql, sqlite.
@@ -151,21 +159,29 @@ class PortDatabaseConnection:
         :param db: The database path.
         :param username: The database username.
         :param password: The database password.
+        :param connectionRecycle: Causes the connection pool to recycle connections after the given number of seconds has passed.
+            Useful for example to prevent the MySql server (default configured) to automatically disconnect from the client after 8 hours of inactivity.
+            Set to -1 for no recycle.
+            Default is 3600 secs i.e. 1 hour.
         :param debugLogging: If True, the sqlalchemy engine will log all statements.``
+        :param logPool: if True, the connection pool will log informational output such as when connections are invalidated as well as when connections are recycled.
         :raises: PortDbConnectionError on error.
         '''
         try:
             # The return value of create_engine() is our connection object
             url = PortDatabaseConnection.__buildUrl(dialect, host, db, username, password)
-            self.connectionObj = sqlalchemy.create_engine(url, encoding='utf-8', echo=debugLogging)
-
-            # We then bind the connection to MetaData()
-            self.metaData = MetaData(bind=self.connectionObj)
-            self.metaData.reflect()
+            self._engine = sqlalchemy.create_engine(url,
+                encoding     = 'utf-8',
+                pool_recycle = connectionRecycle,
+                echo         = debugLogging,
+                echo_pool    = logPool,
+                future       = True  # future=True -> support sqlalchemy v 2.0
+            )
 
             # we create session object to use it later
-            Session = sessionmaker(bind=self.connectionObj)
-            self.session = Session()
+            self._base = declarative_base()
+            S = sessionmaker(bind=self._engine, expire_on_commit=True, future=True) # future=True -> support sqlalchemy v 2.0
+            self._session = scoped_session(S) #Session()
 
             self.initTables()
 
@@ -174,23 +190,19 @@ class PortDatabaseConnection:
 
     def getEngine(self):
         """ It returns engline object"""
-        return self.connectionObj
+        return self._engine
 
     def getSession(self) -> Session:
         """ It returns session to use it in the actual storage objects/instances"""
-        return self.session
+        return self._session
 
     def initTables(self):
         """Initialize tables for usage in database"""
 
-        #imports - to avoid circle imports
-        from port.database.storage.crlStorage import CrlStorage
-        from port.database.storage.x509Storage import DscStorage, CscaStorage
-        from port.database.storage.challengeStorage import ChallengeStorage
-        from port.database.storage.accountStorage import AccountStorage
-
         #CertificateRevocationList
-        mapper(CrlStorage, crl)
+        mapper(CrlUpdateInfo, crlUpdateInfo)
+        mapper(CertificateRevocationInfo, crt)
+        mapper(PkiDistributionUrl, pkiDistributionInfo)
 
         #DocumentSignerCertificate
         mapper(DscStorage, dsc)
@@ -205,7 +217,7 @@ class PortDatabaseConnection:
         mapper(AccountStorage, accounts)
 
         #creating tables
-        Base.metadata.create_all(self.connectionObj, tables=[crl, dsc, csca, protoChallenges, accounts])
+        self._base.metadata.create_all(self._engine, tables=[crlUpdateInfo, crt, pkiDistributionInfo, dsc, csca, protoChallenges, accounts])
 
     @staticmethod
     def __buildUrl(dialect:str, host:str, db: str, username: str, password: str):
