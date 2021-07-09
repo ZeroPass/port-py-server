@@ -28,6 +28,7 @@ from .session import (
 )
 
 from .user import UserId
+import port.proto.utils as utils
 
 __all__ = [
     "CID",
@@ -46,5 +47,6 @@ __all__ = [
     "SessionKey",
     "StorageAPI",
     "StorageAPIError",
-    "UserId"
+    "UserId",
+    "utils"
 ]
