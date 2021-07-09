@@ -7,13 +7,13 @@ from datetime import datetime
 from port.database.storage.storageManager import PortDatabaseConnection
 from port.database.storage.challengeStorage import ChallengeStorage
 from port.database.storage.accountStorage import AccountStorage
-from port.database.storage.x509Storage import DscStorage, CscaStorage
+from port.database.storage.x509Storage import CertificateRevocationInfo, CertificateStorage, PkiDistributionUrl, CrlUpdateInfo, DscStorage, CscaStorage
 from port.proto.utils import int_to_bytes
 
 from pymrtd.pki.x509 import Certificate, CscaCertificate, DocumentSignerCertificate
 from sqlalchemy import or_
 from sqlalchemy.orm.scoping import scoped_session
-from typing import Final, List, NoReturn, Optional, Tuple
+from typing import Final, List, NoReturn, Optional, Tuple, TypeVar, Union
 
 from .challenge import CID, Challenge
 from .user import UserId
@@ -193,6 +193,69 @@ class StorageAPI(ABC):
         :returns: DscStorage
         """
 
+    @abstractmethod
+    def updateCrlInfo(self, crlui: CrlUpdateInfo) -> None:
+        """
+        Adds or updates CRL update info for country.
+        :param crlui: CrlUpdateInfo
+        """
+
+    @abstractmethod
+    def findCrlInfo(self, country: CountryCode) -> Optional[CrlUpdateInfo]:
+        """
+        Returns CRL update info for country.
+        :param country: iso alpha-2 country code to retrieve the CRL update info.
+        :returns: Optional[CrlUpdateInfo]
+        """
+
+    @abstractmethod
+    def updateCrl(self, country: CountryCode, crl: List[CertificateRevocationInfo]) -> None:
+        """
+        Replaces existing or/and adds new list of certificate revocation infos for country.
+        Empty crl list param will delete all entries in the DB for the country.
+        Note: Internally the list is updated with country param i.e.crl[idx].country = country
+
+        :param country: The iso alpha-2 country code to merge the list of certificate revocation infos.
+        :param crl: The list of CertificateRevocationInfo being revoked.
+        """
+
+    @abstractmethod
+    def findCrl(self, country: CountryCode) -> Optional[List[CertificateRevocationInfo]]:
+        """
+        Returns list of infos about revoked certificates for country.
+        :param country: The iso alpha-2 country code to get the list of certificate revocation infos for.
+        :returns: List of countries revoked certificate infos or None
+        """
+
+    @abstractmethod
+    def isCertificateRevoked(self, crt: Union[Certificate, CertificateStorage]) -> bool:
+        """
+        Verifies in the DB if certificate is revoked.
+        :param crt: The certificate or CertificateStorage to verify.
+        :returns: Returns True if certificate is revoked, otherwise False.
+        """
+
+    @abstractmethod
+    def addPkiDistributionUrl(self, pkidUrl: PkiDistributionUrl):
+        """
+        Adds eeMRTD PKI distribution point URL address if it doesn't exist yet.
+        :param pkidUrl: PkiDistributionUrl
+        """
+
+    @abstractmethod
+    def findPkiDistributionUrls(self, country: CountryCode) -> Optional[List[PkiDistributionUrl]]:
+        """
+        Returns list of emRTD PKI distribution urls for country.
+        :param country: The ios alpha-2 country code to retrieve the list of.
+        :returns: Optional[List[PkiDistributionUrl]]
+        """
+
+    @abstractmethod
+    def deletePkiDistributionUrl(self, pkidId: int) -> None:
+        """
+        Deletes eMRTD PKI distribution url from DB.
+        :param pkidId: The PkiDistributionUrl ID.
+        """
 
 
 class DatabaseAPIError(StorageAPIError):
@@ -346,6 +409,7 @@ class DatabaseAPI(StorageAPI):
         :raises: DatabaseAPIError on DB connection errors.
         """
         assert isinstance(account, AccountStorage)
+        self._log.debug("Adding or updating account in DB. uid=%s", account.uid)
         try:
             accnts = self.__db \
                 .query(AccountStorage) \
@@ -617,6 +681,166 @@ class DatabaseAPI(StorageAPI):
         except Exception as e:
             self.__handle_exception(e)
 
+    def updateCrlInfo(self, crlui: CrlUpdateInfo) -> None:
+        """
+        Adds or updates CRL update info for country.
+        :param crlui: CrlUpdateInfo
+        :raises: DatabaseAPIError on DB connection errors.
+        """
+        assert isinstance(crlui, CrlUpdateInfo)
+        self._log.debug("Updating CRL update info for C=%s", crlui.country)
+        try:
+            ci = self.__db \
+                .query(CrlUpdateInfo) \
+                .filter(CrlUpdateInfo.country == crlui.country) \
+                .first()
+            if ci is None:
+                self.__db.add(crlui)
+            else:
+                ci = crlui
+            self.__db.commit()
+        except Exception as e:
+            self.__handle_exception(e)
+
+    def findCrlInfo(self, country: CountryCode) -> Optional[CrlUpdateInfo]:
+        """
+        Returns CRL update info for country.
+        :param country: iso alpha-2 country code to retrieve the CRL update info.
+        :returns: Optional[CrlUpdateInfo]
+        :raises: DatabaseAPIError on DB connection errors.
+        """
+        assert isinstance(country, CountryCode)
+        try:
+            return self.__db \
+                .query(CrlUpdateInfo) \
+                .filter(CrlUpdateInfo.country == country) \
+                .first()
+        except Exception as e:
+            self.__handle_exception(e)
+
+    def updateCrl(self, country: CountryCode, crl: List[CertificateRevocationInfo]) -> None:
+        """
+        Replaces existing or/and adds new list of certificate revocation infos for country.
+        Empty crl list param will delete all entries in the DB for the country.
+        Note: Internally the list is updated with country param i.e.crl[idx].country = country
+
+        :param country: The iso alpha-2 country code to merge the list of certificate revocation infos.
+        :param crl: The list of CertificateRevocationInfo being revoked.
+        :raises: DatabaseAPIError on DB connection errors.
+                 AssertionError if assert failed and enabled when python not run with -O or -OO flag.
+        """
+        assert isinstance(crl, List) and all(isinstance(x, CertificateRevocationInfo) for x in crl)
+        self._log.debug("Updating CRL for C=%s", country)
+        try:
+            # First delete any existing entry for country
+            self.__db \
+                .query(CertificateRevocationInfo) \
+                .filter(CertificateRevocationInfo.country == country) \
+                .delete()
+
+            # Set country and check certId (debug mode)
+            for c in crl:
+                c.country = country
+                # Debug sanity check for certId
+                # This should not execute in production mode, i.e. when run python with -O or -OO flag
+                if __debug__ is not None and __debug__ == True:
+                    if c.certId is not None:
+                        d = self.findDsc(c.certId)
+                        assert d is None or d.country == country
+
+            self.__db.add_all(crl)
+            self.__db.commit()
+        except AssertionError:
+            raise
+        except Exception as e:
+            self.__handle_exception(e)
+
+    def findCrl(self, country: CountryCode) -> Optional[List[CertificateRevocationInfo]]:
+        """
+        Returns list of infos about revoked certificates for country.
+        :param country: The iso alpha-2 country code to get the list of certificate revocation infos for.
+        :returns: List of countries revoked certificate infos or None
+        :raises: DatabaseAPIError on DB connection errors.
+        """
+        assert isinstance(country, CountryCode)
+        try:
+            crl = self.__db \
+                .query(CertificateRevocationInfo) \
+                .filter(CertificateRevocationInfo.country == country) \
+                .all()
+            return crl if len(crl) != 0 else None
+        except Exception as e:
+            self.__handle_exception(e)
+
+    def isCertificateRevoked(self, crt: Union[Certificate, CertificateStorage]) -> bool:
+        """
+        Verifies in the DB if certificate is revoked.
+        :param crt: The certificate or CertificateStorage to verify.
+        :returns: Returns True if certificate is revoked, otherwise False.
+        :raises: DatabaseAPIError on DB connection errors.
+        """
+        assert isinstance(crt, Certificate) or isinstance(crt, CertificateStorage)
+        try:
+            q = self.__db.query(CertificateRevocationInfo)
+            if isinstance(crt, Certificate):
+                certId = CertificateId.fromCertificate(crt)
+                serial = int_to_bytes(crt.serial_number)
+                q.filter_by(country = CountryCode(crt.issuerCountry)) \
+                 .filter(or_(CertificateRevocationInfo.certId == certId,
+                             CertificateRevocationInfo.serial == serial))
+            else: # CertificateStorage
+                q.filter_by(country = crt.country) \
+                 .filter(or_(CertificateRevocationInfo.certId == crt.id,
+                             CertificateRevocationInfo.serial == crt.serial))
+
+            return q.first() is not None
+        except Exception as e:
+            self.__handle_exception(e)
+
+    def addPkiDistributionUrl(self, pkidUrl: PkiDistributionUrl):
+        """
+        Adds eMRTD PKI distribution point URL address if it doesn't exist yet.
+        :param pkidUrl: PkiDistributionUrl
+        :raises: DatabaseAPIError on DB connection errors.
+        """
+        assert isinstance(pkidUrl, PkiDistributionUrl)
+        self._log.debug("Adding PKI distribution URL. C=%s id=%s", pkidUrl.country, pkidUrl.id)
+        try:
+            self.__db.merge(pkidUrl)
+            self.__db.commit()
+        except Exception as e:
+            self.__handle_exception(e)
+
+    def findPkiDistributionUrls(self, country: CountryCode) -> Optional[List[PkiDistributionUrl]]:
+        """
+        Returns list of emRTD PKI distribution urls for country.
+        :param country: The ios alpha-2 country code to retrieve the list of.
+        :returns: Optional[List[PkiDistributionUrl]]
+        """
+        assert isinstance(country, CountryCode)
+        try:
+            crl = self.__db \
+                .query(PkiDistributionUrl) \
+                .filter_by(country = country) \
+                .all()
+            return crl if len(crl) != 0 else None
+        except Exception as e:
+            self.__handle_exception(e)
+
+    def deletePkiDistributionUrl(self, pkidId: int) -> None:
+        """
+        Deletes eMRTD PKI distribution url from DB.
+        :param pkidId: The PkiDistributionUrl ID.
+        """
+        assert isinstance(pkidId, int)
+        self._log.debug("Deleting PKI distribution URL from DB. id=%s", pkidId)
+        try:
+            self.__db \
+                .query(PkiDistributionUrl) \
+                .filter(PkiDistributionUrl.id == pkidId) \
+                .delete()
+        except Exception as e:
+            self.__handle_exception(e)
 
 
 class MemoryDBError(StorageAPIError):
@@ -641,6 +865,9 @@ class MemoryDB(StorageAPI):
             'accounts' : {},
             'cscas' : set(),
             'dscs' : set(),
+            'crlui' : {},
+            'crt' : {},
+            'pkidurl' : {}
         }
 
     def getChallenge(self, cid: CID) -> Tuple[Challenge, datetime]:
@@ -885,3 +1112,105 @@ class MemoryDB(StorageAPI):
             if dsc.subjectKey == subjectKey:
                 return dsc
         return None
+
+    def updateCrlInfo(self, crlui: CrlUpdateInfo) -> None:
+        """
+        Adds or updates CRL update info for country.
+        :param crlui: CrlUpdateInfo
+        """
+        assert isinstance(crlui, CrlUpdateInfo)
+        self._d['crlui'][crlui.country] = crlui
+
+    def findCrlInfo(self, country: CountryCode) -> Optional[CrlUpdateInfo]:
+        """
+        Returns CRL update info for country.
+        :param country: iso alpha-2 country code to retrieve the CRL update info.
+        :returns: Optional[CrlUpdateInfo]
+        """
+        assert isinstance(country, CountryCode)
+        if country in self._d['crlui']:
+            return self._d['crlui'][country]
+        return None
+
+    def updateCrl(self, country: CountryCode, crl: List[CertificateRevocationInfo]) -> None:
+        """
+        Replaces existing or/and adds new list of certificate revocation infos for country.
+        Empty crl list param will delete all entries in the DB for the country.
+        Note: Internally the list is updated with country param i.e.crl[idx].country = country
+
+        :param country: The iso alpha-2 country code to merge the list of certificate revocation infos.
+        :param crl: The list of CertificateRevocationInfo being revoked.
+        """
+        assert isinstance(country, CountryCode)
+        assert isinstance(crl, List) and all(isinstance(x, CertificateRevocationInfo) for x in crl)
+        for c in crl:
+            c.country = country
+            # Debug sanity check for certId
+            # This should not execute in production mode, i.e. when run python with -O or -OO flag
+            if __debug__ is not None and __debug__ == True:
+                if c.certId is not None:
+                    d = self.findDsc(c.certId)
+                    assert d is None or d.country == country
+        self._d['crt'][country] = crl
+
+    def findCrl(self, country: CountryCode) -> Optional[List[CertificateRevocationInfo]]:
+        """
+        Returns list of infos about revoked certificates for country.
+        :param country: The iso alpha-2 country code to get the list of certificate revocation infos for.
+        """
+        assert isinstance(country, CountryCode)
+        if country in self._d['crt']:
+            return self._d['crt'][country]
+        return None
+
+    def isCertificateRevoked(self, crt: TypeVar("T",Certificate, CertificateStorage)) -> bool:
+        """
+        Verifies in the DB if certificate is revoked.
+        :param crt: The certificate to verify.
+        :returns: Returns True if certificate is revoked, otherwise False.
+        """
+        assert isinstance(crt, Certificate) or isinstance(crt, CertificateStorage)
+        if isinstance(crt, Certificate):
+            certId = CertificateId.fromCertificate(crt)
+            serial = int_to_bytes(crt.serial_number)
+            country = CountryCode(crt.issuerCountry)
+        else: # CertificateStorage
+            country = crt.country
+            certId = crt.id
+            serial = crt.serial
+
+        if country in self._d['crt']:
+            for cr in self._d['crt'][country]:
+                if cr.certId == certId or serial == cr.serial:
+                    return True
+        return False
+
+    def addPkiDistributionUrl(self, pkidUrl: PkiDistributionUrl) -> None:
+        """
+        Adds eMRTD PKI distribution point URL address if it doesn't exist yet.
+        :param pkidUrl: PkiDistributionUrl
+        """
+        assert isinstance(pkidUrl, PkiDistributionUrl)
+        if pkidUrl.id not in self._d['pkidurl']:
+            self._d['pkidurl'][pkidUrl.id] = pkidUrl
+
+    def findPkiDistributionUrls(self, country: CountryCode) -> Optional[List[PkiDistributionUrl]]:
+        """
+        Returns list of emRTD PKI distribution urls for country.
+        :param country: The ios alpha-2 country code to retrieve the list of.
+        :returns: Optional[List[PkiDistributionUrl]]
+        """
+        assert isinstance(country, CountryCode)
+        urlList = []
+        for _, pkiUrl in self._d['pkidurl'].items():
+            if pkiUrl.country == country:
+                urlList.append(pkiUrl)
+        return urlList
+
+    def deletePkiDistributionUrl(self, pkidId: int) -> None:
+        """
+        Deletes eMRTD PKI distribution url from DB.
+        :param pkidId: The PkiDistributionUrl ID.
+        """
+        if pkidId in self._d['pkidurl']:
+            self._d['pkidurl'].pop(pkidId)

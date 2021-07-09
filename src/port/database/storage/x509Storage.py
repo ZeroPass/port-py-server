@@ -1,20 +1,15 @@
-import datetime, logging
+import datetime
+import enum
 
-from port.database.storage.storageManager import PortDatabaseConnection
 from port.proto.types import CertificateId, CountryCode
-from port.proto.utils import bytes_to_int, int_to_bytes
+from port.proto.utils import bytes_to_int, int_to_bytes, sha512_256
 
+from pymrtd.pki.crl import CertificateRevocationList
 from pymrtd.pki.x509 import Certificate, CscaCertificate, DocumentSignerCertificate
 
-from typing import List, Optional
+from typing import Optional
 
 class CertificateStorage:
-    pass
-
-class DscStorageError(Exception):
-    pass
-
-class CertificateStorage(object):
     """Storage class for """
     id: CertificateId
     country: CountryCode
@@ -50,142 +45,62 @@ class CertificateStorage(object):
 class CscaStorage(CertificateStorage):
     _type = CscaCertificate
 
-
-
-def writeToDB_CSCA(csca: CscaCertificate, connection: PortDatabaseConnection):
-    """Write to database with ORM"""
-    try:
-        logger.info("Writing CSCA object to database. Country: " + CountryCode(csca.issuerCountry))
-        connection.getSession().add(CscaStorage(csca))
-        connection.getSession().commit()
-
-    except Exception as e:
-        raise CscaStorageError("Problem with writing the object") from e
-
-def readFromDB_CSCA_issuer_serialNumber(issuer: str, serialNumber: int, connection: PortDatabaseConnection) -> List[CscaStorage]:
-    """Reading from database"""
-    try:
-        logger.info("Reading CSCA object from database. Issuer:" + issuer + ", serial number: " + str(serialNumber))
-        return connection.getSession() \
-                         .query(CscaStorage) \
-                         .filter(CscaStorage.issuer == issuer,
-                                 CscaStorage.serial == str(serialNumber.native)
-                         ).all()
-    except Exception as e:
-        raise CscaStorageError("Problem with writing the object") from e
-
-def readFromDB_CSCA_authorityKey(authorityKey: bytes, connection: PortDatabaseConnection) -> List[CscaStorage]:
-    """Reading from database"""
-    try:
-        logger.info("Reading CSCA object from database by authority key")
-        return connection.getSession() \
-                         .query(CscaStorage) \
-                         .filter(CscaStorage.authorityKey == authorityKey) \
-                         .all()
-    except Exception as e:
-        raise CscaStorageError("Problem with writing the object") from e
-
-def deleteFromDB_CSCA(CSCAs: List[CscaStorage], connection: PortDatabaseConnection):
-    """Reading from database"""
-    try:
-        logger.info("Delete DSCs; size:" + str(len(CSCAs)))
-        if len(CSCAs) == 0:
-            logger.debug("Empty array. Nothing to delete.")
-        for item in CSCAs:
-            try:
-                connection.getSession().delete(item)
-            except Exception as e:
-                logger.error("Action delete failed. No item in database or object was not CSCA.")
-        connection.getSession().commit()
-    except Exception as e:
-        raise DscStorageError("Problem with writing the object") from e
-
 class DscStorage(CertificateStorage):
     _type = DocumentSignerCertificate
-# class DscStorage(object):
-#     """Class for interaction between code structure and database - DSC"""
 
-#     def __init__(self, dsc: DocumentSignerCertificate, issuerCountry: str):
-#         """Initialization class with serialization of DSC"""
-#         self.serializeDSC(dsc)
-#         self.issuer          = dsc.issuer.human_friendly
-#         self.fingerprint     = dsc.fingerprint
-#         self.subject         = dsc.subject.human_friendly
-#         self.subjectKey      = dsc.subjectKey
-#         self.authorityKey    = dsc.authorityKey
-#         self.notValidBefore  = dsc.notValidBefore
-#         self.notValidAfter   = dsc.notValidAfter
-#         try:
-#             self.serialNumber = str(dsc.serial_number)
-#         except:
-#             self.serialNumber = ""
+class CrlUpdateInfo:
+    """Class for interaaction between code structure and database"""
+    country: CountryCode
+    crlNumber: Optional[bytes]
+    thisUpdate: datetime
+    nextUpdate: datetime
 
-#     def serializeDSC(self, dsc: DocumentSignerCertificate):
-#         """Function serialize DSC object to sequence"""
-#         self.object = dsc.dump()
+    def __init__(self, country: CountryCode, crlNumber: Optional[bytes], thisUpdate: datetime, nextUpdate: datetime):
+        assert isinstance(country, CountryCode)
+        self.country    = country
+        self.crlNumber  = crlNumber
+        self.thisUpdate = thisUpdate
+        self.nextUpdate = nextUpdate
 
-#     def getObject(self) -> DocumentSignerCertificate:
-#         """Returns DSC object"""
-#         return DocumentSignerCertificate.load(self.object)
+    @classmethod
+    def fromCrl(cls, crl: CertificateRevocationList):
+        cn = int_to_bytes(crl.crl_number_value.native) if crl.crl_number_value is not None else None
+        return cls(CountryCode(crl.issuerCountry), cn, crl.thisUpdate, crl.nextUpdate)
 
+class CertificateRevocationInfo:
+    serial: bytes
+    country: CountryCode
+    certId: Optional[CertificateId] # id of certificate beeing revoked.
+                                    # It could be None due to CRL list doesn't contain ful certificate to calculate CertificateId
+    revocationDate: datetime
 
-def writeToDB_DSC(dsc: DocumentSignerCertificate, connection: PortDatabaseConnection):
-    """Write to database with ORM"""
-    try:
-        logger.info("Writing DSC object to database. Country: " + CountryCode(dsc.issuerCountry))
-        a = DscStorage(dsc)
-        connection.getSession().add(a)
-        connection.getSession().commit()
+    def __init__(self, country: CountryCode, serial: int, revocationDate: datetime, certId: Optional[CertificateId] = None):
+        assert isinstance(country, CountryCode)
+        self.country = country
+        self.certId  = certId
+        self.serial  = int_to_bytes(serial)
+        self.revocationDate = revocationDate
 
-    except Exception as e:
-        raise DscStorageError("Couldn't write DSC storage to DB") from e
+class PkiDistributionUrl:
+    class  Type(enum.Enum):
+        CSCA = 0
+        DSC  = 1
+        CRL  = 2
 
-def readFromDB_DSC_issuer_serialNumber(issuer: str, serialNumber: int, connection: PortDatabaseConnection) -> List[DscStorage]:
-    """Reading from database"""
-    try:
-        logger.info("Reading DSC object from database. Issuer:" + issuer + ", serial number: " + str(serialNumber))
-        return connection.getSession() \
-            .query(DscStorage) \
-            .filter(DscStorage.issuer == issuer,
-                    DscStorage.serial == str(serialNumber.native)
-            ).all()
-    except Exception as e:
-        raise DscStorageError("Problem with writing the object") from e
+    id: int # signed 64 bit, see _gen_id
+    country: CountryCode
+    type: Type
+    url: str
 
-def readFromDB_DSC_issuer(issuer: str, connection: PortDatabaseConnection) -> List[DscStorage]:
-    """Reading from database"""
-    try:
-        logger.info("Reading DSC object from database. Issuer:" + issuer)
-        return connection.getSession() \
-                         .query(DscStorage) \
-                         .filter(DscStorage.issuer == issuer) \
-                         .all()
-    except Exception as e:
-        raise DscStorageError("Problem with writing the object") from e
+    def __init__(self, country: CountryCode, pkiType: Type, url: str) -> None:
+        assert len(url) > 0
+        assert isinstance(country, CountryCode)
+        self.id      = PkiDistributionUrl._gen_id(pkiType, url)
+        self.country = country
+        self.type    = pkiType
+        self.url     = url
 
-def readFromDB_DSC_authorityKey(authorityKey: bytes, connection: PortDatabaseConnection) -> List[DscStorage]:
-    """Reading from database"""
-    try:
-        logger.info("Reading DSC object from database with authority key.")
-        return connection.getSession() \
-                         .query(DscStorage) \
-                         .filter(DscStorage.authorityKey == authorityKey) \
-                         .all()
-    except Exception as e:
-        raise DscStorageError("Problem with writing the object") from e
-
-def deleteFromDB_DSC(dscs: List[DscStorage],connection: PortDatabaseConnection):
-    """Reading from database"""
-    try:
-        logger.info("Delete DSCs; size:" + str(len(dscs)))
-        if len(dscs) == 0:
-            logger.debug("Empty array. Nothing to delete.")
-
-        for item in dscs:
-            try:
-                connection.getSession().delete(item)
-            except Exception as e:
-                logger.error("Action delete failed. No item in database or object was not DSC. error={}".format(str(e)))
-        connection.getSession().commit()
-    except Exception as e:
-        raise DscStorageError("Problem with writing the object. error={}".format(str(e))) from e
+    @staticmethod
+    def _gen_id(pkiType: Type, url: str) -> int:
+        h = sha512_256(int_to_bytes(pkiType) + url.encode('utf-8'))
+        return bytes_to_int(h[0:8])

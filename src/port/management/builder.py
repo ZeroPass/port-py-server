@@ -1,15 +1,12 @@
 from ldif3 import LDIFParser
-from asn1crypto import crl, x509
 import re
 import logging
 
+from asn1crypto.crl import CertificateList
 from pymrtd.pki.crl import CertificateRevocationList
-from pymrtd.pki.x509 import DocumentSignerCertificate, Certificate, CscaCertificate, MasterListSignerCertificate
+from pymrtd.pki.x509 import DocumentSignerCertificate, Certificate, CscaCertificate
 
-from port.database.storage.crlStorage import CrlStorageError, writeToDB_CRL, readFromDB_CRL
-from port.database.storage.x509Storage import writeToDB_CSCA, writeToDB_DSC
-
-from port.management.filter import Filter
+from port.management.filter import CrlStorageError, Filter, readFromDB_CRL, writeToDB_CRL, writeToDB_CSCA, writeToDB_DSC
 
 from typing import Dict
 from datetime import datetime
@@ -17,6 +14,7 @@ from datetime import datetime
 
 #from pymrtd import ef
 from pymrtd.pki.ml import CscaMasterList
+from pymrtd.pki import x509
 from port.database.storage.storageManager import PortDatabaseConnection, truncateAll
 
 from port.settings import *
@@ -72,12 +70,12 @@ class Builder:
 
             if 'certificateRevocationList;binary' in entry:
                 countryCode = re.findall(r'[c,C]{1}=(.*)(,dc=data){1}', dn)[0][0]
-                revocationList = crl.CertificateList.load(*entry['certificateRevocationList;binary'])
+                revocationList = CertificateList.load(*entry['certificateRevocationList;binary'])
                 #parse to our object
                 revocationList.__class__ = CertificateRevocationList
                 revocationList.__init__()
                 #write to DB
-                writeToDB_CRL(revocationList, countryCode, connection)
+                writeToDB_CRL(revocationList, connection)
 
 
     def verifyCSCAandWrite(self, csca: CscaCertificate, issuingCert: CscaCertificate, connection: PortDatabaseConnection):
@@ -164,11 +162,11 @@ class Builder:
 
 
     def processCRL(self, connection: PortDatabaseConnection):
-        """Iterate through CRL and delete revocated certificates"""
+        """Iterate through CRL and delete revoked certificates"""
         try:
             crlArray = readFromDB_CRL(connection)
             for crl in crlArray:
-                self.iterateCRL(crl.getObject(), connection)
+                self.iterateCRL(crl.getCrl(), connection)
 
         except CrlStorageError as e:
             self._log.error("Exception description:" + e)

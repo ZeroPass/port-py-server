@@ -4,6 +4,7 @@ from sqlalchemy import (
     Boolean,
     Column,
     DateTime,
+    Enum,
     ForeignKey,
     future,
     Integer,
@@ -20,6 +21,9 @@ from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import mapper, sessionmaker, scoped_session
 from sqlalchemy.orm.session import Session
+from port.database.storage.accountStorage import AccountStorage
+from port.database.storage.challengeStorage import ChallengeStorage
+from port.database.storage.x509Storage import CertificateRevocationInfo, CrlUpdateInfo, CscaStorage, DscStorage, PkiDistributionUrl
 
 from port.proto.challenge import Challenge, CID
 from port.proto.types import CertificateId, CountryCode, SodId
@@ -77,15 +81,30 @@ class UserIdSqlType(TypeDecorator): #pylint: disable=abstract-method
 
 # Database structures
 metadata: Final = MetaData()
-crl = Table('crl', metadata,
-    Column('id', Integer, primary_key=True),
-    Column('object', LargeBinary),
-    Column('issuerCountry', String),
-    Column('size', Integer),
-    Column('thisUpdate', DateTime),
-    Column('nextUpdate', DateTime),
-    Column('signatureAlgorithm', String),
-    Column('signatureHashAlgorithm', String)
+
+# table contains CRL update info for country
+crlUpdateInfo: Final = Table('crl_update_info', metadata,
+    Column('country'   , CountryCodeSqlType()    , primary_key=True), # ISO alpha 2 country code
+    Column('crlNumber' , LargeBinary(20)         , nullable=True   ),
+    Column('thisUpdate', DateTime(timezone=False), nullable=False  ),
+    Column('nextUpdate', DateTime(timezone=False), nullable=False  )
+)
+
+# certificate revocation table contains list of infos about revoked certificates
+crt: Final = Table('crt', metadata,
+    Column('serial'        , VARBINARY(20)           , nullable=False, primary_key=True), # revoked certificate serial number
+    Column('country'       , CountryCodeSqlType()    , nullable=False, unique=False    ),
+    Column('certId'        , CertIdSqlType           , nullable=True , unique=True     ), # revoked certificate id i.e. foreign key in csca or dsc table.
+                                                                                          # The column could be NULL if cert is not found in the coresponding tables when inserting.
+    Column('revocationDate', DateTime(timezone=False), nullable=False                  ),
+)
+
+# table contains eMRTD distribution URLs for country. i.e.: distribution URLs fo countries CSCA, DSC and CRL
+pkiDistributionInfo: Final = Table('pki_distribution_info', metadata,
+    Column('id'     , BigInteger                    , primary_key=True, autoincrement=True),
+    Column('country', CountryCodeSqlType()          , unique=False    , nullable=False    ),
+    Column('type'   , Enum(PkiDistributionUrl.Type) , unique=False    , nullable=False    ),
+    Column('url'    , Text                          , unique=False    , nullable=False    ), # distribution URL.
 )
 
 # x.509 certificate table scheme
