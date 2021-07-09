@@ -155,7 +155,7 @@ def init_log(logLevel):
     fh = log.FileHandler("server.log")
     fh.setLevel(logLevel)
     formatter = log.Formatter(
-        '[%(asctime)s] %(levelname)-8s %(name)s %(message)s'
+        '[%(asctime)s] %(levelname)-8s %(thread)-8d %(name)s %(message)s'
     )
     fh.setFormatter(formatter)
     l.addHandler(fh)
