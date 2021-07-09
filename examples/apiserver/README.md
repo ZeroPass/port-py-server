@@ -41,6 +41,8 @@ Local run in dev mode using [MemoryDB](https://github.com/ZeroPass/port-py-serve
 python3 apiserver.py --dev --mdb --mdb-pkd=<path_to_pkd_root>
 ```
 
+*Note: Consider running the server with python `-O` or `-OO` option in production, to optimize execution of script (i.e. remove assert statements, doc strings and some debugging context checks)*
+
 ### Server Parameters
 
 * --url : server URL address)

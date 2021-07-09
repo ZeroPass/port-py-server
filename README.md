@@ -104,7 +104,7 @@ To extract eMRTD trustchain certificates (CSCA/DSC) from master list files (`*.m
 (Optional) If using SQL database you can use class [Builder](https://github.com/ZeroPass/port-py-server/blob/a87cb5cc55c160a9ca80583ecb6099d7a6e57660/src/management/builder.py#L54) to load trustchain certificates into database via custom script.
 
 #### Instructions for running server services:
-* API service [README](src/APIservice#api-service)
+* Example API service [README](examples/apiserver/README.md)
 * Web app [README](src/WebApp#webapp-data)
 
 ## Server module structure
