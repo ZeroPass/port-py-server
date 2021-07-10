@@ -28,7 +28,7 @@ class CertificateStorage:
     def __init__(self, cert: Certificate, issuerId: Optional[CertificateId] = None):
         self.id             = CertificateId.fromCertificate(cert)
         self.country        = CountryCode(cert.issuerCountry)
-        self.serial         = int_to_bytes(cert.serial_number)
+        self.serial         = CertificateStorage.makeSerial(cert.serial_number)
         self.notValidBefore = cert.notValidBefore
         self.notValidAfter  = cert.notValidAfter
         self.issuerId       = issuerId
@@ -38,9 +38,36 @@ class CertificateStorage:
         self.subjectKey     = cert.subjectKey
         self.certificate    = cert.dump()
 
+        self.__cached_crt_obj = None
+        self.__cached_ser_no  = None
+
+    @property
+    def serialNumber(self):
+        if self.__cached_ser_no is None:
+            self.__cached_ser_no = bytes_to_int(self.serial, signed=True)
+        return self.__cached_ser_no
+
     def getCertificate(self):
-        """Returns object"""
-        return self._type.load(self.certificate)
+        """Returns x509. Certificate object"""
+        if self.__cached_crt_obj is None:
+            self.__cached_crt_obj = self._type.load(self.certificate)
+        return self.__cached_crt_obj
+
+    def isValidOn(self, dateTime: datetime):
+        ''' Verifies if certificate is valid on specific date-time '''
+        nvb = self.notValidBefore
+        nva = self.notValidAfter
+        dateTime = dateTime.replace(tzinfo=nvb.tzinfo)
+        return nvb < dateTime < nva
+
+    def isSelfIssued(self):
+        return (self.subject == self.issuer or self.subjectKey == self.authorityKey) \
+            and self.issuerId is None
+
+    @staticmethod
+    def makeSerial(ser: int) -> bytes:
+        return int_to_bytes(ser, signed=True)
+
 
 class CscaStorage(CertificateStorage):
     _type = CscaCertificate
