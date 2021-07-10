@@ -47,7 +47,7 @@ class CertificateId(IIntegerId):
 
     @classmethod
     def fromCertificate(cls, crt: x509.Certificate) -> "CertificateId":
-        return sha512_256(crt.dump())
+        return cls(sha512_256(crt.dump()))
 
 class SodId(IIntegerId):
     """
@@ -61,7 +61,7 @@ class SodId(IIntegerId):
 
     @classmethod
     def fromSOD(cls, sod: ef.SOD) -> "SodId":
-        return sha512_256(sod.dump())
+        return cls(sha512_256(sod.dump()))
 
 class CountryCode(str):
     """
