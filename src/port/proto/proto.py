@@ -1,4 +1,5 @@
 import port.log as log
+from port.proto.types import CountryCode
 
 from . import utils
 from .challenge import CID, Challenge
@@ -14,7 +15,7 @@ from pymrtd.pki.keys import AAPublicKey, SignatureAlgorithm
 from pymrtd.pki.x509 import CertificateVerificationError, CscaCertificate, DocumentSignerCertificate
 
 from port.database.storage.accountStorage import AccountStorage
-from port.database.storage.x509Storage import CscaStorage
+from port.database.storage.x509Storage import CertificateStorage, CscaStorage
 
 from threading import Timer
 from typing import Final, List, Optional, Tuple, Union
@@ -22,37 +23,6 @@ from typing import Final, List, Optional, Tuple, Union
 class ProtoError(Exception):
     """ General protocol exception """
     code = 400
-
-class PeAccountConflict(ProtoError):
-    """ User account error """
-    code = 409
-
-class PeChallengeExpired(ProtoError):
-    """ Challenge has expired """
-    code = 498
-
-class PeCredentialsExpired(ProtoError):
-    """ Challenge has expired """
-    code = 498
-
-class PeMissingParam(ProtoError):
-    """ Missing protocol parameter """
-    code = 422
-
-class PePreconditionFailed(ProtoError):
-    """
-    One or more condition in verification of eMRTD PKI trustchain failed.
-    Or when verifying SOD contains specific DG e.g.: DG1
-    """
-    code = 412
-
-class PePreconditionRequired(ProtoError):
-    """
-    Required preconditions that are marked as optional.
-    e.g.: at registration dg14 might be required or at login dg1 could be required
-    """
-    code = 428
-
 
 class PeSigVerifyFailed(ProtoError):
     """ Challenge signature verification error """
@@ -62,20 +32,62 @@ class PeMacVerifyFailed(ProtoError):
     """ Session mac verification error """
     code = 401
 
-peAccountAlreadyRegistered: Final     = PeAccountConflict("Account already registered")
-peAccountExpired: Final               = PeCredentialsExpired("Account has expired")
-peChallengeExpired: Final             = PeChallengeExpired("Challenge has expired")
-peChallengeVerificationFailed: Final  = PeSigVerifyFailed("Challenge signature verification failed")
-peCscaExpired: Final                  = PePreconditionFailed("CSCA has expired")
-peCscaNotFound: Final                 = PePreconditionFailed("CSCA not found")
-peDscExpired: Final                   = PePreconditionFailed("DSC has expired")
-peDscNotFound: Final                  = PePreconditionFailed("DSC not found")
-peDg1Required: Final                  = PePreconditionRequired("EF.DG1 required")
-peDg14Required: Final                 = PePreconditionRequired("EF.DG14 required")
-peMissingAAInfoInDg14: Final          = PePreconditionRequired("Missing ActiveAuthenticationInfo in DG14 file")
-peMissingParamAASigAlgo: Final        = PeMissingParam("Missing param aaSigAlgo")
-peUnknownPathSodToDsc: Final          = PePreconditionFailed("Unknown connection path from SOD to DSC")
-peTrustchainVerificationFailed: Final = PePreconditionFailed("Trustchain verification failed")
+class PeNotFound(ProtoError):
+    """ Non existing elements error (e.g.: account doesn't exist, CSCA can't be faound etc...) """
+    code = 404
+
+class PeConflict(ProtoError):
+    """ User account error """
+    code = 409
+
+class PePreconditionFailed(ProtoError):
+    """
+    One or more condition in verification of eMRTD PKI trustchain failed.
+    Or when verifying SOD contains specific DG e.g.: DG1
+    """
+    code = 412
+
+class PeInvalidOrMissingParam(ProtoError):
+    """ Invalid or missing required protocol parameter """
+    code = 422
+
+class PePreconditionRequired(ProtoError):
+    """
+    Required preconditions that are marked as optional.
+    e.g.: at registration dg14 might be required or at login dg1 could be required
+    """
+    code = 428
+
+class PeChallengeExpired(ProtoError):
+    """ Challenge has expired """
+    code = 498
+
+class PeCredentialsExpired(ProtoError):
+    """ Challenge has expired """
+    code = 498
+
+peAccountAlreadyRegistered: Final         = PeConflict("Account already registered")
+peAccountExpired: Final                   = PeCredentialsExpired("Account has expired")
+peChallengeExpired: Final                 = PeChallengeExpired("Challenge has expired")
+peChallengeVerificationFailed: Final      = PeSigVerifyFailed("Challenge signature verification failed")
+peCscaExists: Final                       = PeConflict("CSCA certificate already exists")
+peCscaExpired: Final                      = ProtoError("CSCA certificate has expired")
+peCscaNotFound: Final                     = PeNotFound("CSCA certificate not found")
+peCscaSelfIssued: Final                   = PeNotFound("No CSCA link was found for self-issued CSCA")
+peDg1Required: Final                      = PePreconditionRequired("EF.DG1 required")
+peDg14Required: Final                     = PePreconditionRequired("EF.DG14 required")
+peDscExists: Final                        = PeConflict("DSC certificate already exists")
+peDscExpired: Final                       = ProtoError("DSC certificate has expired")
+peDscNotFound: Final                      = PeNotFound("DSC certificate not found")
+peInvalidCsca: Final                      = PeInvalidOrMissingParam("Invalid CSCA certificate")
+peInvalidDsc: Final                       = PeInvalidOrMissingParam("Invalid DSC certificate")
+peMissingAAInfoInDg14: Final              = PePreconditionRequired("Missing ActiveAuthenticationInfo in DG14 file")
+peMissingParamAASigAlgo: Final            = PeInvalidOrMissingParam("Missing param aaSigAlgo")
+peTrustchainCheckFailedExpiredCert: Final = PePreconditionFailed("Expired certificate in the trustchain")
+peTrustchainCheckFailedNoCsca: Final      = PePreconditionFailed("Missing issuer CSCA certificate in the trustchain")
+peTrustchainCheckFailedRevokedCert: Final = PePreconditionFailed("Revoked certificate in the trustchain")
+peTrustchainVerificationFailed: Final     = PePreconditionFailed("Trustchain verification failed")
+peUnknownPathSodToDsc: Final              = PePreconditionFailed("Unknown connection path from SOD to DSC certificate")
 
 def peInvalidDgFile(dgNumber: ef.dg.DataGroupNumber) -> PePreconditionFailed:
     return PePreconditionFailed("Invalid EF.{} file".format(dgNumber.native))
@@ -421,7 +433,7 @@ class PortProto:
 
         # 3. verify CSCA really issued DSC
         self._log.verbose("Verifying CSCA issued DSC ...")
-        dsc.verify(issuing_cert=csca)
+        dsc.verify(issuingCert=csca)
 
     def _get_challenge_expiration(self, createTime: datetime) -> datetime:
         """
@@ -445,7 +457,6 @@ class PortProto:
         """Verification of issuer certificate from SOD file"""
         self._log.debug("Validating path CSCA => DSC => SOD ...")
         assert isinstance(sod, ef.SOD)
-
         # Get DSCs certificates that signed SOD file. DSC is also validated to CSCA trust chain if necessary.
         dscs = []
         for _, signer in enumerate(sod.signers):
