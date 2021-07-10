@@ -15,9 +15,9 @@ from .db import (
 
 from .proto import (
     PortProto,
-    PeAccountConflict,
+    PeConflict,
     PeChallengeExpired,
-    PeMissingParam,
+    PeInvalidOrMissingParam,
     PeSigVerifyFailed,
     ProtoError
 )
@@ -28,23 +28,28 @@ from .session import (
 )
 
 from .user import UserId
+from .types import CertificateId, CountryCode, SodId
+
 import port.proto.utils as utils
 
 __all__ = [
     "CID",
+    "CertificateId",
     "Challenge",
+    "CountryCode",
     "DatabaseAPI",
     "DatabaseAPIError",
     "MemoryDB",
-    "PeAccountConflict",
+    "PeConflict",
     "PeChallengeExpired",
-    "PeMissingParam",
+    "PeInvalidOrMissingParam",
     "PeSigVerifyFailed",
     "PortProto",
     "ProtoError",
     "SeEntryAlreadyExists",
     "SeEntryNotFound",
     "SessionKey",
+    "SodId",
     "StorageAPI",
     "StorageAPIError",
     "UserId",
