@@ -38,20 +38,20 @@ class CertificateStorage:
         self.subjectKey     = cert.subjectKey
         self.certificate    = cert.dump()
 
-        self.__cached_crt_obj = None
-        self.__cached_ser_no  = None
+        self._cached_crt_obj = None
+        self._cached_ser_no  = None
 
     @property
     def serialNumber(self):
-        if self.__cached_ser_no is None:
-            self.__cached_ser_no = bytes_to_int(self.serial, signed=True)
-        return self.__cached_ser_no
+        if not hasattr(self, '_cached_ser_no') or self._cached_ser_no is None:
+            self._cached_ser_no = bytes_to_int(self.serial, signed=True)
+        return self._cached_ser_no
 
     def getCertificate(self):
         """Returns x509. Certificate object"""
-        if self.__cached_crt_obj is None:
-            self.__cached_crt_obj = self._type.load(self.certificate)
-        return self.__cached_crt_obj
+        if not hasattr(self, '_cached_crt_obj') or self._cached_crt_obj is None:
+            self._cached_crt_obj = self._type.load(self.certificate)
+        return self._cached_crt_obj
 
     def isValidOn(self, dateTime: datetime):
         ''' Verifies if certificate is valid on specific date-time '''
