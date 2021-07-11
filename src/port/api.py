@@ -1,18 +1,15 @@
-import os, port.log as log
+import os
+import port.log as log
 
 from base64 import b64decode
-
 from jsonrpc import Dispatcher, JSONRPCResponseManager as JRPCRespMgr
 from jsonrpc.exceptions import JSONRPCDispatchException
-
 from port import proto
 from port.settings import Config
-
 from pymrtd import ef
-from typing import Callable, List, NoReturn
-
 from werkzeug.wrappers import Request, Response
 from werkzeug.serving import run_simple
+from typing import Callable, List, NoReturn
 
 def try_deser(f):
     try:
@@ -178,9 +175,25 @@ class PortApiServer:
         except Exception as e:
             self.__handle_exception(e)
 
+    def __handle_exception(self, e: Exception)-> NoReturn:
+        if isinstance(e, proto.ProtoError):
+            self._log.warning("Request proto error: %s", e)
+            raise JSONRPCDispatchException(e.code, str(e)) from e
+
+        if isinstance(e, proto.SeEntryNotFound):
+            self._log.warning("Request storage error: %s", e)
+            raise JSONRPCDispatchException(404, str(e)) from e
+
+        if isinstance(e, proto.SeEntryAlreadyExists):
+            self._log.warning("Request storage error: %s", e)
+            raise JSONRPCDispatchException(409, str(e)) from e
+
+        self._log.error("Unhandled exception encountered, e=%s", e)
+        raise JSONRPCDispatchException(500, "Internal Server Error") from e
+
 # Request handler
     @Request.application
-    def __handle_request(self, request):
+    def __handle_request(self, request) -> Response:
         response = JRPCRespMgr.handle(
             request.data,
             self._req_disp
@@ -188,22 +201,6 @@ class PortApiServer:
         if response is not None:
             return Response(response.json, mimetype='application/json')
         return Response()
-
-    def __handle_exception(self, e: Exception)-> NoReturn:
-        if isinstance(e, proto.ProtoError):
-            self._log.warning("Request proto error: {}".format(e))
-            raise JSONRPCDispatchException(e.code, str(e)) from e
-
-        if isinstance(e, proto.SeEntryNotFound):
-            self._log.warning("Request storage error: {}".format(e))
-            raise JSONRPCDispatchException(404, str(e)) from e
-
-        if isinstance(e, proto.SeEntryAlreadyExists):
-            self._log.warning("Request storage error: {}".format(e))
-            raise JSONRPCDispatchException(409, str(e)) from e
-
-        self._log.error("Unhandled exception encountered, e={}".format(e))
-        raise JSONRPCDispatchException(500, "Internal Server Error") from e
 
     def __init_api(self):
         self._req_disp = Dispatcher()
@@ -222,13 +219,13 @@ class PortApiServer:
 
     def __log_api_call(self, f, **kwargs):
         if self._log.level <= log.VERBOSE:
-            self._log.debug(":{}() ==>".format(f.__name__))
+            self._log.debug(":%s() ==>", f.__name__)
             for a, v in kwargs.items():
-                self._log.verbose(" {}: {}".format(a, v))
+                self._log.verbose(" %s: %s", a, v)
 
     def __log_api_response(self, f, resp: dict):
         if self._log.level <= log.VERBOSE:
-            self._log.debug(":{}() <==".format(f.__name__))
-            if(resp is not None):
+            self._log.debug(":%s() <==", f.__name__)
+            if resp is not None:
                 for a, v in resp.items():
-                    self._log.verbose(" {}: {}".format(a, v))
+                    self._log.verbose(" %s: %s", a, v)
