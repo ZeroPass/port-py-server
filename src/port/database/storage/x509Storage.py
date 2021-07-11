@@ -129,5 +129,9 @@ class PkiDistributionUrl:
 
     @staticmethod
     def _gen_id(pkiType: Type, url: str) -> int:
-        h = sha512_256(int_to_bytes(pkiType) + url.encode('utf-8'))
+        '''
+        Generates ID from type and url.
+        The generated ID should be unique so any duplicated entries won't be inserted.
+        '''
+        h = sha512_256(int_to_bytes(pkiType.value) + url.encode('utf-8'))
         return bytes_to_int(h[0:8])
