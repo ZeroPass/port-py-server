@@ -101,7 +101,7 @@ crt: Final = Table('crt', metadata,
 
 # table contains eMRTD distribution URLs for country. i.e.: distribution URLs fo countries CSCA, DSC and CRL
 pkiDistributionInfo: Final = Table('pki_distribution_info', metadata,
-    Column('id'     , BigInteger                    , primary_key=True, autoincrement=True),
+    Column('id'     , BigInteger                    , primary_key=True, autoincrement=True), # ID should be unique and tied to the url and type. See PkiDistributionUrl._gen_id
     Column('country', CountryCodeSqlType()          , unique=False    , nullable=False    ),
     Column('type'   , Enum(PkiDistributionUrl.Type) , unique=False    , nullable=False    ),
     Column('url'    , Text                          , unique=False    , nullable=False    ), # distribution URL.

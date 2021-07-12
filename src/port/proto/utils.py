@@ -63,7 +63,7 @@ def int_to_bytes(num: int, signed: bool = True) -> bytes:
     Encodes integer num to big-endian bytes.
     :param num: The number to encode
     :param signed: The signed argument determines whether two's complement is used to represent the integer.
-    :returns: Big-endian encoded bytes.
+    :return: Big-endian encoded bytes.
     """
     # https://stackoverflow.com/questions/21017698/converting-int-to-bytes-in-python-3/54141411#54141411
     length = ((num + ((num * signed) < 0)).bit_length() + 7 + signed) // 8
@@ -74,7 +74,7 @@ def bytes_to_int(data: bytes, signed: bool = True) -> int:
     Decodes big-endian integer from bytes.
     :param data: The byte data decode the integer number from.
     :param signed: The signed argument indicates whether two's complement is used to represent the integer.
-    :returns: Decoded integer number.
+    :return: Decoded integer number.
     """
     return int.from_bytes(data, byteorder='big', signed=signed)
 

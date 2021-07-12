@@ -173,7 +173,7 @@ class StorageAPI(ABC):
         """
         Returns DSC certificate storage that matches the certificate id.
         :param certId: The DSC certificate id.
-        :returns: DscStorage
+        :return: DscStorage
         """
 
     @abstractmethod
@@ -182,7 +182,7 @@ class StorageAPI(ABC):
         Returns DSC certificate storage that matches the issuer name and serial number.
         :param issuer: The DSC certificate issuer.
         :param serial: The DSC certificate serial number.
-        :returns: DscStorage
+        :return: DscStorage
         """
 
     @abstractmethod
@@ -190,7 +190,7 @@ class StorageAPI(ABC):
         """
         Returns DSC certificate storage that matches the subjectKey.
         :param subjectKey: The DSC certificate subject key.
-        :returns: DscStorage
+        :return: DscStorage
         """
 
     @abstractmethod
@@ -205,7 +205,7 @@ class StorageAPI(ABC):
         """
         Returns CRL update info for country.
         :param country: iso alpha-2 country code to retrieve the CRL update info.
-        :returns: Optional[CrlUpdateInfo]
+        :return: Optional[CrlUpdateInfo]
         """
 
     @abstractmethod
@@ -224,7 +224,7 @@ class StorageAPI(ABC):
         """
         Returns list of infos about revoked certificates for country.
         :param country: The iso alpha-2 country code to get the list of certificate revocation infos for.
-        :returns: List of countries revoked certificate infos or None
+        :return: List of countries revoked certificate infos or None
         """
 
     @abstractmethod
@@ -232,7 +232,7 @@ class StorageAPI(ABC):
         """
         Verifies in the DB if certificate is revoked.
         :param crt: The certificate or CertificateStorage to verify.
-        :returns: Returns True if certificate is revoked, otherwise False.
+        :return: Returns True if certificate is revoked, otherwise False.
         """
 
     @abstractmethod
@@ -247,7 +247,7 @@ class StorageAPI(ABC):
         """
         Returns list of emRTD PKI distribution urls for country.
         :param country: The ios alpha-2 country code to retrieve the list of.
-        :returns: Optional[List[PkiDistributionUrl]]
+        :return: Optional[List[PkiDistributionUrl]]
         """
 
     @abstractmethod
@@ -634,7 +634,7 @@ class DatabaseAPI(StorageAPI):
         """
         Returns DSC certificate storage that matches the certificate id.
         :param certId: The DSC certificate id.
-        :returns: DscStorage
+        :return: DscStorage
         :raises: DatabaseAPIError on DB connection errors.
         """
         assert isinstance(certId, CertificateId)
@@ -651,7 +651,7 @@ class DatabaseAPI(StorageAPI):
         Returns DSC certificate storage that matches the issuer name and serial number.
         :param issuer: The DSC certificate issuer.
         :param serial: The DSC certificate serial number.
-        :returns: DscStorage
+        :return: DscStorage
         :raises: DatabaseAPIError on DB connection errors.
         """
         assert isinstance(issuer, x509.Name)
@@ -669,7 +669,7 @@ class DatabaseAPI(StorageAPI):
         """
         Returns DSC certificate storage that matches the subjectKey.
         :param subjectKey: The DSC certificate subject key.
-        :returns: DscStorage
+        :return: DscStorage
         :raises: DatabaseAPIError on DB connection errors.
         """
         assert isinstance(subjectKey, bytes)
@@ -706,7 +706,7 @@ class DatabaseAPI(StorageAPI):
         """
         Returns CRL update info for country.
         :param country: iso alpha-2 country code to retrieve the CRL update info.
-        :returns: Optional[CrlUpdateInfo]
+        :return: Optional[CrlUpdateInfo]
         :raises: DatabaseAPIError on DB connection errors.
         """
         assert isinstance(country, CountryCode)
@@ -759,7 +759,7 @@ class DatabaseAPI(StorageAPI):
         """
         Returns list of infos about revoked certificates for country.
         :param country: The iso alpha-2 country code to get the list of certificate revocation infos for.
-        :returns: List of countries revoked certificate infos or None
+        :return: List of countries revoked certificate infos or None
         :raises: DatabaseAPIError on DB connection errors.
         """
         assert isinstance(country, CountryCode)
@@ -776,7 +776,7 @@ class DatabaseAPI(StorageAPI):
         """
         Verifies in the DB if certificate is revoked.
         :param crt: The certificate or CertificateStorage to verify.
-        :returns: Returns True if certificate is revoked, otherwise False.
+        :return: Returns True if certificate is revoked, otherwise False.
         :raises: DatabaseAPIError on DB connection errors.
         """
         assert isinstance(crt, Certificate) or isinstance(crt, CertificateStorage)
@@ -815,7 +815,7 @@ class DatabaseAPI(StorageAPI):
         """
         Returns list of emRTD PKI distribution urls for country.
         :param country: The ios alpha-2 country code to retrieve the list of.
-        :returns: Optional[List[PkiDistributionUrl]]
+        :return: Optional[List[PkiDistributionUrl]]
         """
         assert isinstance(country, CountryCode)
         try:
@@ -1079,7 +1079,7 @@ class MemoryDB(StorageAPI):
         """
         Returns DSC certificate storage that matches the certificate id.
         :param certId: The DSC certificate id.
-        :returns: DscStorage
+        :return: DscStorage
         """
         assert isinstance(certId, CertificateId)
         for dsc in self._d['dscs']:
@@ -1092,7 +1092,7 @@ class MemoryDB(StorageAPI):
         Returns DSC certificate storage that matches the issuer name and serial number.
         :param issuer: The DSC certificate issuer.
         :param serial: The DSC certificate serial number.
-        :returns: DscStorage
+        :return: DscStorage
         """
         assert isinstance(issuer, x509.Name)
         assert isinstance(serial, int)
@@ -1105,7 +1105,7 @@ class MemoryDB(StorageAPI):
         """
         Returns DSC certificate storage that matches the subjectKey.
         :param subjectKey: The DSC certificate subject key.
-        :returns: DscStorage
+        :return: DscStorage
         """
         assert isinstance(subjectKey, bytes)
         for dsc in self._d['dscs']:
@@ -1125,7 +1125,7 @@ class MemoryDB(StorageAPI):
         """
         Returns CRL update info for country.
         :param country: iso alpha-2 country code to retrieve the CRL update info.
-        :returns: Optional[CrlUpdateInfo]
+        :return: Optional[CrlUpdateInfo]
         """
         assert isinstance(country, CountryCode)
         if country in self._d['crlui']:
@@ -1167,7 +1167,7 @@ class MemoryDB(StorageAPI):
         """
         Verifies in the DB if certificate is revoked.
         :param crt: The certificate to verify.
-        :returns: Returns True if certificate is revoked, otherwise False.
+        :return: Returns True if certificate is revoked, otherwise False.
         """
         assert isinstance(crt, Certificate) or isinstance(crt, CertificateStorage)
         if isinstance(crt, Certificate):
@@ -1198,7 +1198,7 @@ class MemoryDB(StorageAPI):
         """
         Returns list of emRTD PKI distribution urls for country.
         :param country: The ios alpha-2 country code to retrieve the list of.
-        :returns: Optional[List[PkiDistributionUrl]]
+        :return: Optional[List[PkiDistributionUrl]]
         """
         assert isinstance(country, CountryCode)
         urlList = []
