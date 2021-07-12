@@ -109,10 +109,12 @@ class CertificateRevocationInfo:
         self.revocationDate = revocationDate
 
 class PkiDistributionUrl:
-    class  Type(enum.Enum):
-        CSCA = 0
-        DSC  = 1
-        CRL  = 2
+    class Type(enum.Enum):
+        CSCA        = 0
+        DSC         = 1
+        CRL         = 2
+        MasterList  = 3
+        MrtdPkdLdif = 4 # e.g. ICAO mrtd public key directory ldif file
 
     id: int # signed 64 bit, see _gen_id
     country: CountryCode
