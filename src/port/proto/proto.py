@@ -541,6 +541,10 @@ class PortProto:
             raise PeMacVerifyFailed("Invalid session MAC")
 
     def __purgeExpiredChallenges(self):
-        self._log.debug('Purging expired challenges')
-        now = utils.time_now()
-        self._db.deleteExpiredChallenges(now)
+        try:
+            self._log.debug('Purging expired challenges')
+            now = utils.time_now()
+            self._db.deleteExpiredChallenges(now)
+        except Exception as e:
+            self._log.error("An exception was encountered while purging expired challenges!")
+            self._log.exception(e)
