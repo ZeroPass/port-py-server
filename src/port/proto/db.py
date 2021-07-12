@@ -1,3 +1,4 @@
+from collections import defaultdict
 import logging
 
 from abc import ABC, abstractmethod
@@ -8,7 +9,6 @@ from port.database.storage.storageManager import PortDatabaseConnection
 from port.database.storage.challengeStorage import ChallengeStorage
 from port.database.storage.accountStorage import AccountStorage
 from port.database.storage.x509Storage import CertificateRevocationInfo, CertificateStorage, PkiDistributionUrl, CrlUpdateInfo, DscStorage, CscaStorage
-from port.proto.utils import int_to_bytes
 
 from pymrtd.pki.x509 import Certificate, CscaCertificate, DocumentSignerCertificate
 from sqlalchemy import or_
@@ -236,7 +236,7 @@ class StorageAPI(ABC):
         """
 
     @abstractmethod
-    def addPkiDistributionUrl(self, pkidUrl: PkiDistributionUrl):
+    def addPkiDistributionUrl(self, pkidUrl: PkiDistributionUrl) -> None:
         """
         Adds eeMRTD PKI distribution point URL address if it doesn't exist yet.
         :param pkidUrl: PkiDistributionUrl
@@ -528,7 +528,7 @@ class DatabaseAPI(StorageAPI):
         assert isinstance(issuer, x509.Name)
         assert isinstance(serial, int)
         try:
-            serial = int_to_bytes(serial)
+            serial = CertificateStorage.makeSerial(serial)
             return self.__db \
                 .query(CscaStorage) \
                 .filter(CscaStorage.issuer == issuer.human_friendly, CscaStorage.serial == serial) \
@@ -657,7 +657,7 @@ class DatabaseAPI(StorageAPI):
         assert isinstance(issuer, x509.Name)
         assert isinstance(serial, int)
         try:
-            serial = int_to_bytes(serial)
+            serial = CertificateStorage.makeSerial(serial)
             return self.__db \
                 .query(DscStorage) \
                 .filter(DscStorage.issuer == issuer.human_friendly, DscStorage.serial == serial) \
@@ -784,7 +784,7 @@ class DatabaseAPI(StorageAPI):
             q = self.__db.query(CertificateRevocationInfo)
             if isinstance(crt, Certificate):
                 certId = CertificateId.fromCertificate(crt)
-                serial = int_to_bytes(crt.serial_number)
+                serial = CertificateStorage.makeSerial(crt.serial_number)
                 q.filter_by(country = CountryCode(crt.issuerCountry)) \
                  .filter(or_(CertificateRevocationInfo.certId == certId,
                              CertificateRevocationInfo.serial == serial))
@@ -797,7 +797,7 @@ class DatabaseAPI(StorageAPI):
         except Exception as e:
             self.__handle_exception(e)
 
-    def addPkiDistributionUrl(self, pkidUrl: PkiDistributionUrl):
+    def addPkiDistributionUrl(self, pkidUrl: PkiDistributionUrl) -> None:
         """
         Adds eMRTD PKI distribution point URL address if it doesn't exist yet.
         :param pkidUrl: PkiDistributionUrl
@@ -863,7 +863,7 @@ class MemoryDB(StorageAPI):
         self._d = {
             'proto_challenges' : {},
             'accounts' : {},
-            'cscas' : set(),
+            'cscas' : defaultdict(list), # <country, List[CscaStorage]>
             'dscs' : set(),
             'crlui' : {},
             'crt' : {},
@@ -983,9 +983,10 @@ class MemoryDB(StorageAPI):
         :return: list of CscaStorage, or None if no CSCA certificate was found.
         """
         assert isinstance(certId, CertificateId)
-        for csca in self._d['cscas']:
-            if csca.id == certId:
-                return csca
+        for _, cscas in self._d['cscas'].items():
+            for csca in cscas:
+                if csca.id == certId:
+                    return csca
         return None
 
     def findCscaBySerial(self, issuer: x509.Name, serial: int) -> Optional[CscaStorage]:
@@ -995,9 +996,9 @@ class MemoryDB(StorageAPI):
         :param serial: CSCA serial number to search for.
         :return:
         """
-        serial = int_to_bytes(serial)
-        for csca in self._d['cscas']:
-            if csca.issuer == issuer and csca.serial == serial:
+        country = CountryCode(issuer.native['country_name'])
+        for csca in self._d['cscas'][country]:
+            if csca.issuer == issuer.human_friendly and csca.serialNumber == serial:
                 return csca
         return None
 
@@ -1017,9 +1018,9 @@ class MemoryDB(StorageAPI):
             subjectKey = b''
         cscas = []
         country = CountryCode(subject.native['country_name'])
-        for csca in self._d['cscas']:
+        for csca in self._d['cscas'][country]:
             if csca.subject == subject.human_friendly or \
-               (csca.country == country and csca.subjectKey == subjectKey):
+               csca.subjectKey == subjectKey:
                 cscas.append(csca)
 
         # Filter out cscas with different subject key
@@ -1035,7 +1036,8 @@ class MemoryDB(StorageAPI):
         """
         assert isinstance(subject, x509.Name)
         cscas = []
-        for csca in self._d['cscas']:
+        country = CountryCode(subject.native['country_name'])
+        for csca in self._d['cscas'][country]:
             if csca.subject == subject.human_friendly:
                 cscas.append(csca)
         return cscas if len(cscas) != 0 else None
@@ -1050,8 +1052,8 @@ class MemoryDB(StorageAPI):
         assert isinstance(subjectKey, bytes)
         assert isinstance(country, CountryCode)
         cscas = []
-        for csca in self._d['cscas']:
-            if csca.country == country and csca.subjectKey == subjectKey:
+        for csca in self._d['cscas'][country]:
+            if csca.subjectKey == subjectKey:
                 cscas.append(csca)
         return cscas if len(cscas) != 0 else None
 
@@ -1097,7 +1099,7 @@ class MemoryDB(StorageAPI):
         assert isinstance(issuer, x509.Name)
         assert isinstance(serial, int)
         for dsc in self._d['dscs']:
-            if dsc.issuer == issuer and dsc.serial_number == serial:
+            if dsc.issuer == issuer and dsc.serialNumber == serial:
                 return dsc
         return None
 
@@ -1172,7 +1174,7 @@ class MemoryDB(StorageAPI):
         assert isinstance(crt, Certificate) or isinstance(crt, CertificateStorage)
         if isinstance(crt, Certificate):
             certId = CertificateId.fromCertificate(crt)
-            serial = int_to_bytes(crt.serial_number)
+            serial = CertificateStorage.makeSerial(crt.serial_number)
             country = CountryCode(crt.issuerCountry)
         else: # CertificateStorage
             country = crt.country
