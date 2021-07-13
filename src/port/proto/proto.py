@@ -15,7 +15,7 @@ from pymrtd.pki.keys import AAPublicKey, SignatureAlgorithm
 from pymrtd.pki.x509 import CertificateVerificationError, CscaCertificate, DocumentSignerCertificate
 
 from port.database.storage.accountStorage import AccountStorage
-from port.database.storage.x509Storage import CertificateStorage, CscaStorage
+from port.database.storage.x509Storage import CertificateStorage, CscaStorage, PkiDistributionUrl
 
 from threading import Timer
 from typing import Final, List, Optional, Tuple, Union
@@ -299,6 +299,95 @@ class PortProto:
         if dg1 is not None:
             msg = "Hi, {} {}!".format(dg1.mrz.surname, dg1.mrz.name)
         return msg
+
+    def addCscaCertificate(self, csca: CscaCertificate, allowSelfIssued: bool = False) -> None:
+        """
+        Adds new CSCA certificate into database.
+        Before CSCA is added to the DB the certificate is verified that it conforms to the ICAO 9303 standard.
+        i.e.: Is CA certificate constraints cert path to 0 and it hasn't expired yet.
+        If self issued CSCA is not allowed, the protocol verifies if it has valid CSCA link certificate (LCSCA) for it,
+        and if not the function fails. Certificate goes also through trust chain verification e.g. check if certificate wasn't revoked
+        or the certificate signature can be verified successfully (in LCSCA case).
+
+        :param csca: The CSCA certificate to add.
+        :param allowSelfIssued: By default false, if set to True the self issued certificate will be added to the DB.
+                                Warning: self-issued CSCA should only be allowed from privileged and verified sources
+                                         e.g. fully verified CSCA master list, server admin).
+                                         Self-issued CSCA should be PROHIBITED, for example, through public api.
+        :raise: PeInvalidOrMissingParam - When CSCA doesn't conform to the ICAO 9303 standard.
+        """
+        try:
+            self._log.debug("addCscaCertificate: C=%s serial=%s allowSelfIssued=%s",
+                CountryCode(csca.issuerCountry), CscaStorage.makeSerial(csca.serial_number).hex(), str(allowSelfIssued))
+
+            # First check if CSCA is valid at current time.
+            # Although this check is also performed by the _check_cert_trustchain
+            # we perform this check anyway here, to filter out and not to waste much
+            # of resources on any expired certificate.
+            if not csca.isValidOn(utils.time_now()):
+                self._log.error("Trying to add expired CSCA certificate! C=%s serial=%s %s",
+                        csca.issuerCountry, CscaStorage.makeSerial(csca.serial_number).hex(), utils.format_cert_et(csca, utils.time_now()))
+                raise peCscaExpired
+
+            # Second verify we have conformant CSCA certificate
+            csca.checkConformance()
+
+            # Then find the issuer if csca is LCSCA or coresponding LCSCA.
+            issuerCert: Optional[CscaStorage] = None # None for allowed self-issued
+            selfIssued = csca.self_signed == 'maybe'
+            if selfIssued:
+                if not allowSelfIssued: # Find matching LCSCA or fail
+                    self._log.debug("Looking for matching LCSCA...")
+                    cscas: List[CscaStorage] = self._db.findCscaCertificates(csca.subject, csca.subjectKey)
+                    for c in (cscas or []):
+                        crt:CscaCertificate = c.getCertificate()
+                        if csca.fingerprint == crt.fingerprint:
+                            raise peCscaExists
+                        if crt.isValidOn(utils.time_now()) and \
+                           (crt.subjectKey == csca.subjectKey or \
+                            crt.public_key.dump() == csca.public_key.dump()):
+                            self._log.debug("Found LCSCA ")
+                            issuerCert = c # The cert id should not be take for issuerId field
+                            break
+
+                    if issuerCert is None:
+                        self._log.error("No LCSCA found for self-issued CSCA certificate. C=%s serial=%s allowSelfIssued=%s",
+                            CountryCode(csca.issuerCountry), csca.serial_number, str(allowSelfIssued))
+                        raise peCscaSelfIssued
+            else: #LCSCA
+                cscas: List[CscaStorage] = self._db.findCscaCertificates(csca.issuer, csca.authorityKey)
+                for c in (cscas or []):
+                    if c.isValidOn(utils.time_now()):
+                        issuerCert = c
+                        break
+                if issuerCert is None:
+                    raise peCscaNotFound
+
+            # Verify only certificate signature
+            csca.verify(issuingCert=(csca if selfIssued else issuerCert.getCertificate()), checkConformance = False)
+
+            # Verify certificate trustchain validity and store CSCA in DB
+            cs = CscaStorage(csca, None if selfIssued else issuerCert.id)
+            self._check_cert_trustchain(cs)
+            self._db.addCscaStorage(cs)
+
+            # Save any CRL url stored in csca
+            for crlDistribution in csca.crl_distribution_points:
+                for crlUrl in crlDistribution['distribution_point'].native:
+                    self._db.addPkiDistributionUrl(
+                        PkiDistributionUrl(cs.country, PkiDistributionUrl.Type.CRL, crlUrl))
+        except ProtoError:
+            raise
+        except CertificateVerificationError as e: # Conformance check failed or signature verification failed
+            self._log.error("Certificate conformance check or signature verification has failed for the CSCA to be added! C=%s serial=%s",
+                csca.issuerCountry, CscaStorage.makeSerial(csca.serial_number).hex())
+            self._log.error("  e=%s", e)
+            raise peInvalidCsca from None
+        except Exception as e:
+            self._log.error("An exception was encountered while trying to add new CSCA certificate! C=%s serial=%s",
+                csca.issuerCountry, CscaStorage.makeSerial(csca.serial_number).hex())
+            self._log.error("  e=%s", e)
+            raise
 
     def _check_cert_trustchain(self, crt: CertificateStorage) -> None:
         """
