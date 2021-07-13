@@ -112,6 +112,15 @@ class StorageAPI(ABC):
         :return: The CSCA CertificateId
         """
 
+
+    @abstractmethod
+    def addCscaStorage(self, csca: CscaStorage) -> None:
+        """
+        Inserts new CSCA certificate storage into database
+        :param csca: CscaStorage to insert into database.
+        :param issuerId: The CSCA issuerId in case the CSCA is linked (Optional).
+        """
+
     @abstractmethod
     def findCsca(self, certId: CertificateId)-> Optional[CscaStorage]:
         """
@@ -286,6 +295,8 @@ class DatabaseAPI(StorageAPI):
         return self._dbc.session
 
     def __handle_exception(self, e) -> NoReturn:
+        if isinstance(e, StorageAPIError):
+            raise e from e
         self._log.error('An exception was encountered while trying to transact with DB!')
         self._log.exception(e)
         raise DatabaseAPIError(e) from None
@@ -486,18 +497,30 @@ class DatabaseAPI(StorageAPI):
         :return: The csca CertificateId
         :raises: DatabaseAPIError on DB connection errors.
         """
-        self._log.debug("Inserting new CSCA into database C={} serial={}"
-            .format(CountryCode(csca.issuerCountry), csca.serial_number))
-
         assert isinstance(csca, CscaCertificate)
         assert issuerId is None or isinstance(issuerId, CertificateId)
         try:
             cs = CscaStorage(csca, issuerId)
-            if self.__db.query(CscaStorage).filter(CscaStorage.id == cs.id).count() > 0:
-                raise seCscaExists
-            self.__db.add(cs)
-            self.__db.commit()
+            self.addCscaStorage(cs)
             return cs.id
+        except Exception as e:
+            self.__handle_exception(e)
+
+    def addCscaStorage(self, csca: CscaStorage) -> None: #pylint: disable=arguments-differ
+        """
+        Inserts new CSCA certificate storage into database
+        :param csca: CscaStorage to insert into database.
+        :param issuerId: The CSCA issuerId in case the CSCA is linked (Optional).
+        :raises: DatabaseAPIError on DB connection errors.
+                 SeEntryAlreadyExists if the same CSCA storage already exists.
+        """
+        assert isinstance(csca, CscaStorage)
+        self._log.debug("Inserting new CSCA into database C=%s serial=%s", csca.country, csca.serial.hex())
+        try:
+            if self.__db.query(CscaStorage).filter(CscaStorage.id == csca.id).count() > 0:
+                raise seCscaExists
+            self.__db.add(csca)
+            self.__db.commit()
         except Exception as e:
             self.__handle_exception(e)
 
@@ -963,18 +986,27 @@ class MemoryDB(StorageAPI):
         :param issuerId: The CSCA issuerId in case the CSCA is linked (Optional).
         :return: The csca CertificateId
         """
-        self._log.debug("Inserting new CSCA into database C={} serial={}"
-            .format(CountryCode(csca.issuerCountry), csca.serial_number))
-
         assert isinstance(csca, CscaCertificate)
         assert issuerId is None or isinstance(issuerId, CertificateId)
 
         cs = CscaStorage(csca, issuerId)
-        for c in self._d['cscas']:
-            if c.id == cs.id:
-                raise seCscaExists
-        self._d['cscas'].add(cs)
+        self.addCscaStorage(cs)
         return cs.id
+
+    def addCscaStorage(self, csca: CscaStorage) -> None: #pylint: disable=arguments-differ
+        """
+        Inserts new CSCA certificate storage into database
+        :param csca: CscaStorage to insert into database.
+        :param issuerId: The CSCA issuerId in case the CSCA is linked (Optional).
+        :raises: DatabaseAPIError on DB connection errors.
+                 SeEntryAlreadyExists if the same CSCA storage already exists.
+        """
+        assert isinstance(csca, CscaStorage)
+        self._log.debug("Inserting new CSCA into database C=%s serial=%s", csca.country, csca.serial.hex())
+        for c in self._d['cscas'][csca.country]:
+            if c.id == csca.id:
+                raise seCscaExists
+        self._d['cscas'][csca.country].append(csca)
 
     def findCsca(self, certId: CertificateId)-> Optional[CscaStorage]:
         """
