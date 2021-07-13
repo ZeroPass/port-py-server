@@ -300,6 +300,36 @@ class PortProto:
             msg = "Hi, {} {}!".format(dg1.mrz.surname, dg1.mrz.name)
         return msg
 
+    def _check_cert_trustchain(self, crt: CertificateStorage) -> None:
+        """
+        Verifies certificate trustchain and if fails ProtoError exception is risen.
+        The check is done from the last issuer certificate to the certificate in question:
+            1.) If certificate has issuer, check issuer certificate has valid trustchain.
+            2.) Check if certificate is valid on current date.
+            3.) Check that certificate isn't revoked.
+        :para crt: The certificate to verify the trustchain for.
+        :raises: PePreconditionFailed is there is invalid or revoked certificate in the trustchain
+        """
+        self._log.debug("Verifying certificate trustchain C=%s id=%s serial=%s issuer_id=%s",
+            crt.country, crt.id, crt.serial.hex(), crt.issuerId)
+        if not crt.isSelfIssued():
+            issuer = self._db.findCsca(crt.issuerId)
+            if issuer is None:
+                self._log.error("Failed to verify certificate trustchain: issuer CSCA not found! C=%s id=%s serial=%s issuer_id=%s",
+                    crt.country, crt.id, crt.serial.hex(), crt.issuerId)
+                raise peTrustchainCheckFailedNoCsca
+            self._check_cert_trustchain(issuer)
+
+        if not crt.isValidOn(utils.time_now()):
+            self._log.error("Failed to verify certificate trustchain: Expired certificate in the chain, C=%s id=%s serial=%s %s",
+                    crt.country, crt.id, crt.serial.hex(), utils.format_cert_et(crt, utils.time_now()))
+            raise peTrustchainCheckFailedExpiredCert
+
+        if self._db.isCertificateRevoked(crt):
+            self._log.error("Failed to verify certificate trustchain: Revoked certificate in the chain, C=%s id=%s serial=%s",
+                    crt.country, crt.id, crt.serial.hex())
+            raise peTrustchainCheckFailedExpiredCert
+
     def __verify_challenge(self, cid: CID, aaPubKey: AAPublicKey, csigs: List[bytes], aaSigAlgo: SignatureAlgorithm = None ) -> None:
         """
         Check if signature is correct and the time frame is OK
