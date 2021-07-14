@@ -8,29 +8,38 @@ from pathlib import Path
 _script_path = Path(os.path.dirname(sys.argv[0]))
 #sys.path.append(str(_script_path / Path("../../")))
 
-from port import proto
 from port import log
 from port.api import PortApiServer
-from port.proto.db import SeEntryAlreadyExists
-from port.proto.user import UserId
-from port.proto.types import CertificateId, CountryCode
+from port.database.storage.x509Storage import CertificateStorage
+from port.proto import (
+    Challenge,
+    CountryCode,
+    DatabaseAPI,
+    MemoryDB,
+    PortProto,
+    ProtoError,
+    SeEntryAlreadyExists,
+    StorageAPI,
+    UserId,
+    utils
+)
 from port.settings import Config, DbConfig, ServerConfig
 
 from pymrtd import ef
 from pymrtd.pki import x509
 
-from typing import Tuple
+from typing import Callable, Tuple
 
 
-class DevProto(proto.PortProto):
-    def __init__(self, storage: proto.StorageAPI, cttl: int, fc: bool, no_tcv: bool):
+class DevProto(PortProto):
+    def __init__(self, storage: StorageAPI, cttl: int, fc: bool, no_tcv: bool):
         super().__init__(storage, cttl)
         self._fc = fc
         self._no_tcv = no_tcv
 
-    def createNewChallenge(self, uid: UserId) -> Tuple[proto.Challenge, datetime]:
+    def createNewChallenge(self, uid: UserId) -> Tuple[Challenge, datetime]:
         if self._fc:
-            fc = proto.Challenge.fromhex("47E4EE7F211F73265DD17658F6E21C1318BD6C81F37598E20A2756299542EFCF")
+            fc = Challenge.fromhex("47E4EE7F211F73265DD17658F6E21C1318BD6C81F37598E20A2756299542EFCF")
             c, cct = super().createNewChallenge(uid)
             if c == fc:
                 return (c,cct)
@@ -41,7 +50,7 @@ class DevProto(proto.PortProto):
         return super().createNewChallenge(uid)
 
     def _get_default_account_expiration(self):
-        return proto.utils.time_now() + timedelta(minutes=1)
+        return utils.time_now() + timedelta(minutes=1)
 
     def __validate_certificate_path(self, sod: ef.SOD): #pylint: disable=unused-private-member
         if not self._no_tcv:
@@ -50,7 +59,7 @@ class DevProto(proto.PortProto):
             self._log.warning("Skipping verification of eMRTD certificate trustchain")
 
 class DevApiServer(PortApiServer):
-    def __init__(self, db: proto.StorageAPI, config: Config, fc=False, no_tcv=False):
+    def __init__(self, db: StorageAPI, config: Config, fc=False, no_tcv=False):
         super().__init__(db, config)
         self._proto = DevProto(db, config.challenge_ttl, fc, no_tcv)
 
@@ -83,7 +92,10 @@ def parse_args():
         action='store_true', help="use MemoryDB for database. --db-* args will be ignored")
 
     ap.add_argument("--mrtd-pkd", default=None,
-        type=Path, help="path to eMRTD PKD root folder to load PKI certificates from. e.g.: CSCA, DSC, CRLs...")
+        type=Path, help="path to eMRTD PKD root folder to load PKI certificates into DB, i.e.: CSCA, DSC, CRLs...")
+
+    ap.add_argument("--mrtd-pkd-allow-self-issued-csca", default=True, action=argparse.BooleanOptionalAction,
+        type=bool, help="allow self-issued CSCA to be loaded into DB")
 
     ap.add_argument("--dev", default=False,
         action='store_true', help="start development version of server")
@@ -130,14 +142,15 @@ def parse_args():
 
 def init_log(logLevel):
     l = log.getLogger()
-    coloredlogs.install(level=log.getLevelName(logLevel),
-        logger=l,
-        fmt='[%(asctime)s] %(levelname)-8s %(thread)-8d %(name)s %(message)s',
-        field_styles={
+    coloredlogs.install(
+        level  = log.getLevelName(logLevel),
+        logger = l,
+        fmt    = '[%(asctime)s] %(levelname)-8s %(thread)-8d %(name)s %(message)s',
+        field_styles = {
             'asctime': {'color': 'white'},
             'levelname': {'color': 'white', 'bold': True}
         },
-        level_styles={
+        level_styles = {
             'verbose': {'color': 'black', 'bright': True},
             'debug': {},
             'info': {'color': 'cyan', 'bright': True},
@@ -147,7 +160,8 @@ def init_log(logLevel):
             'notice': {'color': 'magenta'},
             'spam': {'color': 'green', 'faint': True},
             'success': {'color': 'green', 'bright': True, 'bold': True},
-    })
+        }
+    )
 
     log.getLogger('requests').setLevel(log.WARN)
     log.getLogger('urllib3').setLevel(log.WARN)
@@ -160,29 +174,15 @@ def init_log(logLevel):
     fh.setFormatter(formatter)
     l.addHandler(fh)
 
-def load_pkd_to_db(db: proto.StorageAPI, pkd_path: Path):
+def load_pkd_to_db(proto: PortProto, pkdPath: Path, allowSelfIssuedCSCA: bool):
     l = log.getLogger('port.api.server')
-    l.info("Loading PKI certificates into DB ...")
+    l.info("Loading PKI certificates into DB, allowSelfIssuedCSCA=%s ...", allowSelfIssuedCSCA)
+
     cert_count = 0
-    cscas_sk  = defaultdict(list)
-    cscas_sub = defaultdict(list)
-
-    def get_issuer_id(cert: x509.Certificate):
-        if cert.authorityKey is not None:
-            if cert.authorityKey in cscas_sk:
-                for csca in cscas_sk[cert.authorityKey]:
-                    if cert.notValidBefore >= csca.notValidBefore and \
-                       cert.notValidAfter <= csca.notValidAfter:
-                        return CertificateId.fromCertificate(csca)
-
-        if cert.issuer.human_friendly in cscas_sub:
-            for csca in cscas_sub[cert.issuer.human_friendly]:
-                if cert.notValidBefore >= csca.notValidBefore and \
-                   cert.notValidAfter <= csca.notValidAfter:
-                    return CertificateId.fromCertificate(csca)
-        return None
-
-    for cert in pkd_path.rglob('*.cer'):
+    cscas:dict[str, dict[str, x509.CscaCertificate]] = defaultdict(dict)
+    lcscas:dict[str, dict[str, x509.CscaCertificate]] = defaultdict(dict)
+    dscs:dict[str, dict[str, x509.DocumentSignerCertificate]] = defaultdict(dict)
+    for cert in pkdPath.rglob('*.cer'):
         try:
             l.verbose("Loading certificate: {}".format(cert))
             cfd = cert.open('rb')
@@ -191,57 +191,49 @@ def load_pkd_to_db(db: proto.StorageAPI, pkd_path: Path):
             ku = cert.key_usage_value.native
             if cert.ca:
                 if 'key_cert_sign' not in ku:
-                    l.warning("CSCA doesn't have key_cert_sign constrain. C={} serial={} key_id={}"
-                        .format(CountryCode(cert.issuerCountry), cert.serial_number, cert.subjectKey.hex()))
+                    l.warning("CSCA doesn't have key_cert_sign constrain. C=%s serial=%s key_id=%s",
+                        CountryCode(cert.issuerCountry), CertificateStorage.makeSerial(cert.serial_number).hex(), cert.subjectKey.hex())
                 cert.__class__ = x509.CscaCertificate
-                if cert.subjectKey is not None:
-                    cscas_sk[cert.subjectKey].append(cert)
+                if cert.self_signed == 'maybe':
+                    cscas[cert.issuerCountry][cert.serial_number] = cert
                 else:
-                    cscas_sub[cert.subject.human_friendly].append(cert)
+                    lcscas[cert.issuerCountry][cert.serial_number] = cert
             elif 'digital_signature' in ku and 'key_cert_sign' not in ku:
                 cert.__class__ = x509.DocumentSignerCertificate
-                issuerId = get_issuer_id(cert)
-                if issuerId == None:
-                    l.warning("Skipping DSC certificate because no issuing CSCA was found. C={} serial={} key_id={}"
-                        .format(CountryCode(cert.issuerCountry), cert.serial_number, cert.subjectKey.hex()))
-                    continue
-                db.addDsc(cert, issuerId)
-                cert_count+=1
+                dscs[cert.issuerCountry][cert.serial_number] = cert
+
             else:
-                l.warning("Skipping certificate because it is not CA but has key_cert_sign constrain. C={} serial={} key_id={}"
-                    .format(CountryCode(cert.issuerCountry), cert.serial_number, cert.subjectKey.hex()))
-        except SeEntryAlreadyExists:
-            pass
+                l.warning("Skipping certificate because it is not CA but has key_cert_sign constrain. C=%s serial=%s key_id=%s",
+                    CountryCode(cert.issuerCountry), CertificateStorage.makeSerial(cert.serial_number).hex(), cert.subjectKey.hex())
         except Exception as e:
-            l.warning("Could not load certificate: {}".format(cert))
+            l.warning("Could not load certificate: %s", cert)
             l.exception(e)
 
-    # Now add cscas to the database
-    def insert_cscas(dcscas):
-        count = 0
-        for _,cscas in dcscas.items():
-            for csca in cscas:
-                issuerId = None
-                if csca.self_signed == 'no':
-                    issuerId = get_issuer_id(csca)
-                    if issuerId is None:
-                        l.warning("Skipping LCSCA because no issuing CSCA was found. LCSCA C={} serial={} key_id={}"
-                            .format(CountryCode(csca.issuerCountry), csca.serial_number, csca.subjectKey.hex()))
-                        continue
+    def insertCerts(certs, certType: str, insertIntoDB: Callable[[x509.Certificate], None] ):
+        assert callable(insertIntoDB)
+        nonlocal cert_count
+        for _, cd in certs.items():
+            for _, cert in cd.items():
                 try:
-                    db.addCsca(csca, issuerId)
-                    count+=1
+                    insertIntoDB(cert)
+                    cert_count += 1
+                    l.info("%s certificate was added into DB. C=%s serial=%s key_id=%s",
+                        certType, CountryCode(cert.issuerCountry), CertificateStorage.makeSerial(cert.serial_number).hex(), cert.subjectKey.hex())
                 except SeEntryAlreadyExists:
-                    pass
+                    l.info("Skipping %s certificate because it already exists. C=%s serial=%s key_id=%s",
+                        certType, CountryCode(cert.issuerCountry), CertificateStorage.makeSerial(cert.serial_number).hex(), cert.subjectKey.hex())
                 except Exception as e:
-                    l.warning("Could not add CSCA certificate CSCA C={} serial={} key_id={}"
-                        .format(CountryCode(csca.issuerCountry), csca.serial_number, csca.subjectKey.hex()))
-                    l.exception(e)
-        return count
+                    l.warning("Could not add %s certificate into DB. C=%s serial=%s key_id=%s",
+                        certType, CountryCode(cert.issuerCountry), CertificateStorage.makeSerial(cert.serial_number).hex(), cert.subjectKey.hex())
+                    if isinstance(e, ProtoError):
+                        l.warning(" e=%s", e)
 
-    cert_count += insert_cscas(cscas_sk)
-    cert_count += insert_cscas(cscas_sub)
-    l.info("{} certificates loaded into mdb.".format(cert_count))
+    insertCerts(cscas, 'CSCA', lambda csca: proto.addCscaCertificate(csca, allowSelfIssued=allowSelfIssuedCSCA))
+    insertCerts(lcscas, 'LCSCA', lambda lcsca: proto.addCscaCertificate(lcsca, allowSelfIssued=False))
+
+    if len(dscs) > 0:
+        l.info("Note, could not add DSC certificate into DB. Not implemented at the moment")
+    l.info("%s certificates loaded into DB.", cert_count)
 
 def main():
     args = parse_args()
@@ -275,18 +267,19 @@ def main():
     )
 
     if args['mdb'] and not args['db_dialect']:
-        db  = proto.MemoryDB()
+        db  = MemoryDB()
     else:
-        db = proto.DatabaseAPI(config.database.dialect, config.database.url, config.database.db, config.database.user, config.database.pwd)
-
-    if args['mrtd_pkd'] and not args['dev_no_tcv']:
-        load_pkd_to_db(db, args['mrtd_pkd'])
+        db = DatabaseAPI(config.database.dialect, config.database.url, config.database.db, config.database.user, config.database.pwd)
 
     # Setup and run server
     if args["dev"]:
         sapi = DevApiServer(db, config, args['dev_fc'], args['dev_no_tcv'])
     else:
         sapi = PortApiServer(db, config)
+
+    if args['mrtd_pkd'] and not args['dev_no_tcv']:
+        allowSelfIssuedCSCA = args['mrtd_pkd_allow_self_issued_csca']
+        load_pkd_to_db(sapi._proto, args['mrtd_pkd'], allowSelfIssuedCSCA)
 
     def signal_handler(sig, frame): #pylint: disable=unused-argument
         print('Stopping server...')
