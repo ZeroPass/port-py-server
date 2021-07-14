@@ -118,7 +118,6 @@ class StorageAPI(ABC):
         """
         Inserts new CSCA certificate storage into database
         :param csca: CscaStorage to insert into database.
-        :param issuerId: The CSCA issuerId in case the CSCA is linked (Optional).
         """
 
     @abstractmethod
@@ -173,7 +172,7 @@ class StorageAPI(ABC):
         """
         Inserts new DSC certificate into database
         :param dsc: DSC certificate to insert into database.
-        :param issuerId: The DSC issuerId.
+        :param issuerId: The CertificateId of CSCA which issued this DSC certificate.
         :return: The dsc CertificateId
         """
 
@@ -510,7 +509,6 @@ class DatabaseAPI(StorageAPI):
         """
         Inserts new CSCA certificate storage into database
         :param csca: CscaStorage to insert into database.
-        :param issuerId: The CSCA issuerId in case the CSCA is linked (Optional).
         :raises: DatabaseAPIError on DB connection errors.
                  SeEntryAlreadyExists if the same CSCA storage already exists.
         """
@@ -633,7 +631,7 @@ class DatabaseAPI(StorageAPI):
         """
         Inserts new DSC certificate into database
         :param dsc: DSC certificate to insert into database.
-        :param issuerId: The DSC issuerId.
+        :param issuerId: The CertificateId of CSCA which issued this DSC certificate.
         :return: The dsc CertificateId
         :raises: DatabaseAPIError on DB connection errors.
         """
@@ -886,11 +884,11 @@ class MemoryDB(StorageAPI):
         self._d = {
             'proto_challenges' : {},
             'accounts' : {},
-            'cscas' : defaultdict(list), # <country, List[CscaStorage]>
-            'dscs' : set(),
-            'crlui' : {},
-            'crt' : {},
-            'pkidurl' : {}
+            'cscas'    : defaultdict(list), # <country, List[CscaStorage]>
+            'dscs'     : defaultdict(list), # <country, List[DscStorage]>
+            'crlui'    : {},
+            'crt'      : {},
+            'pkidurl'  : {}
         }
 
     def getChallenge(self, cid: CID) -> Tuple[Challenge, datetime]:
@@ -1093,20 +1091,18 @@ class MemoryDB(StorageAPI):
         """
         Adds new DSC certificate into database
         :param csca: DSC certificate to insert into database.
-        :param issuerId: The DSC issuerId in case the CSCA is linked (Optional).
+        :param issuerId: The CertificateId of CSCA which issued this DSC certificate.
+        :raises SeEntryAlreadyExists: If DSC certificate already exists
         :return: The dsc CertificateId
         """
-        self._log.debug("Inserting new CSCA into database C={} serial={}"
+        self._log.debug("Inserting new DSC into database C={} serial={}"
             .format(CountryCode(dsc.issuerCountry), dsc.serial_number))
 
-        assert isinstance(dsc, DocumentSignerCertificate)
-        assert issuerId is None or isinstance(issuerId, CertificateId)
-
         ds = DscStorage(dsc, issuerId)
-        for c in self._d['dscs']:
+        for c in self._d['dscs'][ds.country]:
             if c.id == ds.id:
                 raise seDscExists
-        self._d['dscs'].add(ds)
+        self._d['dscs'][ds.country].append(ds)
         return ds.id
 
     def findDsc(self, certId: CertificateId) -> Optional[DscStorage]:
@@ -1116,9 +1112,10 @@ class MemoryDB(StorageAPI):
         :return: DscStorage
         """
         assert isinstance(certId, CertificateId)
-        for dsc in self._d['dscs']:
-            if dsc.id == certId:
-                return dsc
+        for _, dscs in self._d['dscs'].items():
+            for dsc in dscs:
+                if dsc.id == certId:
+                    return dsc
         return None
 
     def findDscBySerial(self, issuer: x509.Name, serial: int) -> Optional[DscStorage]:
@@ -1130,7 +1127,7 @@ class MemoryDB(StorageAPI):
         """
         assert isinstance(issuer, x509.Name)
         assert isinstance(serial, int)
-        for dsc in self._d['dscs']:
+        for dsc in self._d['dscs'][CountryCode(issuer.native['country_name'])]:
             if dsc.issuer == issuer and dsc.serialNumber == serial:
                 return dsc
         return None
@@ -1142,9 +1139,10 @@ class MemoryDB(StorageAPI):
         :return: DscStorage
         """
         assert isinstance(subjectKey, bytes)
-        for dsc in self._d['dscs']:
-            if dsc.subjectKey == subjectKey:
-                return dsc
+        for _, dscs in self._d['dscs'].items():
+            for dsc in dscs:
+                if dsc.subjectKey == subjectKey:
+                    return dsc
         return None
 
     def updateCrlInfo(self, crlui: CrlUpdateInfo) -> None:
