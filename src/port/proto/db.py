@@ -177,6 +177,13 @@ class StorageAPI(ABC):
         """
 
     @abstractmethod
+    def addDscStorage(self, dsc: DscStorage) -> None:
+        """
+        Inserts new DSC certificate storage into database
+        :param dsc: DscStorage to insert into database.
+        """
+
+    @abstractmethod
     def findDsc(self, certId: CertificateId) -> Optional[DscStorage]:
         """
         Returns DSC certificate storage that matches the certificate id.
@@ -494,23 +501,21 @@ class DatabaseAPI(StorageAPI):
         :param csca: CSCA certificate to insert into database.
         :param issuerId: The CSCA issuerId in case the CSCA is linked (Optional).
         :return: The csca CertificateId
-        :raises: DatabaseAPIError on DB connection errors.
+        :raises DatabaseAPIError: On DB connection errors.
+        :raises SeEntryAlreadyExists: if the same CSCA storage already exists.
         """
         assert isinstance(csca, CscaCertificate)
         assert issuerId is None or isinstance(issuerId, CertificateId)
-        try:
-            cs = CscaStorage(csca, issuerId)
-            self.addCscaStorage(cs)
-            return cs.id
-        except Exception as e:
-            self.__handle_exception(e)
+        cs = CscaStorage(csca, issuerId)
+        self.addCscaStorage(cs)
+        return cs.id
 
     def addCscaStorage(self, csca: CscaStorage) -> None: #pylint: disable=arguments-differ
         """
         Inserts new CSCA certificate storage into database
         :param csca: CscaStorage to insert into database.
-        :raises: DatabaseAPIError on DB connection errors.
-                 SeEntryAlreadyExists if the same CSCA storage already exists.
+        :raises DatabaseAPIError: On DB connection errors.
+        :raises SeEntryAlreadyExists: if the same CSCA storage already exists.
         """
         assert isinstance(csca, CscaStorage)
         self._log.debug("Inserting new CSCA into database C=%s serial=%s", csca.country, csca.serial.hex())
@@ -633,21 +638,29 @@ class DatabaseAPI(StorageAPI):
         :param dsc: DSC certificate to insert into database.
         :param issuerId: The CertificateId of CSCA which issued this DSC certificate.
         :return: The dsc CertificateId
-        :raises: DatabaseAPIError on DB connection errors.
+        :raises DatabaseAPIError: On DB connection errors.
+        :raises SeEntryAlreadyExists: If DSC certificate already exists.
         """
-        self._log.debug("Inserting new DSC into database C={} serial={}"
-            .format(CountryCode(dsc.issuerCountry), dsc.serial_number))
-
         assert isinstance(dsc, DocumentSignerCertificate)
         assert isinstance(issuerId, CertificateId)
-        try:
-            ds = DscStorage(dsc, issuerId)
-            if self.__db.query(DscStorage).filter(DscStorage.id == ds.id).count() > 0:
-                raise seDscExists
+        ds = DscStorage(dsc, issuerId)
+        self.addDscStorage(ds)
+        return ds.id
 
-            self.__db.add(ds)
+    def addDscStorage(self, dsc: DscStorage) -> None:
+        """
+        Inserts new DSC certificate storage into database
+        :param dsc: DscStorage to insert into database.
+        :raises DatabaseAPIError: On DB connection errors.
+        :raises SeEntryAlreadyExists: If the same DSC certificate storage already exists.
+        """
+        assert isinstance(dsc, DocumentSignerCertificate)
+        self._log.debug("Inserting new DSC into database C=%s serial=%s", dsc.country, dsc.serial.hex())
+        try:
+            if self.__db.query(DscStorage).filter(DscStorage.id == dsc.id).count() > 0:
+                raise seDscExists
+            self.__db.add(dsc)
             self.__db.commit()
-            return ds.id
         except Exception as e:
             self.__handle_exception(e)
 
@@ -1095,15 +1108,25 @@ class MemoryDB(StorageAPI):
         :raises SeEntryAlreadyExists: If DSC certificate already exists
         :return: The dsc CertificateId
         """
-        self._log.debug("Inserting new DSC into database C={} serial={}"
-            .format(CountryCode(dsc.issuerCountry), dsc.serial_number))
+        assert isinstance(dsc, DocumentSignerCertificate)
+        assert isinstance(issuerId, CertificateId)
 
         ds = DscStorage(dsc, issuerId)
-        for c in self._d['dscs'][ds.country]:
-            if c.id == ds.id:
-                raise seDscExists
-        self._d['dscs'][ds.country].append(ds)
+        self.addDscStorage(ds)
         return ds.id
+
+    def addDscStorage(self, dsc: DscStorage) -> None:
+        """
+        Inserts new DSC certificate storage into database
+        :param dsc: DscStorage to insert into database.
+        :raises SeEntryAlreadyExists: If DSC certificate already exists
+        """
+        self._log.debug("Inserting new DSC into database C=%s serial=%s",
+        dsc.country, dsc.serial.hex())
+        for c in self._d['dscs'][dsc.country]:
+            if c.id == dsc.id:
+                raise seDscExists
+        self._d['dscs'][dsc.country].append(dsc)
 
     def findDsc(self, certId: CertificateId) -> Optional[DscStorage]:
         """
