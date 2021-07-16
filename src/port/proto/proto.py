@@ -372,9 +372,9 @@ class PortProto:
             self._check_cert_trustchain(cs)
             self._db.addCscaStorage(cs)
 
-            # 6.) Save any CRL url stored in csca
+            # 6.) Save any CRL distribution url stored in csca
             self._save_crl_url_from_cert(cs.country, csca)
-
+            self._log.info("New CSCA certificate was added into DB. id=%s C=%s serial=%s", cs.id, cs.country, cs.serial.hex())
         except ProtoError:
             raise
         except CertificateVerificationError as e: # Conformance check failed or signature verification failed
@@ -439,9 +439,9 @@ class PortProto:
             self._check_cert_trustchain(cs)
             self._db.addDscStorage(cs)
 
-            # 7.) Save any CRL url stored in DSC
+            # 7.) Save any CRL distribution url stored in DSC
             self._save_crl_url_from_cert(cs.country, dsc)
-
+            self._log.info("New DSC certificate was added into DB. id=%s C=%s serial=%s", cs.id, cs.country, cs.serial.hex())
         except ProtoError:
             raise
         except CertificateVerificationError as e: # Conformance check failed or signature verification failed
@@ -465,24 +465,24 @@ class PortProto:
         :para crt: The certificate to verify the trustchain for.
         :raises: PePreconditionFailed is there is invalid or revoked certificate in the trustchain
         """
-        self._log.debug("Verifying certificate trustchain C=%s id=%s serial=%s issuer_id=%s",
-            crt.country, crt.id, crt.serial.hex(), crt.issuerId)
+        self._log.debug("Verifying certificate trustchain id=%s C=%s serial=%s issuer_id=%s",
+            crt.id, crt.country, crt.serial.hex(), crt.issuerId)
         if not crt.isSelfIssued():
             issuer = self._db.findCsca(crt.issuerId)
             if issuer is None:
-                self._log.error("Failed to verify certificate trustchain: issuer CSCA not found! C=%s id=%s serial=%s issuer_id=%s",
-                    crt.country, crt.id, crt.serial.hex(), crt.issuerId)
+                self._log.error("Failed to verify certificate trustchain: issuer CSCA not found! id=%s C=%s serial=%s issuer_id=%s",
+                    crt.id, crt.country, crt.serial.hex(), crt.issuerId)
                 raise peTrustchainCheckFailedNoCsca
             self._check_cert_trustchain(issuer)
 
         if not crt.isValidOn(utils.time_now()):
-            self._log.error("Failed to verify certificate trustchain: Expired certificate in the chain, C=%s id=%s serial=%s %s",
-                    crt.country, crt.id, crt.serial.hex(), utils.format_cert_et(crt, utils.time_now()))
+            self._log.error("Failed to verify certificate trustchain: Expired certificate in the chain, id=%s C=%s serial=%s %s",
+                    crt.id, crt.country, crt.serial.hex(), utils.format_cert_et(crt, utils.time_now()))
             raise peTrustchainCheckFailedExpiredCert
 
         if self._db.isCertificateRevoked(crt):
-            self._log.error("Failed to verify certificate trustchain: Revoked certificate in the chain, C=%s id=%s serial=%s",
-                    crt.country, crt.id, crt.serial.hex())
+            self._log.error("Failed to verify certificate trustchain: Revoked certificate in the chain, id=%s C=%s serial=%s",
+                    crt.id, crt.country, crt.serial.hex())
             raise peTrustchainCheckFailedExpiredCert
 
     def __verify_challenge(self, cid: CID, aaPubKey: AAPublicKey, csigs: List[bytes], aaSigAlgo: SignatureAlgorithm = None ) -> None:
