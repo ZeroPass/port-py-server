@@ -177,7 +177,10 @@ def init_log(logLevel):
 def load_pkd_to_db(proto: PortProto, pkdPath: Path, allowSelfIssuedCSCA: bool):
     l = log.getLogger('port.api.server')
     l.info("Loading PKI certificates into DB, allowSelfIssuedCSCA=%s ...", allowSelfIssuedCSCA)
+    def keyid2str(cert):
+        return cert.subjectKey.hex() if cert.subjectKey is not None else None
 
+    timeNow = utils.time_now()
     cert_count = 0
     cscas:dict[str, dict[str, x509.CscaCertificate]] = defaultdict(dict)
     lcscas:dict[str, dict[str, x509.CscaCertificate]] = defaultdict(dict)
@@ -187,12 +190,16 @@ def load_pkd_to_db(proto: PortProto, pkdPath: Path, allowSelfIssuedCSCA: bool):
             l.verbose("Loading certificate: {}".format(cert))
             cfd = cert.open('rb')
             cert = x509.Certificate.load(cfd.read())
+            if not cert.isValidOn(timeNow):
+                l.debug("Skipping expired certificate. C=%s serial=%s key_id=%s",
+                    CountryCode(cert.issuerCountry), CertificateStorage.makeSerial(cert.serial_number).hex(), keyid2str(cert))
+                continue
 
             ku = cert.key_usage_value.native
             if cert.ca:
                 if 'key_cert_sign' not in ku:
                     l.warning("CSCA doesn't have key_cert_sign constrain. C=%s serial=%s key_id=%s",
-                        CountryCode(cert.issuerCountry), CertificateStorage.makeSerial(cert.serial_number).hex(), cert.subjectKey.hex())
+                        CountryCode(cert.issuerCountry), CertificateStorage.makeSerial(cert.serial_number).hex(), keyid2str(cert))
                 cert.__class__ = x509.CscaCertificate
                 if cert.self_signed == 'maybe':
                     cscas[cert.issuerCountry][cert.serial_number] = cert
@@ -204,7 +211,7 @@ def load_pkd_to_db(proto: PortProto, pkdPath: Path, allowSelfIssuedCSCA: bool):
 
             else:
                 l.warning("Skipping certificate because it is not CA but has key_cert_sign constrain. C=%s serial=%s key_id=%s",
-                    CountryCode(cert.issuerCountry), CertificateStorage.makeSerial(cert.serial_number).hex(), cert.subjectKey.hex())
+                    CountryCode(cert.issuerCountry), CertificateStorage.makeSerial(cert.serial_number).hex(), keyid2str(cert))
         except Exception as e:
             l.warning("Could not load certificate: %s", cert)
             l.exception(e)
@@ -218,21 +225,19 @@ def load_pkd_to_db(proto: PortProto, pkdPath: Path, allowSelfIssuedCSCA: bool):
                     insertIntoDB(cert)
                     cert_count += 1
                     l.info("%s certificate was added into DB. C=%s serial=%s key_id=%s",
-                        certType, CountryCode(cert.issuerCountry), CertificateStorage.makeSerial(cert.serial_number).hex(), cert.subjectKey.hex())
+                        certType, CountryCode(cert.issuerCountry), CertificateStorage.makeSerial(cert.serial_number).hex(), keyid2str(cert))
                 except SeEntryAlreadyExists:
                     l.info("Skipping %s certificate because it already exists. C=%s serial=%s key_id=%s",
-                        certType, CountryCode(cert.issuerCountry), CertificateStorage.makeSerial(cert.serial_number).hex(), cert.subjectKey.hex())
+                        certType, CountryCode(cert.issuerCountry), CertificateStorage.makeSerial(cert.serial_number).hex(), keyid2str(cert))
                 except Exception as e:
                     l.warning("Could not add %s certificate into DB. C=%s serial=%s key_id=%s",
-                        certType, CountryCode(cert.issuerCountry), CertificateStorage.makeSerial(cert.serial_number).hex(), cert.subjectKey.hex())
+                        certType, CountryCode(cert.issuerCountry), CertificateStorage.makeSerial(cert.serial_number).hex(), keyid2str(cert))
                     if isinstance(e, ProtoError):
                         l.warning(" e=%s", e)
 
     insertCerts(cscas, 'CSCA', lambda csca: proto.addCscaCertificate(csca, allowSelfIssued=allowSelfIssuedCSCA))
     insertCerts(lcscas, 'LCSCA', lambda lcsca: proto.addCscaCertificate(lcsca, allowSelfIssued=False))
-
-    if len(dscs) > 0:
-        l.info("Note, could not add DSC certificate into DB. Not implemented at the moment")
+    insertCerts(dscs, 'DSC', proto.addDscCertificate)
     l.info("%s certificates loaded into DB.", cert_count)
 
 def main():
