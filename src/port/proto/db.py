@@ -654,7 +654,7 @@ class DatabaseAPI(StorageAPI):
         :raises DatabaseAPIError: On DB connection errors.
         :raises SeEntryAlreadyExists: If the same DSC certificate storage already exists.
         """
-        assert isinstance(dsc, DocumentSignerCertificate)
+        assert isinstance(dsc, DscStorage)
         self._log.debug("Inserting new DSC into database C=%s serial=%s", dsc.country, dsc.serial.hex())
         try:
             if self.__db.query(DscStorage).filter(DscStorage.id == dsc.id).count() > 0:
