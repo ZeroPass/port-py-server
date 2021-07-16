@@ -224,8 +224,6 @@ def load_pkd_to_db(proto: PortProto, pkdPath: Path, allowSelfIssuedCSCA: bool):
                 try:
                     insertIntoDB(cert)
                     cert_count += 1
-                    l.info("%s certificate was added into DB. C=%s serial=%s key_id=%s",
-                        certType, CountryCode(cert.issuerCountry), CertificateStorage.makeSerial(cert.serial_number).hex(), keyid2str(cert))
                 except SeEntryAlreadyExists:
                     l.info("Skipping %s certificate because it already exists. C=%s serial=%s key_id=%s",
                         certType, CountryCode(cert.issuerCountry), CertificateStorage.makeSerial(cert.serial_number).hex(), keyid2str(cert))
