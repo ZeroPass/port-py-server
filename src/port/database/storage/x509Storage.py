@@ -42,7 +42,7 @@ class CertificateStorage:
         self._cached_ser_no  = None
 
     @property
-    def serialNumber(self):
+    def serialNumber(self) -> int:
         if not hasattr(self, '_cached_ser_no') or self._cached_ser_no is None:
             self._cached_ser_no = bytes_to_int(self.serial, signed=True)
         return self._cached_ser_no
@@ -88,14 +88,30 @@ class CrlUpdateInfo:
         self.crlNumber  = crlNumber
         self.thisUpdate = thisUpdate
         self.nextUpdate = nextUpdate
+        self._cached_ser_no  = None
 
     @classmethod
     def fromCrl(cls, crl: CertificateRevocationList):
-        cn = int_to_bytes(crl.crl_number_value.native) if crl.crl_number_value is not None else None
-        return cls(CountryCode(crl.issuerCountry), cn, crl.thisUpdate, crl.nextUpdate)
+        return cls(
+            CountryCode(crl.issuerCountry),
+            CrlUpdateInfo.makeCrlNumber(crl.crl_number_value.native),
+            crl.thisUpdate,
+            crl.nextUpdate
+        )
+
+    @property
+    def crlNumberInt(self) -> Optional[int]:
+        if self.crlNumber is not None:
+            if not hasattr(self, '_cached_ser_no') or self._cached_ser_no is None:
+                self._cached_ser_no = bytes_to_int(self.crlNumber, signed=True)
+        return self._cached_ser_no
+
+    @staticmethod
+    def makeCrlNumber(ser: Optional[int]) -> Optional[bytes]:
+        return int_to_bytes(ser, signed=True) if ser is not None else None
 
 class CertificateRevocationInfo:
-    serial: bytes
+    serial: bytes                   # certificate serial no.
     country: CountryCode
     certId: Optional[CertificateId] # id of certificate beeing revoked.
                                     # It could be None due to CRL list doesn't contain ful certificate to calculate CertificateId
@@ -105,8 +121,9 @@ class CertificateRevocationInfo:
         assert isinstance(country, CountryCode)
         self.country = country
         self.certId  = certId
-        self.serial  = int_to_bytes(serial)
+        self.serial  = CertificateStorage.makeSerial(serial)
         self.revocationDate = revocationDate
+
 
 class PkiDistributionUrl:
     class Type(enum.Enum):
