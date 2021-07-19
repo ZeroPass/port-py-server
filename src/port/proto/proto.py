@@ -70,13 +70,13 @@ peAccountExpired: Final                   = PeCredentialsExpired("Account has ex
 peChallengeExpired: Final                 = PeChallengeExpired("Challenge has expired")
 peChallengeVerificationFailed: Final      = PeSigVerifyFailed("Challenge signature verification failed")
 peCscaExists: Final                       = PeConflict("CSCA certificate already exists")
-peCscaExpired: Final                      = ProtoError("CSCA certificate has expired")
+peCscaTooNewOrExpired: Final              = ProtoError("CSCA certificate is too new or has expired")
 peCscaNotFound: Final                     = PeNotFound("CSCA certificate not found")
 peCscaSelfIssued: Final                   = PeNotFound("No CSCA link was found for self-issued CSCA")
 peDg1Required: Final                      = PePreconditionRequired("EF.DG1 required")
 peDg14Required: Final                     = PePreconditionRequired("EF.DG14 required")
 peDscExists: Final                        = PeConflict("DSC certificate already exists")
-peDscExpired: Final                       = ProtoError("DSC certificate has expired")
+peDscTooNewOrExpired: Final               = ProtoError("DSC certificate is too new or has expired")
 peDscCantIssuePassport: Final             = PeInvalidOrMissingParam("DSC certificate can't issuer biometric passport")
 peDscNotFound: Final                      = PeNotFound("DSC certificate not found")
 peInvalidCsca: Final                      = PeInvalidOrMissingParam("Invalid CSCA certificate")
@@ -314,8 +314,12 @@ class PortProto:
                                 Warning: self-issued CSCA should only be allowed from privileged and verified sources
                                          e.g. fully verified CSCA master list, server admin).
                                          Self-issued CSCA should be PROHIBITED, for example, through public api.
-        :raises: peInvalidCsca - When CSCA doesn't conform to the ICAO 9303 standard.
+        :raises peCscaTooNewOrExpired: If CSCA is too new (nvb > now) or has expired.
+        :raises peInvalidCsca: When CSCA doesn't conform to the ICAO 9303 standard.
         """
+        if csca.issuerCountry is None:
+            self._log.error("Trying to add CSCA certificate with no country code!")
+            raise peInvalidCsca
         try:
             self._log.debug("addCscaCertificate: C=%s serial=%s allowSelfIssued=%s",
                 CountryCode(csca.issuerCountry), CscaStorage.makeSerial(csca.serial_number).hex(), str(allowSelfIssued))
@@ -326,11 +330,16 @@ class PortProto:
             # of resources on any expired certificate.
             timeNow = utils.time_now()
             if not csca.isValidOn(timeNow):
-                self._log.error("Trying to add expired CSCA certificate! C=%s serial=%s %s",
+                self._log.error("Trying to add CSCA certificate which is too new or has expired! C=%s serial=%s %s",
                         csca.issuerCountry, CscaStorage.makeSerial(csca.serial_number).hex(), utils.format_cert_et(csca, timeNow))
-                raise peCscaExpired
+                raise peCscaTooNewOrExpired
 
             # 2.) Verify we have conformant CSCA certificate
+            # Note:
+            #   CSCA certificates:lt_csca_275b.cer, lt_csca_2748.cer, lt_csca_2761.cer
+            #   have invalid encoding of subject key identifier and key_identifier & subjectKey methods throw an exception.
+            #   i.e.: KeyIdentifier is defined in RFC 5280 as OCTET STRING within OCTET STRING
+            #         but the problematic certsencode key id as single OCTET STRING.
             csca.checkConformance()
 
             # 3.) Find the issuer if csca is LCSCA or coresponding LCSCA.
@@ -364,7 +373,7 @@ class PortProto:
                 if issuerCert is None:
                     raise peCscaNotFound
 
-            # 4.) Verify only certificate signature
+            # 4.) Verify cert signature
             csca.verify(issuingCert=(csca if selfIssued else issuerCert.getCertificate()), checkConformance = False)
 
             # 5.) Verify certificate trustchain validity and store CSCA in DB
@@ -374,7 +383,7 @@ class PortProto:
 
             # 6.) Save any CRL distribution url stored in csca
             self._save_crl_url_from_cert(cs.country, csca)
-            self._log.info("New CSCA certificate was added into DB. id=%s C=%s serial=%s", cs.id, cs.country, cs.serial.hex())
+            self._log.info("The new CSCA certificate was inserted into the DB. id=%s C=%s serial=%s", cs.id, cs.country, cs.serial.hex())
         except ProtoError:
             raise
         except CertificateVerificationError as e: # Conformance check failed or signature verification failed
@@ -391,13 +400,24 @@ class PortProto:
     def addDscCertificate(self, dsc: DocumentSignerCertificate) -> None:
         """
         Adds new DSC certificate into database.
-        Before DSC is added to the DB, the certificate is verified that it conforms to the ICAO 9303 standard.
-        i.e.:
+        Before DSC is added to the DB, the certificate is checked:
+            - that is valid at the present time
+            - that conforms to the ICAO 9303 standard.
+            - if dsc contains document type list, check it can produce passport document.
+            - that the issuing CSCA certificate exists in the DB and it has issued dsc (signature check)
+            - has valid truschain i.e. non of the certificate in the chain (CSCA => ... => dsc)
+              has expired or has been revoked.
+            - that the same DSC doesn't exist yet.
 
         :param dsc: The DSC certificate to add.
+        :raises peDscTooNewOrExpired: If DSC is too new (nvb > now) or has expired.
         :raises peInvalidDsc: When DSC doesn't conform to the ICAO 9303 standard.
         :raises peDscCantIssuePassport: If DSC can't issue passport document.
+        :raises peCscaNotFound: If the issuing CSCA certificate can't be found in the DB.
         """
+        if dsc.issuerCountry is None:
+            self._log.error("Trying to add DSC certificate with no country code!")
+            raise peInvalidDsc
         try:
             self._log.debug("addDscCertificate: C=%s serial=%s",
                 CountryCode(dsc.issuerCountry), DscStorage.makeSerial(dsc.serial_number).hex())
@@ -408,9 +428,9 @@ class PortProto:
             # of resources on any expired certificate.
             timeNow = utils.time_now()
             if not dsc.isValidOn(timeNow):
-                self._log.error("Trying to add expired DSC certificate! C=%s serial=%s %s",
+                self._log.error("Trying to add DSC certificate which is too new or expired! C=%s serial=%s %s",
                         dsc.issuerCountry, DscStorage.makeSerial(dsc.serial_number).hex(), utils.format_cert_et(dsc, timeNow))
-                raise peDscExpired
+                raise peDscTooNewOrExpired
 
             # 2.) Verify we have conformant DSC certificate
             dsc.checkConformance()
@@ -431,7 +451,7 @@ class PortProto:
             if issuerCert is None:
                 raise peCscaNotFound
 
-            # 5.) Verify only certificate signature
+            # 5.) Verify issuing CSCA has really issued dsc
             dsc.verify(issuingCert=issuerCert.getCertificate(), checkConformance = False)
 
             # 6.) Verify certificate trustchain validity and store DSC in DB
@@ -441,7 +461,7 @@ class PortProto:
 
             # 7.) Save any CRL distribution url stored in DSC
             self._save_crl_url_from_cert(cs.country, dsc)
-            self._log.info("New DSC certificate was added into DB. id=%s C=%s serial=%s", cs.id, cs.country, cs.serial.hex())
+            self._log.info("The new DSC certificate was inserted into the DB. id=%s C=%s serial=%s", cs.id, cs.country, cs.serial.hex())
         except ProtoError:
             raise
         except CertificateVerificationError as e: # Conformance check failed or signature verification failed
@@ -621,7 +641,7 @@ class PortProto:
         self._log.verbose("Verifying CSCA expiration time. {}".format(utils.format_cert_et(csca)))
         if not csca.isValidOn(utils.time_now()):
             self._log.error("CSCA has expired!")
-            raise peCscaExpired
+            raise peCscaTooNewOrExpired
 
         # 3. verify CSCA really issued DSC
         self._log.verbose("Verifying CSCA issued DSC ...")
@@ -674,7 +694,7 @@ class PortProto:
 
             self._log.verbose("Verifying DSC expiration time. {}".format(utils.format_cert_et(dsc)))
             if not dsc.isValidOn(utils.time_now()):
-                raise peDscExpired
+                raise peDscTooNewOrExpired
             elif validateDSC:
                 self.__validate_dsc_to_csca(dsc) # validate CSCA has issued DSC
             dscs.append(dsc)
