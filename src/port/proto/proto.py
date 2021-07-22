@@ -317,8 +317,8 @@ class PortProto:
         :raises peCscaTooNewOrExpired: If CSCA is too new (nvb > now) or has expired.
         :raises peInvalidCsca: When CSCA doesn't conform to the ICAO 9303 standard.
         """
-        if csca.issuerCountry is None:
-            self._log.error("Trying to add CSCA certificate with no country code!")
+        if not utils.is_valid_alpha2(csca.issuerCountry):
+            self._log.error("Trying to add CSCA certificate with no or invalid country code!")
             raise peInvalidCsca
         try:
             self._log.debug("addCscaCertificate: C=%s serial=%s allowSelfIssued=%s",
@@ -374,7 +374,7 @@ class PortProto:
                     raise peCscaNotFound
 
             # 4.) Verify cert signature
-            csca.verify(issuingCert=(csca if selfIssued else issuerCert.getCertificate()), checkConformance = False)
+            csca.verify(issuerCert=(csca if selfIssued else issuerCert.getCertificate()), checkConformance = False)
 
             # 5.) Verify certificate trustchain validity and store CSCA in DB
             cs = CscaStorage(csca, None if selfIssued else issuerCert.id)
@@ -415,8 +415,8 @@ class PortProto:
         :raises peDscCantIssuePassport: If DSC can't issue passport document.
         :raises peCscaNotFound: If the issuing CSCA certificate can't be found in the DB.
         """
-        if dsc.issuerCountry is None:
-            self._log.error("Trying to add DSC certificate with no country code!")
+        if not utils.is_valid_alpha2(dsc.issuerCountry):
+            self._log.error("Trying to add DSC certificate with no or invalid country code!")
             raise peInvalidDsc
         try:
             self._log.debug("addDscCertificate: C=%s serial=%s",
@@ -452,7 +452,7 @@ class PortProto:
                 raise peCscaNotFound
 
             # 5.) Verify issuing CSCA has really issued dsc
-            dsc.verify(issuingCert=issuerCert.getCertificate(), checkConformance = False)
+            dsc.verify(issuerCert=issuerCert.getCertificate(), checkConformance = False)
 
             # 6.) Verify certificate trustchain validity and store DSC in DB
             cs = DscStorage(dsc, issuerCert.id)
@@ -645,7 +645,7 @@ class PortProto:
 
         # 3. verify CSCA really issued DSC
         self._log.verbose("Verifying CSCA issued DSC ...")
-        dsc.verify(issuingCert=csca)
+        dsc.verify(issuerCert=csca)
 
     def _get_challenge_expiration(self, createTime: datetime) -> datetime:
         """
