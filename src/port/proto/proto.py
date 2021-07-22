@@ -339,25 +339,26 @@ class PortProto:
             #   CSCA certificates:lt_csca_275b.cer, lt_csca_2748.cer, lt_csca_2761.cer
             #   have invalid encoding of subject key identifier and key_identifier & subjectKey methods throw an exception.
             #   i.e.: KeyIdentifier is defined in RFC 5280 as OCTET STRING within OCTET STRING
-            #         but the problematic certsencode key id as single OCTET STRING.
+            #         but the problematic certs encode key id as single OCTET STRING.
             csca.checkConformance()
 
             # 3.) Find the issuer if csca is LCSCA or coresponding LCSCA.
             issuerCert: Optional[CscaStorage] = None # None for allowed self-issued
             selfIssued = csca.self_signed == 'maybe'
             if selfIssued:
-                if not allowSelfIssued: # Find matching LCSCA or fail
+                if not allowSelfIssued:
+                    # Find matching LCSCA or fail
                     self._log.debug("Looking for matching LCSCA...")
                     cscas: List[CscaStorage] = self._db.findCscaCertificates(csca.subject, csca.subjectKey)
                     for c in (cscas or []):
-                        crt:CscaCertificate = c.getCertificate()
+                        crt: CscaCertificate = c.getCertificate()
                         if csca.fingerprint == crt.fingerprint:
                             raise peCscaExists
                         if crt.isValidOn(timeNow) and \
                            (crt.subjectKey == csca.subjectKey or \
                             crt.public_key.dump() == csca.public_key.dump()):
                             self._log.debug("Found LCSCA ")
-                            issuerCert = c # The cert id should not be take for issuerId field
+                            issuerCert = c # The cert id should not be used for issuerId
                             break
 
                     if issuerCert is None:
@@ -367,7 +368,7 @@ class PortProto:
             else: #LCSCA
                 cscas: List[CscaStorage] = self._db.findCscaCertificates(csca.issuer, csca.authorityKey)
                 for c in (cscas or []):
-                    if c.isValidOn(timeNow):
+                    if c.isSelfIssued and c.isValidOn(timeNow):
                         issuerCert = c
                         break
                 if issuerCert is None:
@@ -444,7 +445,9 @@ class PortProto:
             issuerCert: Optional[CscaStorage] = None
             cscas: List[CscaStorage] = self._db.findCscaCertificates(dsc.issuer, dsc.authorityKey)
             for c in (cscas or []):
-                if c.isValidOn(timeNow):
+                # This check ensures to not take any LCSCA certificate as the issuer cert
+                # since they can have shorter expiration time
+                if c.notValidAfter >= dsc.notValidAfter:
                     issuerCert = c
                     break
 
@@ -487,13 +490,6 @@ class PortProto:
         """
         self._log.debug("Verifying certificate trustchain id=%s C=%s serial=%s issuer_id=%s",
             crt.id, crt.country, crt.serial.hex(), crt.issuerId)
-        if not crt.isSelfIssued():
-            issuer = self._db.findCsca(crt.issuerId)
-            if issuer is None:
-                self._log.error("Failed to verify certificate trustchain: issuer CSCA not found! id=%s C=%s serial=%s issuer_id=%s",
-                    crt.id, crt.country, crt.serial.hex(), crt.issuerId)
-                raise peTrustchainCheckFailedNoCsca
-            self._check_cert_trustchain(issuer)
 
         if not crt.isValidOn(utils.time_now()):
             self._log.error("Failed to verify certificate trustchain: Expired certificate in the chain, id=%s C=%s serial=%s %s",
@@ -503,7 +499,15 @@ class PortProto:
         if self._db.isCertificateRevoked(crt):
             self._log.error("Failed to verify certificate trustchain: Revoked certificate in the chain, id=%s C=%s serial=%s",
                     crt.id, crt.country, crt.serial.hex())
-            raise peTrustchainCheckFailedExpiredCert
+            raise peTrustchainCheckFailedRevokedCert
+
+        if not crt.isSelfIssued():
+            issuer = self._db.findCsca(crt.issuerId)
+            if issuer is None:
+                self._log.error("Failed to verify certificate trustchain: issuer CSCA not found! id=%s C=%s serial=%s issuer_id=%s",
+                    crt.id, crt.country, crt.serial.hex(), crt.issuerId)
+                raise peTrustchainCheckFailedNoCsca
+            self._check_cert_trustchain(issuer)
 
     def __verify_challenge(self, cid: CID, aaPubKey: AAPublicKey, csigs: List[bytes], aaSigAlgo: SignatureAlgorithm = None ) -> None:
         """
