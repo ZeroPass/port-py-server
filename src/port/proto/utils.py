@@ -1,3 +1,4 @@
+from typing import Optional
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.hashes import Hash, SHA512_256
 import pycountry
@@ -31,20 +32,35 @@ def int_count_bytes(n: int):
         n >>= 8
     return ibytes
 
-def format_alpha2(code: str):
+def is_valid_alpha2(code: Optional[str]) -> bool:
+    """
+    Verifies if `code` is the ISO-3166 Alpha-2 country code.
+    It follows mrtd spec 9303 p3.
+    @see https://www.icao.int/publications/Documents/9303_p3_cons_en.pdf
+
+    :param code: - The country code to check, it can be mixed case.
+                   If `code` is None, False is returned.
+    :returns: True if valid, otherwise false
+    """
+    return code is not None \
+        and len(code) == 2 \
+        and code.isalpha()
+
+def format_alpha2(code: str) -> str:
     """
     Formats the ISO-3166 Alpha-2 country code for storing in database.
     It follows mrtd spec 9303 p3.
     @see https://www.icao.int/publications/Documents/9303_p3_cons_en.pdf
 
-    :param code: - 2 upper case letter.
+    :param code: - The country code to format. Must be 2 letters and it can be mixed case.
+    :returns: Uppercased country code
     :raises: ValueError if code is not exact 2 chars
     """
-    if len(code) != 2:
+    if not is_valid_alpha2(code):
         raise ValueError("Invalid ISO-3166 Alpha-2 country code: " + code)
     return code.upper()
 
-def format_alpha3(code: str):
+def format_alpha3(code: str) -> str:
     """
     Formats the ISO-3166 Alpha-3 country code for storing in database.
     It follows mrtd spec 9303 p3.
