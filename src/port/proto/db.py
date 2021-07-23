@@ -129,7 +129,7 @@ class StorageAPI(ABC):
         """
 
     @abstractmethod
-    def findCscaBySerial(self, issuer: x509.Name, serial: int) -> Optional[CscaStorage]:
+    def findCscaBySerial(self, issuer: x509.Name, serial: TypeVar("T",int, bytes)) -> Optional[CscaStorage]:
         """
         Returns CSCA certificate storage objects that match the certificate serial number.
         :param issuer: CSCA issuer name.
@@ -192,7 +192,7 @@ class StorageAPI(ABC):
         """
 
     @abstractmethod
-    def findDscBySerial(self, issuer: x509.Name, serial: int) -> Optional[DscStorage]:
+    def findDscBySerial(self, issuer: x509.Name, serial: TypeVar("T", int, bytes)) -> Optional[DscStorage]:
         """
         Returns DSC certificate storage that matches the issuer name and serial number.
         :param issuer: The DSC certificate issuer.
@@ -543,7 +543,7 @@ class DatabaseAPI(StorageAPI):
         except Exception as e:
             self.__handle_exception(e)
 
-    def findCscaBySerial(self, issuer: x509.Name, serial: int) -> Optional[CscaStorage]:
+    def findCscaBySerial(self, issuer: x509.Name, serial: TypeVar("T",int, bytes)) -> Optional[CscaStorage]:
         """
         Returns CSCA certificate storage objects that match the certificate serial number.
         :param issuer: CSCA issuer name.
@@ -552,12 +552,14 @@ class DatabaseAPI(StorageAPI):
         :raises: DatabaseAPIError on DB connection errors.
         """
         assert isinstance(issuer, x509.Name)
-        assert isinstance(serial, int)
+        assert isinstance(serial, int) or isinstance(serial, bytes)
         try:
-            serial = CertificateStorage.makeSerial(serial)
+            if isinstance(serial, int):
+                serial = CertificateStorage.makeSerial(serial)
             return self.__db \
                 .query(CscaStorage) \
-                .filter(CscaStorage.issuer == issuer.human_friendly, CscaStorage.serial == serial) \
+                .filter(CscaStorage.issuer == issuer.human_friendly, \
+                        CscaStorage.serial == serial) \
                 .first()
         except Exception as e:
             self.__handle_exception(e)
@@ -626,7 +628,8 @@ class DatabaseAPI(StorageAPI):
         try:
             cscas = self.__db \
                 .query(CscaStorage) \
-                .filter(CscaStorage.country == country, CscaStorage.subjectKey == subjectKey) \
+                .filter(CscaStorage.country == country,\
+                        CscaStorage.subjectKey == subjectKey) \
                 .all()
             return cscas if len(cscas) != 0 else None
         except Exception as e:
@@ -680,7 +683,7 @@ class DatabaseAPI(StorageAPI):
         except Exception as e:
             self.__handle_exception(e)
 
-    def findDscBySerial(self, issuer: x509.Name, serial: int) -> Optional[DscStorage]:
+    def findDscBySerial(self, issuer: x509.Name, serial: TypeVar("T", int, bytes)) -> Optional[DscStorage]:
         """
         Returns DSC certificate storage that matches the issuer name and serial number.
         :param issuer: The DSC certificate issuer.
@@ -689,12 +692,14 @@ class DatabaseAPI(StorageAPI):
         :raises: DatabaseAPIError on DB connection errors.
         """
         assert isinstance(issuer, x509.Name)
-        assert isinstance(serial, int)
+        assert isinstance(serial, int) or isinstance(serial, bytes)
         try:
-            serial = CertificateStorage.makeSerial(serial)
+            if isinstance(serial, int):
+                serial = CertificateStorage.makeSerial(serial)
             return self.__db \
                 .query(DscStorage) \
-                .filter(DscStorage.issuer == issuer.human_friendly, DscStorage.serial == serial) \
+                .filter(DscStorage.issuer == issuer.human_friendly, \
+                        DscStorage.serial == serial) \
                 .first()
         except Exception as e:
             self.__handle_exception(e)
@@ -1032,16 +1037,21 @@ class MemoryDB(StorageAPI):
                     return csca
         return None
 
-    def findCscaBySerial(self, issuer: x509.Name, serial: int) -> Optional[CscaStorage]:
+    def findCscaBySerial(self, issuer: x509.Name, serial: TypeVar("T",int, bytes)) -> Optional[CscaStorage]:
         """
         Returns CSCA certificate storage objects that match the certificate serial number.
         :param issuer: CSCA issuer name.
         :param serial: CSCA serial number to search for.
         :return:
         """
+        assert isinstance(issuer, x509.Name)
+        assert isinstance(serial, int) or isinstance(serial, bytes)
         country = CountryCode(issuer.native['country_name'])
+        if isinstance(serial, int):
+            serial = CertificateStorage.makeSerial(serial)
         for csca in self._d['cscas'][country]:
-            if csca.issuer == issuer.human_friendly and csca.serialNumber == serial:
+            if csca.issuer.lower() == issuer.human_friendly.lower() \
+                and csca.serial == serial:
                 return csca
         return None
 
@@ -1141,17 +1151,21 @@ class MemoryDB(StorageAPI):
                     return dsc
         return None
 
-    def findDscBySerial(self, issuer: x509.Name, serial: int) -> Optional[DscStorage]:
+    def findDscBySerial(self, issuer: x509.Name, serial: TypeVar("T", int, bytes)) -> Optional[DscStorage]:
         """
         Returns DSC certificate storage that matches the issuer name and serial number.
         :param issuer: The DSC certificate issuer.
         :param serial: The DSC certificate serial number.
         :return: DscStorage
+
         """
         assert isinstance(issuer, x509.Name)
-        assert isinstance(serial, int)
+        assert isinstance(serial, int) or isinstance(serial, bytes)
+        if isinstance(serial, int):
+            serial = CertificateStorage.makeSerial(serial)
         for dsc in self._d['dscs'][CountryCode(issuer.native['country_name'])]:
-            if dsc.issuer == issuer and dsc.serialNumber == serial:
+            if dsc.issuer.lower() == issuer.human_friendly.lower() \
+                and dsc.serial == serial:
                 return dsc
         return None
 
