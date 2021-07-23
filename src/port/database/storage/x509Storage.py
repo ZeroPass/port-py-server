@@ -1,4 +1,4 @@
-import datetime
+from datetime import datetime
 import enum
 
 from port.proto.types import CertificateId, CountryCode
@@ -18,14 +18,15 @@ class CertificateStorage:
     notValidAfter: datetime
     issuerId: Optional[CertificateId]
     issuer: str
-    authorityKey: bytes
+    authorityKey: Optional[bytes]
     subject: str
-    subjectKey: bytes
+    subjectKey: Optional[bytes]
     certificate: bytes
 
     _type = None
 
     def __init__(self, cert: Certificate, issuerId: Optional[CertificateId] = None):
+        assert isinstance(cert, Certificate)
         self.id             = CertificateId.fromCertificate(cert)
         self.country        = CountryCode(cert.issuerCountry)
         self.serial         = CertificateStorage.makeSerial(cert.serial_number)
@@ -61,11 +62,12 @@ class CertificateStorage:
         return nvb < dateTime < nva
 
     def isSelfIssued(self):
-        return (self.subject == self.issuer or self.subjectKey == self.authorityKey) \
+        return (self.subjectKey == self.authorityKey or self.subject == self.issuer) \
             and self.issuerId is None
 
     @staticmethod
     def makeSerial(ser: int) -> bytes:
+        assert isinstance(ser, int)
         return int_to_bytes(ser, signed=True)
 
 
