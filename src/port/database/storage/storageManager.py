@@ -36,7 +36,7 @@ def compile_varbinary_postgresql(type_, compiler, **kw): #pylint: disable=unused
     return "BYTEA"
 
 class CertIdSqlType(TypeDecorator): #pylint: disable=abstract-method
-    impl = BigInteger
+    impl = BigInteger # 64bit signed integer
     python_type = CertificateId
     cache_ok = True
     def process_result_value(self, value, dialect):
@@ -50,7 +50,7 @@ class ChallengeSqlType(TypeDecorator): #pylint: disable=abstract-method
         return Challenge(value) if value is not None else value
 
 class CidSqlType(TypeDecorator): #pylint: disable=abstract-method
-    impl = Integer
+    impl = Integer # 32bit signed integer
     python_type = CID
     cache_ok = True
     def process_result_value(self, value, dialect):
@@ -65,7 +65,7 @@ class CountryCodeSqlType(TypeDecorator): #pylint: disable=abstract-method
         return CountryCode(value) if value is not None else value
 
 class SodIdSqlType(TypeDecorator): #pylint: disable=abstract-method
-    impl = BigInteger
+    impl = BigInteger # 64bit signed integer
     python_type = SodId
     cache_ok = True
     def process_result_value(self, value, dialect):
@@ -101,10 +101,10 @@ crt: Final = Table('crt', metadata,
 
 # table contains eMRTD distribution URLs for country. i.e.: distribution URLs fo countries CSCA, DSC and CRL
 pkiDistributionInfo: Final = Table('pki_distribution_info', metadata,
-    Column('id'     , BigInteger                    , primary_key=True, autoincrement=True), # ID should be unique and tied to the url and type. See PkiDistributionUrl._gen_id
-    Column('country', CountryCodeSqlType()          , unique=False    , nullable=False    ),
-    Column('type'   , Enum(PkiDistributionUrl.Type) , unique=False    , nullable=False    ),
-    Column('url'    , Text                          , unique=False    , nullable=False    ), # distribution URL.
+    Column('id'     , BigInteger                    , primary_key=True, autoincrement=False            ), # Unique ID tied to the country code, url and type. See PkiDistributionUrl._gen_id
+    Column('country', CountryCodeSqlType()          , unique=False    , nullable=False     , index=True),
+    Column('type'   , Enum(PkiDistributionUrl.Type) , unique=False    , nullable=False                 ),
+    Column('url'    , Text                          , unique=False    , nullable=False                 ), # distribution URL.
 )
 
 # x.509 certificate table scheme
@@ -134,7 +134,7 @@ dsc: Final  = Table('dsc' , metadata, *certColumns(issuerCertTable='csca'))
 # table for storing Port protocol challenges used for passport active authentication
 protoChallenges: Final = Table('proto_challenges', metadata,
     Column('id'       , CidSqlType              , primary_key=True, autoincrement=False            ),
-    Column('uid'      , UserIdSqlType()         , nullable=False  , unique=True        , index=True), # ForeignKey('accounts.uid'), must not be set as account might not exist yet
+    Column('uid'      , UserIdSqlType()         , nullable=False  , unique=True        , index=True), # ForeignKey('accounts.uid'). Note: must not be set to foregin key since the account might not exist yet
     Column('challenge', ChallengeSqlType()      , nullable=False                                   ),
     Column("expires"  , DateTime(timezone=False), nullable=False                                   )
 )
