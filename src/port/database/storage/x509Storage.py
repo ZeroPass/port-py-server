@@ -141,16 +141,16 @@ class PkiDistributionUrl:
     def __init__(self, country: CountryCode, pkiType: Type, url: str) -> None:
         assert len(url) > 0
         assert isinstance(country, CountryCode)
-        self.id      = PkiDistributionUrl._gen_id(pkiType, url)
+        self.id      = PkiDistributionUrl._gen_id(country, pkiType, url)
         self.country = country
         self.type    = pkiType
         self.url     = url
 
     @staticmethod
-    def _gen_id(pkiType: Type, url: str) -> int:
+    def _gen_id(country: str,  pkiType: Type, url: str) -> int:
         '''
-        Generates ID from type and url.
+        Generates ID from country, type and url.
         The generated ID should be unique so any duplicated entries won't be inserted.
         '''
-        h = sha512_256(int_to_bytes(pkiType.value) + url.encode('utf-8'))
+        h = sha512_256(country.encode('utf-8') + int_to_bytes(pkiType.value) + url.encode('utf-8'))
         return bytes_to_int(h[0:8])
