@@ -112,7 +112,6 @@ class StorageAPI(ABC):
         :return: The CSCA CertificateId
         """
 
-
     @abstractmethod
     def addCscaStorage(self, csca: CscaStorage) -> None:
         """
@@ -283,7 +282,7 @@ class DatabaseAPI(StorageAPI):
     to expose Connection interface to StorageAPI without mixing two interfaces.
     '''
 
-    def __init__(self, dialect:str, host:str, db: str, username: str, password: str, dbLogging: bool = False):
+    def __init__(self, dialect:str, host:str, db: str, username: str, password: str, dbLog: bool = False):
         '''
         Creates new ORM database connection.
         :param dialect: The database dialect e.g.:  mariadb, mysql, oracle, postgresql, sqlite.
@@ -291,11 +290,11 @@ class DatabaseAPI(StorageAPI):
         :param db: The database path.
         :param username: The database username.
         :param password: The database password.
-        :param dbLogging (Optional): If set to True the underling DB implementation will debug log every DB action and SQL statement.
+        :param dbLog (Optional): If set to True the underling DB implementation will debug log all DB actions and SQL statements.
         :raises: PortDbConnectionError on error.
         '''
         self._log = logging.getLogger('proto.db.api')
-        self._dbc = PortDatabaseConnection(dialect, host, db, username, password, debugLogging = dbLogging)
+        self._dbc = PortDatabaseConnection(dialect, host, db, username, password, debugLogging = dbLog)
 
     @property
     def __db(self) -> scoped_session:
@@ -821,19 +820,21 @@ class DatabaseAPI(StorageAPI):
         """
         assert isinstance(crt, Certificate) or isinstance(crt, CertificateStorage)
         try:
-            q = self.__db.query(CertificateRevocationInfo)
             if isinstance(crt, Certificate):
-                certId = CertificateId.fromCertificate(crt)
-                serial = CertificateStorage.makeSerial(crt.serial_number)
-                q.filter_by(country = CountryCode(crt.issuerCountry)) \
-                 .filter(or_(CertificateRevocationInfo.certId == certId,
-                             CertificateRevocationInfo.serial == serial))
+                country = CountryCode(crt.issuerCountry)
+                certId  = CertificateId.fromCertificate(crt)
+                serial  = CertificateStorage.makeSerial(crt.serial_number)
             else: # CertificateStorage
-                q.filter_by(country = crt.country) \
-                 .filter(or_(CertificateRevocationInfo.certId == crt.id,
-                             CertificateRevocationInfo.serial == crt.serial))
+                country = crt.country
+                certId  = crt.id
+                serial  = crt.serial
 
-            return q.first() is not None
+            q = self.__db \
+                .query(CertificateRevocationInfo) \
+                .filter_by(country = country) \
+                .filter(or_(CertificateRevocationInfo.certId == certId,
+                            CertificateRevocationInfo.serial == serial))
+            return q.count() > 0
         except Exception as e:
             self.__handle_exception(e)
 
