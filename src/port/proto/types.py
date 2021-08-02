@@ -1,7 +1,15 @@
-from .utils import bytes_to_int, format_alpha2, int_count_bytes, sha512_256
+from asn1crypto.x509 import Name
 from pymrtd import ef
 from pymrtd.pki import x509
 from typing import cast, Union
+from .utils import bytes_to_int, format_alpha2, int_count_bytes, sha512_256
+
+class CountryCode(str):
+    """
+    Class represents ISO-3166 Alpha-2 country code
+    """
+    def __new__(cls, content):
+        return super().__new__(cls, format_alpha2(content) if content is not None else None)
 
 class IIntegerId(int):
     min:int
@@ -34,7 +42,6 @@ class IIntegerId(int):
     def hex(self):
         return hex(self)
 
-
 class CertificateId(IIntegerId):
     """
     Represents x509.Certificate ID as uint64
@@ -47,7 +54,30 @@ class CertificateId(IIntegerId):
 
     @classmethod
     def fromCertificate(cls, crt: x509.Certificate) -> "CertificateId":
+        assert isinstance(crt, x509.Certificate)
         return cls(sha512_256(crt.dump()))
+
+class CrlId(IIntegerId):
+    """
+    CrlId represents unique ID of country CRL based on country code and issuer DN.
+    i.e. sha512-256(country_code + issuer_dn)[0:8]
+    """
+    min = -9223372036854775808 # min 64 bit int
+    max = 9223372036854775807  # max 64 bit int
+
+    @classmethod
+    def fromCountryCodeAndIssuer(cls, country: CountryCode, issuer: str) -> "CrlId":
+        assert isinstance(country, CountryCode)
+        assert isinstance(issuer, str)
+        h = sha512_256((country + issuer).encode('utf-8'))
+        return cls(h)
+
+    @classmethod
+    def fromCrlIssuer(cls, issuer: Name) -> "CrlId":
+        assert isinstance(issuer, Name)
+        c = CountryCode(issuer.native['country_name'])
+        i = issuer.human_friendly
+        return CrlId.fromCountryCodeAndIssuer(c, i)
 
 class SodId(IIntegerId):
     """
@@ -61,11 +91,5 @@ class SodId(IIntegerId):
 
     @classmethod
     def fromSOD(cls, sod: ef.SOD) -> "SodId":
+        assert isinstance(sod, ef.SOD)
         return cls(sha512_256(sod.dump()))
-
-class CountryCode(str):
-    """
-    Class represents ISO-3166 Alpha-2 country code
-    """
-    def __new__(cls, content):
-        return super().__new__(cls, format_alpha2(content))
