@@ -21,12 +21,13 @@ from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import mapper, sessionmaker, scoped_session
 from sqlalchemy.orm.session import Session
+from sqlalchemy.sql.schema import UniqueConstraint
 from port.database.storage.accountStorage import AccountStorage
 from port.database.storage.challengeStorage import ChallengeStorage
 from port.database.storage.x509Storage import CertificateRevocationInfo, CrlUpdateInfo, CscaStorage, DscStorage, PkiDistributionUrl
 
 from port.proto.challenge import Challenge, CID
-from port.proto.types import CertificateId, CountryCode, SodId
+from port.proto.types import CertificateId, CountryCode, CrlId, SodId
 from port.proto.user import UserId
 
 from typing import Final, Optional
@@ -34,6 +35,13 @@ from typing import Final, Optional
 @compiles(VARBINARY, "postgresql")
 def compile_varbinary_postgresql(type_, compiler, **kw): #pylint: disable=unused-argument
     return "BYTEA"
+
+class CrlIdSqlType(TypeDecorator): #pylint: disable=abstract-method
+    impl = BigInteger # 64bit signed integer
+    python_type = CrlId
+    cache_ok = True
+    def process_result_value(self, value, dialect):
+        return CrlId(value) if value is not None else value
 
 class CertIdSqlType(TypeDecorator): #pylint: disable=abstract-method
     impl = BigInteger # 64bit signed integer
@@ -84,19 +92,25 @@ metadata: Final = MetaData()
 
 # table contains CRL update info for country
 crlUpdateInfo: Final = Table('crl_update_info', metadata,
-    Column('country'   , CountryCodeSqlType()    , primary_key=True), # ISO alpha 2 country code
-    Column('crlNumber' , LargeBinary(20)         , nullable=True   ),
-    Column('thisUpdate', DateTime(timezone=False), nullable=False  ),
-    Column('nextUpdate', DateTime(timezone=False), nullable=False  )
+    Column('id'        , CrlIdSqlType            , primary_key=True          ), # entry unique ID tied to country and issuer, see CrlId
+    Column('country'   , CountryCodeSqlType()    , nullable=False, index=True), # ISO alpha 2 country code
+    Column('issuer'    , Text                    , nullable=False            ),
+    Column('crlNumber' , LargeBinary(20)         , nullable=True             ),
+    Column('thisUpdate', DateTime(timezone=False), nullable=False            ),
+    Column('nextUpdate', DateTime(timezone=False), nullable=False            )
 )
 
 # certificate revocation table contains list of infos about revoked certificates
 crt: Final = Table('crt', metadata,
-    Column('serial'        , VARBINARY(20)           , nullable=False, primary_key=True), # revoked certificate serial number
-    Column('country'       , CountryCodeSqlType()    , nullable=False, unique=False    ),
-    Column('certId'        , CertIdSqlType           , nullable=True , unique=True     ), # revoked certificate id i.e. foreign key in csca or dsc table.
-                                                                                          # The column could be NULL if cert is not found in the coresponding tables when inserting.
-    Column('revocationDate', DateTime(timezone=False), nullable=False                  ),
+    Column('id'            , BigInteger              , primary_key=True, autoincrement=True),
+    Column('serial'        , VARBINARY(20)           , nullable=False  , unique=False      ), # revoked certificate serial number
+    Column('country'       , CountryCodeSqlType()    , nullable=False  , unique=False      ),
+    Column('crlId'         , CrlIdSqlType(),
+        ForeignKey('crl_update_info.id')             , nullable=True   , unique=False      ), # Note: if NULL it means the revocation was manually added and is not part of any CRL.
+    Column('certId'        , CertIdSqlType           , nullable=True   , unique=True       ), # revoked certificate id i.e. foreign key in csca or dsc table.
+                                                                                              # The column could be NULL if cert is not found in the coresponding tables when inserting.
+    Column('revocationDate', DateTime(timezone=False), nullable=False                      ),
+    UniqueConstraint('serial', 'country', name='ser_cc_idx')
 )
 
 # table contains eMRTD distribution URLs for country. i.e.: distribution URLs fo countries CSCA, DSC and CRL

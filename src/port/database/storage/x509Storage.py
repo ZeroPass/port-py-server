@@ -1,13 +1,16 @@
 from datetime import datetime
 import enum
 
-from port.proto.types import CertificateId, CountryCode
+from asn1crypto import x509
+from asn1crypto.crl import RevokedCertificate
+
+from port.proto.types import CertificateId, CountryCode, CrlId
 from port.proto.utils import bytes_to_int, int_to_bytes, sha512_256
 
 from pymrtd.pki.crl import CertificateRevocationList
 from pymrtd.pki.x509 import Certificate, CscaCertificate, DocumentSignerCertificate
 
-from typing import Optional
+from typing import Optional, Union
 
 class CertificateStorage:
     """Storage class for """
@@ -78,15 +81,27 @@ class DscStorage(CertificateStorage):
     _type = DocumentSignerCertificate
 
 class CrlUpdateInfo:
-    """Class for interaaction between code structure and database"""
+    """
+    Table stores CRL update information for country.
+    Note, some countries issues multiple CRLs for different issuers so the table id colum is
+    unique id based on country code and issuer DN.
+    """
+    id: CrlId
     country: CountryCode
+    issuer: str
     crlNumber: Optional[bytes]
     thisUpdate: datetime
     nextUpdate: datetime
 
-    def __init__(self, country: CountryCode, crlNumber: Optional[bytes], thisUpdate: datetime, nextUpdate: datetime):
-        assert isinstance(country, CountryCode)
-        self.country    = country
+    def __init__(self, issuer: x509.Name, crlNumber: Optional[Union[int, bytes]], thisUpdate: datetime, nextUpdate: datetime):
+        assert isinstance(issuer, x509.Name)
+        assert crlNumber is None or isinstance(crlNumber, (bytes, int))
+        if crlNumber is not None and isinstance(crlNumber, int):
+            crlNumber = CrlUpdateInfo.makeCrlNumber(crlNumber)
+
+        self.country    = CountryCode(issuer.native['country_name'])
+        self.issuer     = issuer.human_friendly
+        self.id         = CrlId.fromCountryCodeAndIssuer(self.country, self.issuer)
         self.crlNumber  = crlNumber
         self.thisUpdate = thisUpdate
         self.nextUpdate = nextUpdate
@@ -95,14 +110,14 @@ class CrlUpdateInfo:
     @classmethod
     def fromCrl(cls, crl: CertificateRevocationList):
         return cls(
-            CountryCode(crl.issuerCountry),
-            CrlUpdateInfo.makeCrlNumber(crl.crl_number_value.native),
+            crl.issuer,
+            crl.crlNumber,
             crl.thisUpdate,
             crl.nextUpdate
         )
 
     @property
-    def crlNumberInt(self) -> Optional[int]:
+    def number(self) -> Optional[int]:
         if self.crlNumber is not None:
             if not hasattr(self, '_cached_ser_no') or self._cached_ser_no is None:
                 self._cached_ser_no = bytes_to_int(self.crlNumber, signed=True)
@@ -113,19 +128,37 @@ class CrlUpdateInfo:
         return int_to_bytes(ser, signed=True) if ser is not None else None
 
 class CertificateRevocationInfo:
+    id: int                         # 64bit signed integer, assigned by db
     serial: bytes                   # certificate serial no.
-    country: CountryCode
+    country: str
+    crlId: Optional[CrlId]          # foregin key into CrlUpdateInfo.Id. If None, the entry was manually added and is not part of any CRL.
     certId: Optional[CertificateId] # id of certificate beeing revoked.
                                     # It could be None due to CRL list doesn't contain ful certificate to calculate CertificateId
     revocationDate: datetime
 
-    def __init__(self, country: CountryCode, serial: int, revocationDate: datetime, certId: Optional[CertificateId] = None):
+    def __init__(self, country: CountryCode, serial: Union[int, bytes], revocationDate: datetime, crlId: Optional[CrlId], certId: Optional[CertificateId] = None):
         assert isinstance(country, CountryCode)
+        assert isinstance(serial, (bytes, int))
+        assert isinstance(revocationDate, datetime)
+        assert crlId is None or isinstance(crlId, CrlId)
+        assert certId is None or isinstance(certId, CertificateId)
+        if isinstance(serial, int):
+            serial = CertificateStorage.makeSerial(serial)
+        self.id      = None
+        self.serial  = serial
         self.country = country
+        self.crlId   = crlId
         self.certId  = certId
-        self.serial  = CertificateStorage.makeSerial(serial)
         self.revocationDate = revocationDate
 
+    @classmethod
+    def fromRevokedCertificate(cls, country: CountryCode, rc: RevokedCertificate) -> "CertificateRevocationInfo":
+        assert isinstance(country, CountryCode)
+        assert isinstance(rc, RevokedCertificate)
+        serial  = rc['user_certificate'].native
+        revDate = rc['revocation_date'].chosen.native
+        revDate = revDate.replace(tzinfo=None)
+        return cls(country, serial, revDate, crlId=None)
 
 class PkiDistributionUrl:
     class Type(enum.Enum):
