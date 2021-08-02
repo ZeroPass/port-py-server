@@ -278,12 +278,12 @@ class DatabaseAPIError(StorageAPIError):
 
 class DatabaseAPI(StorageAPI):
     '''
-    DatabaseAPI implements StorageAPI as persistent storage.
+    DatabaseAPI implements StorageAPI as persistent storage through PortDatabaseConnection and SQL Alchemy.
     It's defined as abstraction layer over class Connection (which uses PostgreSQL)
     to expose Connection interface to StorageAPI without mixing two interfaces.
     '''
 
-    def __init__(self, dialect:str, host:str, db: str, username: str, password: str):
+    def __init__(self, dialect:str, host:str, db: str, username: str, password: str, dbLogging: bool = False):
         '''
         Creates new ORM database connection.
         :param dialect: The database dialect e.g.:  mariadb, mysql, oracle, postgresql, sqlite.
@@ -291,10 +291,11 @@ class DatabaseAPI(StorageAPI):
         :param db: The database path.
         :param username: The database username.
         :param password: The database password.
+        :param dbLogging (Optional): If set to True the underling DB implementation will debug log every DB action and SQL statement.
         :raises: PortDbConnectionError on error.
         '''
         self._log = logging.getLogger('proto.db.api')
-        self._dbc = PortDatabaseConnection(dialect, host, db, username, password)
+        self._dbc = PortDatabaseConnection(dialect, host, db, username, password, debugLogging = dbLogging)
 
     @property
     def __db(self) -> scoped_session:
