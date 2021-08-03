@@ -1,3 +1,4 @@
+from pymrtd.pki.crl import CertificateRevocationList
 import port.log as log
 from . import utils
 from .challenge import CID, Challenge
@@ -14,7 +15,7 @@ from pymrtd.pki.keys import AAPublicKey, SignatureAlgorithm
 from pymrtd.pki.x509 import Certificate, CertificateVerificationError, CscaCertificate, DocumentSignerCertificate
 
 from port.database.storage.accountStorage import AccountStorage
-from port.database.storage.x509Storage import CertificateStorage, CscaStorage, DscStorage, PkiDistributionUrl
+from port.database.storage.x509Storage import CertificateRevocationInfo, CertificateStorage, CrlUpdateInfo, CscaStorage, DscStorage, PkiDistributionUrl
 
 from threading import Timer
 from typing import Final, List, Optional, Tuple, Union
@@ -73,6 +74,8 @@ peCscaExists: Final                       = PeConflict("CSCA certificate already
 peCscaTooNewOrExpired: Final              = ProtoError("CSCA certificate is too new or has expired")
 peCscaNotFound: Final                     = PeNotFound("CSCA certificate not found")
 peCscaSelfIssued: Final                   = PeNotFound("No CSCA link was found for self-issued CSCA")
+peCrlOld: Final                           = PeInvalidOrMissingParam("Old CRL")
+peCrlTooNew: Final                        = PeInvalidOrMissingParam("Can't add future CRL")
 peDg1Required: Final                      = PePreconditionRequired("EF.DG1 required")
 peDg14Required: Final                     = PePreconditionRequired("EF.DG14 required")
 peDscExists: Final                        = PeConflict("DSC certificate already exists")
@@ -81,6 +84,7 @@ peDscCantIssuePassport: Final             = PeInvalidOrMissingParam("DSC certifi
 peDscNotFound: Final                      = PeNotFound("DSC certificate not found")
 peInvalidCsca: Final                      = PeInvalidOrMissingParam("Invalid CSCA certificate")
 peInvalidDsc: Final                       = PeInvalidOrMissingParam("Invalid DSC certificate")
+peInvalidCrl: Final                       = PeInvalidOrMissingParam("Invalid CRL")
 peMissingAAInfoInDg14: Final              = PePreconditionRequired("Missing ActiveAuthenticationInfo in DG14 file")
 peMissingParamAASigAlgo: Final            = PeInvalidOrMissingParam("Missing param aaSigAlgo")
 peTrustchainCheckFailedExpiredCert: Final = PePreconditionFailed("Expired certificate in the trustchain")
@@ -475,6 +479,81 @@ class PortProto:
         except Exception as e:
             self._log.error("An exception was encountered while trying to add new DSC certificate! C=%s serial=%s",
                 dsc.issuerCountry, DscStorage.makeSerial(dsc.serial_number).hex())
+            self._log.error("  e=%s", e)
+            raise
+
+    def updateCRL(self, crl: CertificateRevocationList):
+        """
+        Adds new or update existing country CRL in DB.
+        Before CRL is added to the DB, it is checked:
+            - that is valid at present time i.e. crl.thisUpdate <= timeNow
+            - that conforms to the ICAO 9303 standard.
+            - that the issuing CSCA certificate exists in the DB and it has issued dsc (signature check)
+
+        :param dsc: The DSC certificate to add.
+        :raises peCrlTooNew: If DSC is too new (i.e.: crl.thisUpdate > timeNow).
+        :raises peInvalidCrl: When DSC doesn't conform to the ICAO 9303 standard.
+        :raises peCrlOld: When newer version of CRL for the country already exists.
+        :raises peCscaNotFound: If the issuing CSCA certificate can't be found in the DB.
+        """
+        if not utils.is_valid_alpha2(crl.issuerCountry):
+            self._log.error("Trying to update CRL with no or invalid country code!")
+            raise peInvalidCrl
+        try:
+            self._log.debug("updateCRL: issuer='%s' crlNumber=%s ", crl.issuer.human_friendly, crl.crlNumber)
+
+            # 1.) Check if CRL is valid at present time.
+            timeNow = utils.time_now()
+            if crl.thisUpdate > timeNow:
+                self._log.error("Trying to update future CRL! issuer='%s' crlNumber=%s thisUpdate=%s now=%s",
+                    crl.issuer.human_friendly, crl.crlNumber, crl.thisUpdate, timeNow)
+                raise peCrlTooNew
+
+            # 2.) Check there is not already existing CRL in the DB
+            crlInfo = self._db.findCrlInfoByIssuer(crl.issuer)
+            if crlInfo is not None:
+                doUpdate = crl.thisUpdate > crlInfo.thisUpdate
+                if crl.crlNumber is not None and crlInfo.number is not None:
+                    doUpdate = doUpdate and (crl.crlNumber > crlInfo.number)
+                if not doUpdate:
+                    self._log.error("Skipping country CRL update, provided CRL is same or older than current!")
+                    self._log.error("  issuer='%s' new.crlNumber=%s new.thisUpdate=%s current.crlNumber=%s current.thisUpdate=%s",
+                        crl.issuer.human_friendly, crl.crlNumber, crl.thisUpdate, crlInfo.number, crlInfo.thisUpdate)
+                    raise peCrlOld
+
+            # 3.) Verify we have conformant CRL
+            crl.checkConformance()
+
+            # 4.) Find the CSCA certificate that issued CRL.
+            issuerCert: Optional[CscaStorage] = None
+            cscas: List[CscaStorage] = self._db.findCscaCertificates(crl.issuer, crl.authorityKey)
+            for c in (cscas or []):
+                if c.isValidOn(timeNow): # Skip any LCSCA that have expired
+                    issuerCert = c
+                    break
+            if issuerCert is None:
+                raise peCscaNotFound
+
+            # 5.) Verify issuing CSCA has really issued CRL
+            crl.verify(issuerCert=issuerCert.getCertificate(), checkConformance = False)
+
+            # 6.) Verify issuing CSCA has valid trustchain
+            self._check_cert_trustchain(issuerCert)
+
+            # 7.) Store tore CRL update info and revoked certificate info into DB
+            self._db.updateCrl(crl)
+
+            self._log.info("The country CRL was updated, issuer='%s' crlNumber=%s ", crl.issuer.human_friendly, crl.crlNumber)
+        except ProtoError:
+            raise
+        except CertificateVerificationError as e: # Conformance check failed or signature verification failed
+            self._log.error("The conformance check or signature verification has failed for the country CRL to be updated! issuer='%s' crlNumber=%s ",
+                crl.issuer.human_friendly, crl.crlNumber)
+            self._log.error("  e=%s", e)
+            raise peInvalidCrl from None
+        except Exception as e:
+            self._log.error("An exception was encountered while trying to add new CRL! issuer='%s' crlNumber=%s ",
+                crl.issuer.human_friendly, crl.crlNumber)
             self._log.error("  e=%s", e)
             raise
 
