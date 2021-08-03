@@ -8,9 +8,11 @@ from datetime import datetime
 from port.database.storage.storageManager import PortDatabaseConnection
 from port.database.storage.challengeStorage import ChallengeStorage
 from port.database.storage.accountStorage import AccountStorage
-from port.database.storage.x509Storage import CertificateRevocationInfo, CertificateStorage, PkiDistributionUrl, CrlUpdateInfo, DscStorage, CscaStorage
+from port.database.storage.x509Storage import CertificateRevocationInfo, CertificateStorage, CrlId, PkiDistributionUrl, CrlUpdateInfo, DscStorage, CscaStorage
 
+from pymrtd.pki.crl import CertificateRevocationList
 from pymrtd.pki.x509 import Certificate, CscaCertificate, DocumentSignerCertificate
+
 from sqlalchemy import or_
 from sqlalchemy.orm.scoping import scoped_session
 from typing import Final, List, NoReturn, Optional, Tuple, TypeVar, Union
@@ -28,11 +30,12 @@ class SeEntryNotFound(StorageAPIError):
 class SeEntryAlreadyExists(StorageAPIError):
     pass
 
-seAccountNotFound: Final   = SeEntryNotFound("Account not found")
-seChallengeExists: Final   = SeEntryAlreadyExists("Challenge already exists")
-seChallengeNotFound: Final = SeEntryNotFound("Challenge not found")
-seCscaExists: Final        = SeEntryAlreadyExists("CSCA already exists")
-seDscExists: Final         = SeEntryAlreadyExists("DSC already exists")
+seAccountNotFound: Final       = SeEntryNotFound("Account not found")
+seChallengeExists: Final       = SeEntryAlreadyExists("Challenge already exists")
+seChallengeNotFound: Final     = SeEntryNotFound("Challenge not found")
+seCrlUpdateInfoNotFound: Final = SeEntryNotFound("CRL Update Info not found")
+seCscaExists: Final            = SeEntryAlreadyExists("CSCA already exists")
+seDscExists: Final             = SeEntryAlreadyExists("DSC already exists")
 
 class StorageAPI(ABC):
     ''' Abstract storage interface for user data and MRTD trustchain certificates (CSCA, DSC) '''
@@ -208,29 +211,36 @@ class StorageAPI(ABC):
         """
 
     @abstractmethod
-    def updateCrlInfo(self, crlui: CrlUpdateInfo) -> None:
+    def updateCrl(self, crl: CertificateRevocationList) -> None:
         """
-        Adds or updates CRL update info for country.
-        :param crlui: CrlUpdateInfo
+        Updates CRL for country.
+        Before the new certificate revocation info entries are added, any existing entry is removed first.
+        :param crl: The certificate revocation list.
+        :raises: DatabaseAPIError on DB connection errors.
         """
 
     @abstractmethod
-    def findCrlInfo(self, country: CountryCode) -> Optional[CrlUpdateInfo]:
+    def getCrlInfo(self, crlId: CrlId) -> CrlUpdateInfo:
         """
-        Returns CRL update info for country.
-        :param country: iso alpha-2 country code to retrieve the CRL update info.
+        Returns list of CRL update infos for the country.
+        :param crlId: ID of the CRL update info.
+        :return: CrlUpdateInfo
+        """
+
+    @abstractmethod
+    def findCrlInfo(self, country: CountryCode) -> Optional[List[CrlUpdateInfo]]:
+        """
+        Returns list of CRL update infos for the country.
+        :param country: iso alpha-2 country code to retrieve the list of CRL update infos.
+        :return: Optional[List[CrlUpdateInfo]]
+        """
+
+    @abstractmethod
+    def findCrlInfoByIssuer(self, issuer: x509.Name) -> Optional[CrlUpdateInfo]:
+        """
+        Returns CRL update infos for the issuer.
+        :param issuer: CRL issuer DN.
         :return: Optional[CrlUpdateInfo]
-        """
-
-    @abstractmethod
-    def updateCrl(self, country: CountryCode, crl: List[CertificateRevocationInfo]) -> None:
-        """
-        Replaces existing or/and adds new list of certificate revocation infos for country.
-        Empty crl list param will delete all entries in the DB for the country.
-        Note: Internally the list is updated with country param i.e.crl[idx].country = country
-
-        :param country: The iso alpha-2 country code to merge the list of certificate revocation infos.
-        :param crl: The list of CertificateRevocationInfo being revoked.
         """
 
     @abstractmethod
@@ -720,77 +730,99 @@ class DatabaseAPI(StorageAPI):
         except Exception as e:
             self.__handle_exception(e)
 
-    def updateCrlInfo(self, crlui: CrlUpdateInfo) -> None:
+    def updateCrl(self, crl: CertificateRevocationList) -> None:
         """
-        Adds or updates CRL update info for country.
-        :param crlui: CrlUpdateInfo
+        Updates CRL for country.
+        Before the new certificate revocation info entries are added, any existing entry is removed first.
+        :param crl: The certificate revocation list.
         :raises: DatabaseAPIError on DB connection errors.
         """
-        assert isinstance(crlui, CrlUpdateInfo)
-        self._log.debug("Updating CRL update info for C=%s", crlui.country)
+        assert isinstance(crl, CertificateRevocationList)
+        self._log.debug("Updating CRL: '%s' crlNumber=%s", crl.issuer.human_friendly, crl.crlNumber)
         try:
-            ci = self.__db \
-                .query(CrlUpdateInfo) \
-                .filter(CrlUpdateInfo.country == crlui.country) \
-                .first()
-            if ci is None:
-                self.__db.add(crlui)
-            else:
-                ci = crlui
-            self.__db.commit()
-        except Exception as e:
-            self.__handle_exception(e)
+            crlInfo = CrlUpdateInfo.fromCrl(crl)
+            self.__db.merge(crlInfo)
 
-    def findCrlInfo(self, country: CountryCode) -> Optional[CrlUpdateInfo]:
-        """
-        Returns CRL update info for country.
-        :param country: iso alpha-2 country code to retrieve the CRL update info.
-        :return: Optional[CrlUpdateInfo]
-        :raises: DatabaseAPIError on DB connection errors.
-        """
-        assert isinstance(country, CountryCode)
-        try:
-            return self.__db \
-                .query(CrlUpdateInfo) \
-                .filter(CrlUpdateInfo.country == country) \
-                .first()
-        except Exception as e:
-            self.__handle_exception(e)
-
-    def updateCrl(self, country: CountryCode, crl: List[CertificateRevocationInfo]) -> None:
-        """
-        Replaces existing or/and adds new list of certificate revocation infos for country.
-        Empty crl list param will delete all entries in the DB for the country.
-        Note: Internally the list is updated with country param i.e.crl[idx].country = country
-
-        :param country: The iso alpha-2 country code to merge the list of certificate revocation infos.
-        :param crl: The list of CertificateRevocationInfo being revoked.
-        :raises: DatabaseAPIError on DB connection errors.
-                 AssertionError if assert failed and enabled when python not run with -O or -OO flag.
-        """
-        assert isinstance(crl, List) and all(isinstance(x, CertificateRevocationInfo) for x in crl)
-        self._log.debug("Updating CRL for C=%s", country)
-        try:
-            # First delete any existing entry for country
+            # Delete any existing cri entry for the country and crlId
             self.__db \
                 .query(CertificateRevocationInfo) \
-                .filter(CertificateRevocationInfo.country == country) \
+                .filter(CertificateRevocationInfo.country == crlInfo.country,\
+                        CertificateRevocationInfo.crlId == crlInfo.id) \
                 .delete()
 
-            # Set country and check certId (debug mode)
-            for c in crl:
-                c.country = country
-                # Debug sanity check for certId
-                # This should not execute in production mode, i.e. when run python with -O or -OO flag
-                if __debug__ is not None and __debug__ == True:
-                    if c.certId is not None:
-                        d = self.findDsc(c.certId)
-                        assert d is None or d.country == country
+            if crl.revokedCertificates is not None:
+                for rc in crl.revokedCertificates:
+                    cri = CertificateRevocationInfo\
+                            .fromRevokedCertificate(crlInfo.country, rc)
+                    cri.crlId = crlInfo.id
 
-            self.__db.add_all(crl)
+                    # Find possible revoked certificate id in the DB
+                    cs = self.findDscBySerial(crl.issuer, cri.serial)
+                    if cs is None:
+                        cs = self.findCscaBySerial(crl.issuer, cri.serial)
+
+                    certId = cs.id if cs is not None else None
+                    cri.certId = certId
+                    self.__db.merge(cri)
+
             self.__db.commit()
         except AssertionError:
             raise
+        except Exception as e:
+            self.__handle_exception(e)
+
+    def getCrlInfo(self, crlId: CrlId) -> CrlUpdateInfo:
+        """
+        Returns list of CRL update infos for the country.
+        :param crlId: ID of the CRL update info.
+        :return: CrlUpdateInfo
+        :raises DatabaseAPIError: On DB connection errors.
+        :raises SeEntryNotFound: If CRL Update inf ois not found.
+        """
+        assert isinstance(crlId, CrlId)
+        try:
+            ci = self.__db \
+                .query(CrlUpdateInfo) \
+                .filter(CrlUpdateInfo.id == crlId) \
+                .first()
+            if ci is None:
+                raise seCrlUpdateInfoNotFound
+            return ci
+        except Exception as e:
+            self.__handle_exception(e)
+
+    def findCrlInfo(self, country: CountryCode) -> Optional[List[CrlUpdateInfo]]:
+        """
+        Returns list of CRL update infos for the country.
+        :param country: iso alpha-2 country code to retrieve the list of CRL update infos.
+        :return: Optional[List[CrlUpdateInfo]]
+        :raises DatabaseAPIError: On DB connection errors.
+        """
+        assert isinstance(country, CountryCode)
+        try:
+            crl = self.__db \
+                .query(CrlUpdateInfo) \
+                .filter(CrlUpdateInfo.country == country) \
+                .all()
+            return crl if len(crl) != 0 else None
+        except Exception as e:
+            self.__handle_exception(e)
+
+    def findCrlInfoByIssuer(self, issuer: x509.Name) -> Optional[CrlUpdateInfo]:
+        """
+        Returns CRL update infos for the issuer.
+        :param issuer: CRL issuer DN.
+        :return: Optional[CrlUpdateInfo]
+        :raises DatabaseAPIError: On DB connection errors.
+        """
+        assert isinstance(issuer, x509.Name)
+        country = CountryCode(issuer.native['country_name'])
+        try:
+            return self.__db \
+                .query(CrlUpdateInfo) \
+                .filter(CrlUpdateInfo.country == country,
+                        CrlUpdateInfo.issuer == issuer.human_friendly) \
+                .first()
         except Exception as e:
             self.__handle_exception(e)
 
@@ -845,7 +877,7 @@ class DatabaseAPI(StorageAPI):
         :raises: DatabaseAPIError on DB connection errors.
         """
         assert isinstance(pkidUrl, PkiDistributionUrl)
-        self._log.debug("Adding PKI distribution URL. C=%s id=%s", pkidUrl.country, pkidUrl.id)
+        self._log.debug("Adding PKI distribution URL. C=%s id=%s type=%s", pkidUrl.country, pkidUrl.id, pkidUrl.type.name)
         try:
             self.__db.merge(pkidUrl)
             self.__db.commit()
@@ -906,9 +938,9 @@ class MemoryDB(StorageAPI):
             'accounts' : {},
             'cscas'    : defaultdict(list), # <country, List[CscaStorage]>
             'dscs'     : defaultdict(list), # <country, List[DscStorage]>
-            'crlui'    : {},
-            'crt'      : {},
-            'pkidurl'  : {}
+            'crlui'    : defaultdict(dict), # <country, <CrlId, CrlUpdateInfo>>
+            'crt'      : defaultdict(dict), # <country, <CertificateRevocationInfo.id, CertificateRevocationInfo>>
+            'pkidurl'  : {} # <PkiDistributionUrl.id, LPkiDistributionUrl>
         }
 
     def getChallenge(self, cid: CID) -> Tuple[Challenge, datetime]:
@@ -1184,45 +1216,80 @@ class MemoryDB(StorageAPI):
                     return dsc
         return None
 
-    def updateCrlInfo(self, crlui: CrlUpdateInfo) -> None:
+    def updateCrl(self, crl: CertificateRevocationList) -> None:
         """
-        Adds or updates CRL update info for country.
-        :param crlui: CrlUpdateInfo
+        Updates CRL for country.
+        Before the new certificate revocation info entries are added, any existing entry is removed first.
+        :param crl: The certificate revocation list.
+        :raises: DatabaseAPIError on DB connection errors.
         """
-        assert isinstance(crlui, CrlUpdateInfo)
-        self._d['crlui'][crlui.country] = crlui
+        assert isinstance(crl, CertificateRevocationList)
+        self._log.debug("Updating CRL: '%s' crlNumber=%s", crl.issuer.human_friendly, crl.crlNumber)
 
-    def findCrlInfo(self, country: CountryCode) -> Optional[CrlUpdateInfo]:
+        crlInfo = CrlUpdateInfo.fromCrl(crl)
+        self._d['crlui'][crlInfo.country][crlInfo.id] = crlInfo
+
+        # Remove any existing entries for the previous CRL
+        cri_to_remove = []
+        if crlInfo.country in self._d['crt']:
+            for cri in self._d['crt'][crlInfo.country].values():
+                if cri.crlId == crlInfo.id:
+                    cri_to_remove.append(cri.id)
+        for cid in cri_to_remove:
+            del self._d['crt'][crlInfo.country][cid]
+
+        if crl.revokedCertificates is not None:
+            for rc in crl.revokedCertificates:
+                cri = CertificateRevocationInfo\
+                        .fromRevokedCertificate(crlInfo.country, rc)
+                cri.crlId = crlInfo.id
+
+                # Find possible revoked certificate id in the DB
+                cs = self.findDscBySerial(crl.issuer, cri.serial)
+                if cs is None:
+                    cs = self.findCscaBySerial(crl.issuer, cri.serial)
+
+                certId = cs.id if cs is not None else None
+                cri.certId = certId
+                self.revokeCertificate(cri)
+
+    def getCrlInfo(self, crlId: CrlId) -> CrlUpdateInfo:
         """
-        Returns CRL update info for country.
-        :param country: iso alpha-2 country code to retrieve the CRL update info.
-        :return: Optional[CrlUpdateInfo]
+        Returns list of CRL update infos for the country.
+        :param crlId: ID of the CRL update info.
+        :return: CrlUpdateInfo
+        :raises SeEntryNotFound: If CRL Update inf ois not found.
+        """
+        for cuis in self._d['crlui'].values():
+            if crlId in cuis:
+                return cuis[crlId]
+        raise seCrlUpdateInfoNotFound
+
+    def findCrlInfo(self, country: CountryCode) -> Optional[List[CrlUpdateInfo]]:
+        """
+        Returns list of CRL update infos for the country.
+        :param country: iso alpha-2 country code to retrieve the list of CRL update infos.
+        :return: Optional[List[CrlUpdateInfo]]
         """
         assert isinstance(country, CountryCode)
         if country in self._d['crlui']:
-            return self._d['crlui'][country]
+            return self._d['crlui'][country].values()
         return None
 
-    def updateCrl(self, country: CountryCode, crl: List[CertificateRevocationInfo]) -> None:
+    def findCrlInfoByIssuer(self, issuer: x509.Name) -> Optional[CrlUpdateInfo]:
         """
-        Replaces existing or/and adds new list of certificate revocation infos for country.
-        Empty crl list param will delete all entries in the DB for the country.
-        Note: Internally the list is updated with country param i.e.crl[idx].country = country
-
-        :param country: The iso alpha-2 country code to merge the list of certificate revocation infos.
-        :param crl: The list of CertificateRevocationInfo being revoked.
+        Returns CRL update infos for the issuer.
+        :param issuer: CRL issuer DN.
+        :return: Optional[CrlUpdateInfo]
+        :raises DatabaseAPIError: On DB connection errors.
         """
-        assert isinstance(country, CountryCode)
-        assert isinstance(crl, List) and all(isinstance(x, CertificateRevocationInfo) for x in crl)
-        for c in crl:
-            c.country = country
-            # Debug sanity check for certId
-            # This should not execute in production mode, i.e. when run python with -O or -OO flag
-            if __debug__ is not None and __debug__ == True:
-                if c.certId is not None:
-                    d = self.findDsc(c.certId)
-                    assert d is None or d.country == country
-        self._d['crt'][country] = crl
+        assert isinstance(issuer, x509.Name)
+        country = CountryCode(issuer.native['country_name'])
+        if country in self._d['crlui']:
+            for cui in self._d['crlui'][country].values():
+                if cui.issuer.lower() == issuer.human_friendly.lower():
+                    return cui
+        return None
 
     def findCrl(self, country: CountryCode) -> Optional[List[CertificateRevocationInfo]]:
         """
@@ -1231,7 +1298,7 @@ class MemoryDB(StorageAPI):
         """
         assert isinstance(country, CountryCode)
         if country in self._d['crt']:
-            return self._d['crt'][country]
+            return [crl for crls in self._d['crt'][country].values() for crl in crls]
         return None
 
     def isCertificateRevoked(self, crt: TypeVar("T",Certificate, CertificateStorage)) -> bool:
@@ -1242,17 +1309,17 @@ class MemoryDB(StorageAPI):
         """
         assert isinstance(crt, Certificate) or isinstance(crt, CertificateStorage)
         if isinstance(crt, Certificate):
-            certId = CertificateId.fromCertificate(crt)
-            serial = CertificateStorage.makeSerial(crt.serial_number)
+            certId  = CertificateId.fromCertificate(crt)
+            serial  = CertificateStorage.makeSerial(crt.serial_number)
             country = CountryCode(crt.issuerCountry)
         else: # CertificateStorage
             country = crt.country
-            certId = crt.id
-            serial = crt.serial
+            certId  = crt.id
+            serial  = crt.serial
 
         if country in self._d['crt']:
-            for cr in self._d['crt'][country]:
-                if cr.certId == certId or serial == cr.serial:
+            for cri in self._d['crt'][country].values():
+                if cri.certId == certId or serial == cri.serial:
                     return True
         return False
 
@@ -1262,6 +1329,7 @@ class MemoryDB(StorageAPI):
         :param pkidUrl: PkiDistributionUrl
         """
         assert isinstance(pkidUrl, PkiDistributionUrl)
+        self._log.debug("Adding PKI distribution URL. C=%s id=%s type=%s", pkidUrl.country, pkidUrl.id, pkidUrl.type.name)
         if pkidUrl.id not in self._d['pkidurl']:
             self._d['pkidurl'][pkidUrl.id] = pkidUrl
 
