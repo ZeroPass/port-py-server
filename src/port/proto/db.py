@@ -9,6 +9,7 @@ from port.database.storage.storageManager import PortDatabaseConnection
 from port.database.storage.challengeStorage import ChallengeStorage
 from port.database.storage.accountStorage import AccountStorage
 from port.database.storage.x509Storage import CertificateRevocationInfo, CertificateStorage, CrlId, PkiDistributionUrl, CrlUpdateInfo, DscStorage, CscaStorage
+from port.proto.utils import bytes_to_int, sha512_256
 
 from pymrtd.pki.crl import CertificateRevocationList
 from pymrtd.pki.x509 import Certificate, CscaCertificate, DocumentSignerCertificate
@@ -249,6 +250,13 @@ class StorageAPI(ABC):
         Returns list of infos about revoked certificates for country.
         :param country: The iso alpha-2 country code to get the list of certificate revocation infos for.
         :return: List of countries revoked certificate infos or None
+        """
+
+    @abstractmethod
+    def revokeCertificate(self, cri: CertificateRevocationInfo) -> None:
+        """
+        Inserts or updates certificate revocation information in the DB.
+        :param cri: The certificate revocation information.
         """
 
     @abstractmethod
@@ -843,6 +851,20 @@ class DatabaseAPI(StorageAPI):
         except Exception as e:
             self.__handle_exception(e)
 
+    def revokeCertificate(self, cri: CertificateRevocationInfo) -> None:
+        """
+        Inserts or updates certificate revocation information in the DB.
+        :param cri: The certificate revocation information.
+        :raises DatabaseAPIError: On DB connection errors.
+        """
+        assert isinstance(cri, CertificateRevocationInfo)
+        self._log.debug("Revoking certificate C=%s serial=%s certId=%s crlId=%s", cri.country, cri.serial.hex(), cri.certId, cri.crlId)
+        try:
+            self.__db.merge(cri)
+            self.__db.commit()
+        except Exception as e:
+            self.__handle_exception(e)
+
     def isCertificateRevoked(self, crt: Union[Certificate, CertificateStorage]) -> bool:
         """
         Verifies in the DB if certificate is revoked.
@@ -1300,6 +1322,16 @@ class MemoryDB(StorageAPI):
         if country in self._d['crt']:
             return [crl for crls in self._d['crt'][country].values() for crl in crls]
         return None
+
+    def revokeCertificate(self, cri: CertificateRevocationInfo) -> None:
+        """
+        Inserts or updates certificate revocation information in the DB.
+        :param cri: The certificate revocation information.
+        """
+        assert isinstance(cri, CertificateRevocationInfo)
+        self._log.debug("Revoking certificate C=%s serial=%s certId=%s crlId=%s", cri.country, cri.serial.hex(), cri.certId, cri.crlId)
+        cri.id = bytes_to_int(sha512_256(cri.country.encode('utf-8') + cri.serial)[0:8])
+        self._d['crt'][cri.country][cri.id] = cri
 
     def isCertificateRevoked(self, crt: TypeVar("T",Certificate, CertificateStorage)) -> bool:
         """
