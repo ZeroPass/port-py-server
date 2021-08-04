@@ -4,13 +4,14 @@ import argparse, coloredlogs, os, signal, sys, ssl
 from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
+from pymrtd.pki.crl import CertificateRevocationList
 
 _script_path = Path(os.path.dirname(sys.argv[0]))
 #sys.path.append(str(_script_path / Path("../../")))
 
 from port import log
 from port.api import PortApiServer
-from port.database.storage.x509Storage import CertificateStorage
+from port.database.storage.x509Storage import CertificateRevocationInfo, CertificateStorage
 from port.proto import (
     Challenge,
     CountryCode,
@@ -181,10 +182,10 @@ def load_pkd_to_db(proto: PortProto, pkdPath: Path, allowSelfIssuedCSCA: bool):
         return cert.subjectKey.hex() if cert.subjectKey is not None else None
 
     timeNow = utils.time_now()
-    cert_count = 0
-    cscas:dict[str, dict[str, x509.CscaCertificate]] = defaultdict(dict)
-    lcscas:dict[str, dict[str, x509.CscaCertificate]] = defaultdict(dict)
-    dscs:dict[str, dict[str, x509.DocumentSignerCertificate]] = defaultdict(dict)
+    cscas:  dict[str, dict[str, x509.CscaCertificate]] = defaultdict(dict)
+    lcscas: dict[str, dict[str, x509.CscaCertificate]] = defaultdict(dict)
+    dscs:   dict[str, dict[str, x509.DocumentSignerCertificate]] = defaultdict(dict)
+    crls:   dict[str, CertificateRevocationList] = defaultdict()
     for cert in pkdPath.rglob('*.cer'):
         try:
             l.verbose("Loading certificate: {}".format(cert))
@@ -216,9 +217,19 @@ def load_pkd_to_db(proto: PortProto, pkdPath: Path, allowSelfIssuedCSCA: bool):
             l.warning("Could not load certificate: %s", cert)
             l.exception(e)
 
-    def insertCerts(certs, certType: str, insertIntoDB: Callable[[x509.Certificate], None] ):
+    for crl in pkdPath.rglob('*.crl'):
+        try:
+            l.verbose("Loading crl: %s", crl)
+            cfd = crl.open('rb')
+            crl = CertificateRevocationList.load(cfd.read())
+            crls[crl.issuer.human_friendly] = crl
+        except Exception as e:
+            l.warning("Could not load CRL: %s", crl)
+            l.exception(e)
+
+    def insertCerts(certs, certType: str, insertIntoDB: Callable[[x509.Certificate], None]) -> int:
         assert callable(insertIntoDB)
-        nonlocal cert_count
+        cert_count = 0
         for _, cd in certs.items():
             for _, cert in cd.items():
                 try:
@@ -232,11 +243,28 @@ def load_pkd_to_db(proto: PortProto, pkdPath: Path, allowSelfIssuedCSCA: bool):
                         certType, CountryCode(cert.issuerCountry), CertificateStorage.makeSerial(cert.serial_number).hex(), keyid2str(cert))
                     if isinstance(e, ProtoError):
                         l.warning(" e=%s", e)
+        return cert_count
 
-    insertCerts(cscas, 'CSCA', lambda csca: proto.addCscaCertificate(csca, allowSelfIssued=allowSelfIssuedCSCA))
-    insertCerts(lcscas, 'LCSCA', lambda lcsca: proto.addCscaCertificate(lcsca, allowSelfIssued=False))
-    insertCerts(dscs, 'DSC', proto.addDscCertificate)
+    def insertCrls(crls: dict[str, CertificateRevocationList]) -> int:
+        crl_count = 0
+        for issuer, crl in crls.items():
+            try:
+                proto.updateCRL(crl)
+                crl_count += 1
+            except SeEntryAlreadyExists:
+                l.info("Skipping CRL because it already exists. issuer='%s' crlNumber=%s", issuer, crl.crlNumber)
+            except Exception as e:
+                l.warning("Could not add CRL into DB. issuer='%s' crlNumber=%s", issuer, crl.crlNumber)
+                if isinstance(e, ProtoError):
+                    l.warning(" e=%s", e)
+        return crl_count
+
+    cert_count  = insertCerts(cscas, 'CSCA', lambda csca: proto.addCscaCertificate(csca, allowSelfIssued=allowSelfIssuedCSCA))
+    cert_count += insertCerts(lcscas, 'LCSCA', lambda lcsca: proto.addCscaCertificate(lcsca, allowSelfIssued=False))
+    cert_count += insertCerts(dscs, 'DSC', proto.addDscCertificate)
+    crl_count   = insertCrls(crls)
     l.info("%s certificates loaded into DB.", cert_count)
+    l.info("%s CRLs loaded into DB.", crl_count)
 
 def main():
     args = parse_args()
@@ -276,21 +304,21 @@ def main():
 
     # Setup and run server
     if args["dev"]:
-        sapi = DevApiServer(db, config, args['dev_fc'], args['dev_no_tcv'])
+        api = DevApiServer(db, config, args['dev_fc'], args['dev_no_tcv'])
     else:
-        sapi = PortApiServer(db, config)
+        api = PortApiServer(db, config)
 
     if args['mrtd_pkd'] and not args['dev_no_tcv']:
         allowSelfIssuedCSCA = args['mrtd_pkd_allow_self_issued_csca']
-        load_pkd_to_db(sapi._proto, args['mrtd_pkd'], allowSelfIssuedCSCA)
+        load_pkd_to_db(api._proto, args['mrtd_pkd'], allowSelfIssuedCSCA)
 
     def signal_handler(sig, frame): #pylint: disable=unused-argument
         print('Stopping server...')
-        sapi.stop()
+        api.stop()
         print('Stopping server... SUCCESS')
         sys.exit(0)
     signal.signal(signal.SIGINT, signal_handler)
-    sapi.start()
+    api.start()
 
 if __name__ == "__main__":
     main()
