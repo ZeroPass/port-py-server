@@ -596,22 +596,18 @@ class DatabaseAPI(StorageAPI):
         """
         assert isinstance(subject, x509.Name)
         try:
-            # Try first to find CSCAs by subjectKey because
-            # searching for subject might return invalid CSCAs
             cscas: Optional[List[CscaStorage]] = None
-            if subjectKey is not None:
-                assert isinstance(subjectKey, bytes)
-                country = CountryCode(subject.native['country_name'])
-                cscas = self.__db \
-                    .query(CscaStorage) \
-                    .filter(CscaStorage.country == country, CscaStorage.subjectKey == subjectKey) \
-                    .all()
+            q = self.__db \
+                .query(CscaStorage) \
+                .filter(CscaStorage.subject == subject.human_friendly)
 
-            if cscas is None:
-                cscas = self.__db \
-                    .query(CscaStorage) \
-                    .filter(CscaStorage.subject == subject.human_friendly) \
-                    .all()
+            # If we have subject key, try to filter by subject name and subject key
+            if subjectKey is not None:
+                cscas = q.filter(CscaStorage.subjectKey == subjectKey) \
+                         .all()
+            else:
+                cscas = q.all()
+
             return cscas if len(cscas) != 0 else None
         except Exception as e:
             self.__handle_exception(e)
@@ -1123,18 +1119,12 @@ class MemoryDB(StorageAPI):
         :return: list of CscaStorage, or None if no CSCA certificate was found.
         """
         assert isinstance(subject, x509.Name)
-        if subjectKey is None:
-            subjectKey = b''
         cscas = []
         country = CountryCode(subject.native['country_name'])
         for csca in self._d['cscas'][country]:
-            if csca.subject == subject.human_friendly or \
-               csca.subjectKey == subjectKey:
-                cscas.append(csca)
-
-        # Filter out cscas with different subject key
-        if len(subjectKey) > 0:
-            cscas = [ c for c in cscas if c.subjectKey == subjectKey]
+            if csca.subject.lower() == subject.human_friendly.lower():
+                if subjectKey is None or csca.subjectKey == subjectKey:
+                    cscas.append(csca)
         return cscas if len(cscas) != 0 else None
 
     def findCscaCertificatesBySubject(self, subject: x509.Name) -> Optional[List[CscaStorage]]:
@@ -1147,7 +1137,7 @@ class MemoryDB(StorageAPI):
         cscas = []
         country = CountryCode(subject.native['country_name'])
         for csca in self._d['cscas'][country]:
-            if csca.subject == subject.human_friendly:
+            if csca.subject.lower() == subject.human_friendly.lower():
                 cscas.append(csca)
         return cscas if len(cscas) != 0 else None
 
