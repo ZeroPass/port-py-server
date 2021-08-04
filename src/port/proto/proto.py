@@ -780,6 +780,22 @@ class PortProto:
                 raise peDscTooNewOrExpired
             elif validateDSC:
                 self.__validate_dsc_to_csca(dsc) # validate CSCA has issued DSC
+
+            cscas: Optional[List[CscaStorage]] = self._db.findCscaCertificates(dsc.issuer, dsc.authorityKey)
+            if cscas is None:
+                raise peCscaNotFound
+
+            csca: Optional[CscaStorage] = None
+            for c in cscas:
+                if c.notValidAfter >= dsc.notValidAfter:
+                    csca = c
+                    break
+
+            if csca is None:
+                raise peCscaNotFound
+
+            self._check_cert_trustchain(DscStorage(dsc, csca.id))
+
             dscs.append(dsc)
 
         # Verify DSCs signed SOD file
