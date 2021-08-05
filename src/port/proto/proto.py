@@ -43,7 +43,7 @@ class PeConflict(ProtoError):
 class PePreconditionFailed(ProtoError):
     """
     One or more condition in verification of eMRTD PKI trustchain failed.
-    Or when verifying SOD contains specific DG e.g.: DG1
+    Or when verifying EF.SOD contains specific DG e.g.: DG1
     """
     code = 412
 
@@ -91,7 +91,7 @@ peTrustchainCheckFailedExpiredCert: Final = PePreconditionFailed("Expired certif
 peTrustchainCheckFailedNoCsca: Final      = PePreconditionFailed("Missing issuer CSCA certificate in the trustchain")
 peTrustchainCheckFailedRevokedCert: Final = PePreconditionFailed("Revoked certificate in the trustchain")
 peTrustchainVerificationFailed: Final     = PePreconditionFailed("Trustchain verification failed")
-peUnknownPathSodToDsc: Final              = PePreconditionFailed("Unknown connection path from SOD to DSC certificate")
+peUnknownPathSodToDsc: Final              = PePreconditionFailed("Unknown connection path from EF.SOD to DSC certificate")
 
 def peInvalidDgFile(dgNumber: ef.dg.DataGroupNumber) -> PePreconditionFailed:
     return PePreconditionFailed("Invalid EF.{} file".format(dgNumber.native))
@@ -249,7 +249,7 @@ class PortProto:
             self._log.error("Login cannot continue due to max no. of anonymous logins and no DG1 file was provided!")
             raise peDg1Required
 
-        # 2. If we got DG1 verify SOD contains its hash,
+        # 2. If we got DG1 verify EF.SOD contains its hash,
         #    and assign it to the account
         if dg1 is not None:
             self._log.debug("Verifying received DG1(surname=%s name=%s) file is valid ...", dg1.mrz.surname, dg1.mrz.name)
@@ -329,7 +329,7 @@ class PortProto:
                 CountryCode(csca.issuerCountry), CscaStorage.makeSerial(csca.serial_number).hex(), str(allowSelfIssued))
 
             # 1.) Check if CSCA is valid at current time.
-            # Although this check is also performed by the _check_cert_trustchain
+            # Although this check is also performed by the _verify_cert_trustchain
             # we perform this check anyway here, to filter out and not to waste much
             # of resources on any expired certificate.
             timeNow = utils.time_now()
@@ -383,7 +383,7 @@ class PortProto:
 
             # 5.) Verify certificate trustchain validity and store CSCA in DB
             cs = CscaStorage(csca, None if selfIssued else issuerCert.id)
-            self._check_cert_trustchain(cs)
+            self._verify_cert_trustchain(cs)
             self._db.addCscaStorage(cs)
 
             # 6.) Save any CRL distribution url stored in csca
@@ -428,7 +428,7 @@ class PortProto:
                 CountryCode(dsc.issuerCountry), DscStorage.makeSerial(dsc.serial_number).hex())
 
             # 1.) Check if DSC is valid at current time.
-            # Although this check is also performed by the _check_cert_trustchain
+            # Although this check is also performed by the _verify_cert_trustchain
             # we perform this check anyway here, to filter out and not to waste much
             # of resources on any expired certificate.
             timeNow = utils.time_now()
@@ -463,7 +463,7 @@ class PortProto:
 
             # 6.) Verify certificate trustchain validity and store DSC in DB
             cs = DscStorage(dsc, issuerCert.id)
-            self._check_cert_trustchain(cs)
+            self._verify_cert_trustchain(cs)
             self._db.addDscStorage(cs)
 
             # 7.) Save any CRL distribution url stored in DSC
@@ -538,7 +538,7 @@ class PortProto:
             crl.verify(issuerCert=issuerCert.getCertificate(), checkConformance = False)
 
             # 6.) Verify issuing CSCA has valid trustchain
-            self._check_cert_trustchain(issuerCert)
+            self._verify_cert_trustchain(issuerCert)
 
             # 7.) Store tore CRL update info and revoked certificate info into DB
             self._db.updateCrl(crl)
@@ -557,15 +557,16 @@ class PortProto:
             self._log.error("  e=%s", e)
             raise
 
-    def _check_cert_trustchain(self, crt: CertificateStorage) -> None:
+    def _verify_cert_trustchain(self, crt: CertificateStorage) -> None:
         """
         Verifies certificate trustchain and if fails ProtoError exception is risen.
-        The check is done from the last issuer certificate to the certificate in question:
-            1.) If certificate has issuer, check issuer certificate has valid trustchain.
-            2.) Check if certificate is valid on current date.
-            3.) Check that certificate isn't revoked.
+        The check is done from certificate in question to the root issuer certificate:
+            1.) Check if certificate is valid on current date.
+            2.) Check that certificate isn't revoked.
+            3.) If certificate has issuer, check issuer certificate is stored in DB and has valid trustchain.
         :para crt: The certificate to verify the trustchain for.
-        :raises: PePreconditionFailed is there is invalid or revoked certificate in the trustchain
+        :raises: PePreconditionFailed if there is invalid or revoked certificate in the trustchain.
+                 Invalid certificate is either not valid at present time, is missing issuer certificate or issuer certificate is invalid.
         """
         self._log.debug("Verifying certificate trustchain id=%s C=%s serial=%s issuer_id=%s",
             crt.id, crt.country, crt.serial.hex(), crt.issuerId)
@@ -586,7 +587,7 @@ class PortProto:
                 self._log.error("Failed to verify certificate trustchain: issuer CSCA not found! id=%s C=%s serial=%s issuer_id=%s",
                     crt.id, crt.country, crt.serial.hex(), crt.issuerId)
                 raise peTrustchainCheckFailedNoCsca
-            self._check_cert_trustchain(issuer)
+            self._verify_cert_trustchain(issuer)
 
     def __verify_challenge(self, cid: CID, aaPubKey: AAPublicKey, csigs: List[bytes], aaSigAlgo: SignatureAlgorithm = None ) -> None:
         """
@@ -619,7 +620,7 @@ class PortProto:
 
     def __verify_emrtd_trustchain(self, sod: ef.SOD, dg14: Union[ef.DG14, None], dg15: ef.DG15) -> None:
         """"
-        Verify eMRTD trust chain from eMRTD SOD to issuing CSCA
+        Verify eMRTD trust chain from eMRTD EF.SOD to issuing CSCA
         :raises: An exception is risen if any part of trust chain verification fails
         """
         assert isinstance(sod, ef.SOD)
@@ -627,7 +628,7 @@ class PortProto:
         assert isinstance(dg15, ef.DG15)
 
         try:
-            self._log.info("Verifying eMRTD trust chain ...")
+            self._log.info("Verifying eMRTD trust chain for %s %s %s", sod, dg14 if dg14 is not None else "", dg15)
             if dg14 is not None:
                 self.__verify_sod_contains_hash_of(sod, dg14)
 
@@ -655,12 +656,12 @@ class PortProto:
 
     def __get_dsc_by_issuer_and_serial_number(self, issuer: Name, serialNumber: int, sod: ef.SOD) -> Tuple[Optional[DocumentSignerCertificate], bool]:
         """
-        Get DSC from SOD or from database if not found ind SOD.
+        Get DSC from EF.SOD or from database if not found ind EF.SOD.
         :param issuer:
         :param serialNumber:
         :param sod:
         :return: Pair of DSC/None and boolean whether DSC should be validated to CSCA certificate.
-                 Note: DSC should be validated to CSCA only if DSC is found in SOD file.
+                 Note: DSC should be validated to CSCA only if DSC is found in EF.SOD file.
                        DSC found in DB should be considered already validated.
         """
         # Try to find DSC in database
@@ -668,7 +669,7 @@ class PortProto:
         if dsc is not None:
             return (dsc.getCertificate(), False)
 
-        # DSC not found in database, try to find it in SOD file
+        # DSC not found in database, try to find it in EF.SOD file
         for dsc in sod.dsCertificates:
             if dsc.serial_number == serialNumber and dsc.issuer == issuer:
                 return (dsc, True) # DSC should be validated to issuing CSCA
@@ -676,11 +677,11 @@ class PortProto:
 
     def __get_dsc_by_subject_key(self, subjectKey: bytes, sod: ef.SOD) -> Tuple[Optional[DocumentSignerCertificate], bool]:
         """
-        Get DSC from SOD or from database if not found ind SOD.
+        Get DSC from EF.SOD or from database if not found ind EF.SOD.
         :param subjectKey:
         :param sod:
         :return: Pair of DSC/None and boolean whether DSC should be validated to CSCA certificate.
-                 Note: DSC should be validated to CSCA only if DSC is found in SOD file.
+                 Note: DSC should be validated to CSCA only if DSC is found in EF.SOD file.
                        DSC found in DB should be considered as already validated.
         """
         # Try to find DSC in database
@@ -688,7 +689,7 @@ class PortProto:
         if dsc is not None:
             return (dsc.getCertificate(), False)
 
-        # DSC not found in database, try to find it in SOD file
+        # DSC not found in database, try to find it in EF.SOD file
         for dsc in sod.dsCertificates:
             if dsc.subjectKey == subjectKey:
                 return (dsc, True) # DSC should be validated to issuing CSCA
@@ -716,7 +717,7 @@ class PortProto:
         self._log.verbose("Found CSCA country=%s serial=%s fp=%s key_id=%s",
             utils.code_to_country_name(csca.issuerCountry),
             csca.serial_number,
-            csca.fingerprint[0:8],
+            csca.fingerprint,
             csca.subjectKey.hex() if csca.subjectKey is not None else 'N/A'
         )
 
@@ -749,10 +750,10 @@ class PortProto:
         return utils.has_expired(expireTime, date)
 
     def __validate_certificate_path(self, sod: ef.SOD):
-        """Verification of issuer certificate from SOD file"""
-        self._log.debug("Validating path CSCA => DSC => SOD ...")
+        """Verification of issuer certificate from EF.SOD file"""
+        self._log.debug("Validating path CSCA => DSC => EF.SOD ...")
         assert isinstance(sod, ef.SOD)
-        # Get DSCs certificates that signed SOD file. DSC is also validated to CSCA trust chain if necessary.
+        # Get DSCs certificates that signed EF.SOD file. DSC is also validated to CSCA trust chain if necessary.
         dscs = []
         for _, signer in enumerate(sod.signers):
             if signer.name == "issuer_and_serial_number":
@@ -760,11 +761,11 @@ class PortProto:
                 signer = signer.chosen
                 issuer = signer["issuer"]
                 serial = signer["serial_number"].native
-                self._log.verbose("Getting DSC which issued SOD by serial no.: %s and issuer: [%s]", serial, issuer.human_friendly)
+                self._log.verbose("Getting DSC which issued EF.SOD by serial no.: %s and issuer: [%s]", serial, issuer.human_friendly)
                 dsc, validateDSC = self.__get_dsc_by_issuer_and_serial_number(issuer, serial, sod)
             elif signer.name == "subject_key_identifier":
                 keyid = signer.native
-                self._log.verbose("Getting DSC which issued SOD by subject_key=%s", keyid.hex())
+                self._log.verbose("Getting DSC which issued EF.SOD by subject_key=%s", keyid.hex())
                 dsc, validateDSC = self.__get_dsc_by_subject_key(keyid, sod)
             else:
                 raise peUnknownPathSodToDsc
@@ -773,7 +774,7 @@ class PortProto:
                 raise peDscNotFound
 
             self._log.verbose("Got DSC fp=%s issuer_country=%s, validating path to CSCA required: %s",
-                dsc.fingerprint[0:8], utils.code_to_country_name(dsc.issuerCountry), validateDSC)
+                dsc.fingerprint, utils.code_to_country_name(dsc.issuerCountry), validateDSC)
 
             self._log.verbose("Verifying DSC expiration time. %s", utils.format_cert_et(dsc))
             if not dsc.isValidOn(utils.time_now()):
@@ -794,38 +795,39 @@ class PortProto:
             if csca is None:
                 raise peCscaNotFound
 
-            self._check_cert_trustchain(DscStorage(dsc, csca.id))
+            self._verify_cert_trustchain(DscStorage(dsc, csca.id))
 
             dscs.append(dsc)
 
-        # Verify DSCs signed SOD file
-        self._log.verbose("Verifying DSC issued SOD ...")
+        # Verify DSCs signed EF.SOD file
+        self._log.verbose("Verifying DSC certificate issued EF.SOD ...")
         sod.verify(issuer_dsc_certs=dscs)
 
     def __verify_sod_contains_hash_of(self, sod: ef.SOD, dg: ef.DataGroup):
         assert isinstance(sod, ef.SOD)
         assert isinstance(dg, ef.DataGroup)
 
-        self._log.debug("Verifying SOD contains matching hash of %s file ...", dg.number.native)
+        self._log.debug("Verifying EF.SOD contains matching hash of file %s", dg)
         if self._log.getEffectiveLevel() <= log.VERBOSE:
             sod_dghv = sod.ldsSecurityObject.dgHashes.find(dg.number)
-            self._log.verbose("SOD contains hash of %s file: %s", dg.number.native, (sod_dghv is not None))
+            self._log.verbose("EF.SOD contains hash of %s file: %s", dg.number.native, (sod_dghv is not None))
             if sod_dghv is not None:
                 hash_algo = sod.ldsSecurityObject.dgHashAlgo['algorithm'].native
-                self._log.verbose("%s hash value of %s file in SOD: %s", hash_algo, dg.number.native, sod_dghv.hash.hex())
+                self._log.verbose("%s hash value of %s file in EF.SOD: %s", hash_algo, dg.number.native, sod_dghv.hash.hex())
                 h = sod.ldsSecurityObject.getDgHasher()
                 h.update(dg.dump())
-                self._log.verbose("Actual %s hash value of %s file: %s",hash_algo, dg.number.native, h.finalize().hex())
+                self._log.verbose("Actual %s hash value of %s file: %s", hash_algo, dg.number.native, h.finalize().hex())
 
-        # Validation of dg hash value in SOD
+        # Validation of dg hash value in EF.SOD
         if not sod.ldsSecurityObject.contains(dg):
+            self._log.error("EF.SOD doesn't contain %s", dg)
             raise peInvalidDgFile(dg.number)
-        self._log.debug("%s file is valid!", dg.number.native)
+        self._log.debug("%s file is valid!", dg)
 
     def _get_default_account_expiration(self): #pylint: disable=no-self-use
         """ Returns until the session is valid. """
         # Note: in ideal situation passport expiration date would be read from DG1 file and returned here.
-        #       For now we return fix 10min period but should be calculated from the expiration time of DSC who signed the account's SOD.
+        #       For now we return fix 10min period but should be calculated from the expiration time of DSC who signed the account's EF.SOD.
         return utils.time_now() + timedelta(minutes=10)
 
     def __verify_session_mac(self, a: AccountStorage, data: bytes, mac: bytes):
