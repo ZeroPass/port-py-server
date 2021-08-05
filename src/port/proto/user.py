@@ -26,8 +26,8 @@ class UserId(bytes):
     def __str__(self) -> str:
         try:
             return self.decode("utf-8")
-        except:
+        except: #pylint: disable=bare-except
             return self.hex()
 
     def __repr__ (self) -> str:
-        return "UserId({})".format(self.__str__())
+        return "UserId({!s})".format(self)
