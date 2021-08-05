@@ -15,7 +15,7 @@ from pymrtd.pki.keys import AAPublicKey, SignatureAlgorithm
 from pymrtd.pki.x509 import Certificate, CertificateVerificationError, CscaCertificate, DocumentSignerCertificate
 
 from port.database.storage.accountStorage import AccountStorage
-from port.database.storage.x509Storage import CertificateRevocationInfo, CertificateStorage, CrlUpdateInfo, CscaStorage, DscStorage, PkiDistributionUrl
+from port.database.storage.x509Storage import CertificateStorage, CscaStorage, DscStorage, PkiDistributionUrl
 
 from threading import Timer
 from typing import Final, List, Optional, Tuple, Union
@@ -142,8 +142,8 @@ class PortProto:
         self._mjtimer.setName('maintenance_job')
         self._mjtimer.daemon = True # Causes the thread to be canceled by SIGINT
         self._mjtimer.start()
-        self._log.debug('Finished maintenance job, next schedule at: {}'
-            .format(utils.time_now() + timedelta(seconds=self.maintenanceInterval)))
+        self._log.debug('Finished maintenance job, next schedule at: %s',
+            utils.time_now() + timedelta(seconds=self.maintenanceInterval))
 
     def createNewChallenge(self, uid: UserId) -> Tuple[Challenge, datetime]:
         """
@@ -152,7 +152,7 @@ class PortProto:
         :param uid: The user ID to generate the challenge for.
         :return: Challenge and expiration time
         """
-        self._log.debug("Generating challenge for uid={}".format(uid))
+        self._log.debug("Generating challenge for uid=%s", uid)
         now = utils.time_now()
         cet = self._db.findChallengeByUID(uid)
         if cet is not None: # return found challenge if still valid
@@ -166,12 +166,12 @@ class PortProto:
         c  = Challenge.generate(now, uid)
         et = self._get_challenge_expiration(now)
         self._db.addChallenge(uid, c, et)
-        self._log.debug("New challenge created cid={}".format(c.id))
+        self._log.debug("New challenge created cid=%s", c.id)
         return (c, et)
 
     def cancelChallenge(self, cid: CID) -> Union[None, dict]:
         self._db.deleteChallenge(cid)
-        self._log.debug("Challenge canceled cid={}".format(cid))
+        self._log.debug("Challenge canceled cid=%s", cid)
 
     def register(self, uid: UserId, sod: ef.SOD, dg15: ef.DG15, cid: CID, csigs: List[bytes], dg14: ef.DG14 = None) -> Tuple[UserId, SessionKey, datetime]:
         """
@@ -216,16 +216,16 @@ class PortProto:
         a = AccountStorage(uid, sod, aaPubKey, aaSigAlgo, None, s, et)
         self._db.addOrUpdateAccount(a)
 
-        self._log.debug("New account created: uid={}".format(uid.hex()))
+        self._log.debug("New account created: uid=%s", uid.hex())
         if len(sod.dsCertificates) > 0:
-            self._log.debug("Issuing country of account's eMRTD: {}"
-                .format(utils.code_to_country_name(sod.dsCertificates[0].issuerCountry)))
-        self._log.verbose("valid_until={}".format(a.validUntil))
-        self._log.verbose("login_count={}".format(a.loginCount))
+            self._log.debug("Issuing country of account's eMRTD: %s",
+                utils.code_to_country_name(sod.dsCertificates[0].issuerCountry))
+        self._log.verbose("valid_until=%s", a.validUntil)
+        self._log.verbose("login_count=%s", a.loginCount)
         self._log.verbose("dg1=None")
-        self._log.verbose("pubkey={}".format(a.aaPublicKey.hex()))
-        self._log.verbose("sigAlgo={}".format("None" if aaSigAlgo is None else a.aaSigAlgo.hex()))
-        self._log.verbose("session={}".format(s.bytes().hex()))
+        self._log.verbose("pubkey=%s", a.aaPublicKey.hex())
+        self._log.verbose("sigAlgo=%s", "None" if aaSigAlgo is None else a.aaSigAlgo.hex())
+        self._log.verbose("session=%s", s.bytes().hex())
 
         # 6. Return user id, session key and session expiry date
         return (uid, sk, et)
@@ -244,7 +244,7 @@ class PortProto:
         a = self._db.getAccount(uid)
 
         # 1. Require DG1 if login count is gt 1
-        self._log.debug("Logging-in account with uid={} login_count={}".format(uid.hex(), a.loginCount))
+        self._log.debug("Logging-in account with uid=%s login_count=%s", uid.hex(), a.loginCount)
         if a.loginCount >= 1 and a.dg1 is None and dg1 is None:
             self._log.error("Login cannot continue due to max no. of anonymous logins and no DG1 file was provided!")
             raise peDg1Required
@@ -252,7 +252,7 @@ class PortProto:
         # 2. If we got DG1 verify SOD contains its hash,
         #    and assign it to the account
         if dg1 is not None:
-            self._log.debug("Verifying received DG1(surname={} name={}) file is valid ...".format(dg1.mrz.surname, dg1.mrz.name))
+            self._log.debug("Verifying received DG1(surname=%s name=%s) file is valid ...", dg1.mrz.surname, dg1.mrz.name)
             sod = a.getSOD()
             self.__verify_sod_contains_hash_of(sod, dg1)
             a.setDG1(dg1)
@@ -274,12 +274,12 @@ class PortProto:
         a.loginCount += 1
         self._db.addOrUpdateAccount(a)
         if dg1 is not None:
-            self._log.info("File DG1(surname={} name={}) issued by {} is now tied to eMRTD pubkey={}"
-                     .format(dg1.mrz.surname, dg1.mrz.name, utils.code_to_country_name(dg1.mrz.country), a.aaPublicKey.hex()))
+            self._log.info("File DG1(surname=%s name=%s) issued by %s is now tied to eMRTD pubkey=%s",
+                dg1.mrz.surname, dg1.mrz.name, utils.code_to_country_name(dg1.mrz.country), a.aaPublicKey.hex())
 
         # 7. Return session key and session expiry date
-        self._log.debug("User has been successfully logged-in. uid={} session_expires: {}".format(uid.hex(), a.validUntil))
-        self._log.verbose("session={}".format(s.bytes().hex()))
+        self._log.debug("User has been successfully logged-in. uid=%s session_expires: %s", uid.hex(), a.validUntil)
+        self._log.verbose("session=%s", s.bytes().hex())
         return (sk, a.validUntil)
 
     def sayHello(self, uid, mac):
@@ -335,7 +335,7 @@ class PortProto:
             timeNow = utils.time_now()
             if not csca.isValidOn(timeNow):
                 self._log.error("Trying to add CSCA certificate which is too new or has expired! C=%s serial=%s %s",
-                        csca.issuerCountry, CscaStorage.makeSerial(csca.serial_number).hex(), utils.format_cert_et(csca, timeNow))
+                    csca.issuerCountry, CscaStorage.makeSerial(csca.serial_number).hex(), utils.format_cert_et(csca, timeNow))
                 raise peCscaTooNewOrExpired
 
             # 2.) Verify we have conformant CSCA certificate
@@ -434,7 +434,7 @@ class PortProto:
             timeNow = utils.time_now()
             if not dsc.isValidOn(timeNow):
                 self._log.error("Trying to add DSC certificate which is too new or expired! C=%s serial=%s %s",
-                        dsc.issuerCountry, DscStorage.makeSerial(dsc.serial_number).hex(), utils.format_cert_et(dsc, timeNow))
+                    dsc.issuerCountry, DscStorage.makeSerial(dsc.serial_number).hex(), utils.format_cert_et(dsc, timeNow))
                 raise peDscTooNewOrExpired
 
             # 2.) Verify we have conformant DSC certificate
@@ -543,7 +543,7 @@ class PortProto:
             # 7.) Store tore CRL update info and revoked certificate info into DB
             self._db.updateCrl(crl)
 
-            self._log.info("The country CRL was updated, issuer='%s' crlNumber=%s ", crl.issuer.human_friendly, crl.crlNumber)
+            self._log.info("The country CRL was updated, issuer='%s' crlNumber=%s", crl.issuer.human_friendly, crl.crlNumber)
         except ProtoError:
             raise
         except CertificateVerificationError as e: # Conformance check failed or signature verification failed
@@ -597,7 +597,7 @@ class PortProto:
             PeSigVerifyFailed: If verifying signatures over chunks of challenge fails
         """
         try:
-            self._log.debug("Verifying challenge cid={}".format(cid))
+            self._log.debug("Verifying challenge cid=%s", cid)
             if aaPubKey.isEcKey() and aaSigAlgo is None:
                 raise peMissingParamAASigAlgo
 
@@ -635,13 +635,13 @@ class PortProto:
             self.__validate_certificate_path(sod)
             self._log.success("eMRTD trust chain was successfully verified!")
         except CertificateVerificationError as e:
-            self._log.error("Failed to verify eMRTD certificate trust chain: {}".format(e))
+            self._log.error("Failed to verify eMRTD certificate trust chain: %s", e)
             raise peTrustchainVerificationFailed from e
         except ProtoError as e:
-            self._log.error("Failed to verify eMRTD certificate trust chain: {}".format(e))
+            self._log.error("Failed to verify eMRTD certificate trust chain: %s", e)
             raise
         except Exception as e:
-            self._log.error("Failed to verify eMRTD certificate trust chain! e={}".format(e))
+            self._log.error("Failed to verify eMRTD certificate trust chain! e=%s", e)
             self._log.exception(e)
             raise
 
@@ -697,8 +697,8 @@ class PortProto:
     def __validate_dsc_to_csca(self, dsc: DocumentSignerCertificate):
         """ Find DSC's issuing CSCA and validate DSC with it. """
         # 1. Get CSCA which issued DSC
-        self._log.verbose("Trying to find the DSC issuing CSCA in DB. DSC issuer=[{}] auth_key={}"
-            .format(dsc.issuer.human_friendly, dsc.authorityKey.hex() if dsc.authorityKey is not None else None))
+        self._log.verbose("Trying to find the DSC issuing CSCA in DB. DSC issuer=[%s] auth_key=%s",
+            dsc.issuer.human_friendly, dsc.authorityKey.hex() if dsc.authorityKey is not None else None)
 
         cscas: Optional[List[CscaStorage]] = self._db.findCscaCertificates(dsc.issuer, dsc.authorityKey)
         if cscas is None:
@@ -713,15 +713,15 @@ class PortProto:
         if csca is None:
             raise peCscaNotFound
 
-        self._log.verbose("Found CSCA country={} serial={} fp={} key_id={}".format(
+        self._log.verbose("Found CSCA country=%s serial=%s fp=%s key_id=%s",
             utils.code_to_country_name(csca.issuerCountry),
             csca.serial_number,
             csca.fingerprint[0:8],
             csca.subjectKey.hex() if csca.subjectKey is not None else 'N/A'
-        ))
+        )
 
         # 2. Verify CSCA expiration time
-        self._log.verbose("Verifying CSCA expiration time. {}".format(utils.format_cert_et(csca)))
+        self._log.verbose("Verifying CSCA expiration time. %s", utils.format_cert_et(csca))
         if not csca.isValidOn(utils.time_now()):
             self._log.error("CSCA has expired!")
             raise peCscaTooNewOrExpired
@@ -738,15 +738,15 @@ class PortProto:
         createTime = createTime.replace(tzinfo=None)
         return createTime + timedelta(seconds=self.cttl)
 
-    def _has_challenge_expired(self, expireTime: datetime, datetime: datetime) -> bool:
+    def _has_challenge_expired(self, expireTime: datetime, date: datetime) -> bool:
         """
         Verifies if challenge create time is already in the range of challenge expiration interval.
         :param expireTime: The challenge expiration time.
         :param datetime: The date and time to compare expiration against. (Should be current datetime)
         """
         expireTime = expireTime.replace(tzinfo=None)
-        datetime   = datetime.replace(tzinfo=None)
-        return utils.has_expired(expireTime, datetime)
+        date       = date.replace(tzinfo=None)
+        return utils.has_expired(expireTime, date)
 
     def __validate_certificate_path(self, sod: ef.SOD):
         """Verification of issuer certificate from SOD file"""
@@ -760,11 +760,11 @@ class PortProto:
                 signer = signer.chosen
                 issuer = signer["issuer"]
                 serial = signer["serial_number"].native
-                self._log.verbose("Getting DSC which issued SOD by serial no.: {} and issuer: [{}]".format(serial, issuer.human_friendly))
+                self._log.verbose("Getting DSC which issued SOD by serial no.: %s and issuer: [%s]", serial, issuer.human_friendly)
                 dsc, validateDSC = self.__get_dsc_by_issuer_and_serial_number(issuer, serial, sod)
             elif signer.name == "subject_key_identifier":
                 keyid = signer.native
-                self._log.verbose("Getting DSC which issued SOD by subject_key={}".format(keyid.hex()))
+                self._log.verbose("Getting DSC which issued SOD by subject_key=%s", keyid.hex())
                 dsc, validateDSC = self.__get_dsc_by_subject_key(keyid, sod)
             else:
                 raise peUnknownPathSodToDsc
@@ -772,13 +772,13 @@ class PortProto:
             if dsc is None:
                 raise peDscNotFound
 
-            self._log.verbose("Got DSC fp={} issuer_country={}, validating path to CSCA required: {}"
-                .format(dsc.fingerprint[0:8], utils.code_to_country_name(dsc.issuerCountry), validateDSC))
+            self._log.verbose("Got DSC fp=%s issuer_country=%s, validating path to CSCA required: %s",
+                dsc.fingerprint[0:8], utils.code_to_country_name(dsc.issuerCountry), validateDSC)
 
-            self._log.verbose("Verifying DSC expiration time. {}".format(utils.format_cert_et(dsc)))
+            self._log.verbose("Verifying DSC expiration time. %s", utils.format_cert_et(dsc))
             if not dsc.isValidOn(utils.time_now()):
                 raise peDscTooNewOrExpired
-            elif validateDSC:
+            if validateDSC:
                 self.__validate_dsc_to_csca(dsc) # validate CSCA has issued DSC
 
             cscas: Optional[List[CscaStorage]] = self._db.findCscaCertificates(dsc.issuer, dsc.authorityKey)
@@ -806,23 +806,23 @@ class PortProto:
         assert isinstance(sod, ef.SOD)
         assert isinstance(dg, ef.DataGroup)
 
-        self._log.debug("Verifying SOD contains matching hash of {} file ...".format(dg.number.native))
+        self._log.debug("Verifying SOD contains matching hash of %s file ...", dg.number.native)
         if self._log.getEffectiveLevel() <= log.VERBOSE:
             sod_dghv = sod.ldsSecurityObject.dgHashes.find(dg.number)
-            self._log.verbose("SOD contains hash of {} file: {}".format(dg.number.native, (sod_dghv is not None)))
+            self._log.verbose("SOD contains hash of %s file: %s", dg.number.native, (sod_dghv is not None))
             if sod_dghv is not None:
                 hash_algo = sod.ldsSecurityObject.dgHashAlgo['algorithm'].native
-                self._log.verbose("{} hash value of {} file in SOD: {}".format(hash_algo, dg.number.native, sod_dghv.hash.hex()))
+                self._log.verbose("%s hash value of %s file in SOD: %s", hash_algo, dg.number.native, sod_dghv.hash.hex())
                 h = sod.ldsSecurityObject.getDgHasher()
                 h.update(dg.dump())
-                self._log.verbose("Actual {} hash value of {} file: {}".format(hash_algo, dg.number.native, h.finalize().hex()))
+                self._log.verbose("Actual %s hash value of %s file: %s",hash_algo, dg.number.native, h.finalize().hex())
 
         # Validation of dg hash value in SOD
         if not sod.ldsSecurityObject.contains(dg):
             raise peInvalidDgFile(dg.number)
-        self._log.debug("{} file is valid!".format(dg.number.native))
+        self._log.debug("%s file is valid!", dg.number.native)
 
-    def _get_default_account_expiration(self):
+    def _get_default_account_expiration(self): #pylint: disable=no-self-use
         """ Returns until the session is valid. """
         # Note: in ideal situation passport expiration date would be read from DG1 file and returned here.
         #       For now we return fix 10min period but should be calculated from the expiration time of DSC who signed the account's SOD.
@@ -837,9 +837,9 @@ class PortProto:
         self._log.debug("Verifying session MAC ...")
 
         s = a.getSession()
-        self._log.verbose("nonce: {}".format(s.nonce))
-        self._log.verbose("data: {}".format(data.hex()))
-        self._log.verbose("mac: {}".format(mac.hex()))
+        self._log.verbose("nonce: %s", s.nonce)
+        self._log.verbose("data: %s", data.hex())
+        self._log.verbose("mac: %s", mac.hex())
 
         success = s.verifyMAC(data, mac)
         self._log.debug("MAC successfully verified!")

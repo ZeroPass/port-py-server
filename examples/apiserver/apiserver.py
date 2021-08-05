@@ -188,7 +188,7 @@ def load_pkd_to_db(proto: PortProto, pkdPath: Path, allowSelfIssuedCSCA: bool):
     crls:   dict[str, CertificateRevocationList] = defaultdict()
     for cert in pkdPath.rglob('*.cer'):
         try:
-            l.verbose("Loading certificate: {}".format(cert))
+            l.verbose("Loading certificate: %s", cert)
             cfd = cert.open('rb')
             cert = x509.Certificate.load(cfd.read())
             if not cert.isValidOn(timeNow):
@@ -272,7 +272,7 @@ def main():
     init_log(args['log_level'])
     l = log.getLogger('port.api.server')
     l.info("Starting new server session ...")
-    l.debug("run parameters: {}".format(sys.argv[1:]))
+    l.debug("run parameters: %s", sys.argv[1:])
 
     ctx = None
     if not args['no_tls']:
