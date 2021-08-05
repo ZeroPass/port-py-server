@@ -5,6 +5,8 @@ from abc import ABC, abstractmethod
 from asn1crypto import x509
 from datetime import datetime
 
+from sqlalchemy.sql.functions import func
+
 from port.database.storage.storageManager import PortDatabaseConnection
 from port.database.storage.challengeStorage import ChallengeStorage
 from port.database.storage.accountStorage import AccountStorage
@@ -576,8 +578,8 @@ class DatabaseAPI(StorageAPI):
                 serial = CertificateStorage.makeSerial(serial)
             return self.__db \
                 .query(CscaStorage) \
-                .filter(CscaStorage.issuer == issuer.human_friendly, \
-                        CscaStorage.serial == serial) \
+                .filter(CscaStorage.serial == serial, \
+                    func.lower(CscaStorage.issuer) == issuer.human_friendly.lower()) \
                 .first()
         except Exception as e:
             self.__handle_exception(e)
@@ -599,7 +601,8 @@ class DatabaseAPI(StorageAPI):
             cscas: Optional[List[CscaStorage]] = None
             q = self.__db \
                 .query(CscaStorage) \
-                .filter(CscaStorage.subject == subject.human_friendly)
+                .filter(
+                    func.lower(CscaStorage.subject) == subject.human_friendly.lower())
 
             # If we have subject key, try to filter by subject name and subject key
             if subjectKey is not None:
@@ -623,7 +626,8 @@ class DatabaseAPI(StorageAPI):
         try:
             cscas = self.__db \
                 .query(CscaStorage) \
-                .filter(CscaStorage.subject == subject.human_friendly) \
+                .filter(
+                    func.lower(CscaStorage.subject) == subject.human_friendly.lower()) \
                 .all()
             return cscas if len(cscas) != 0 else None
         except Exception as e:
@@ -712,8 +716,8 @@ class DatabaseAPI(StorageAPI):
                 serial = CertificateStorage.makeSerial(serial)
             return self.__db \
                 .query(DscStorage) \
-                .filter(DscStorage.issuer == issuer.human_friendly, \
-                        DscStorage.serial == serial) \
+                .filter(DscStorage.serial == serial, \
+                    func.lower(DscStorage.issuer) == issuer.human_friendly.lower()) \
                 .first()
         except Exception as e:
             self.__handle_exception(e)
@@ -825,7 +829,7 @@ class DatabaseAPI(StorageAPI):
             return self.__db \
                 .query(CrlUpdateInfo) \
                 .filter(CrlUpdateInfo.country == country,
-                        CrlUpdateInfo.issuer == issuer.human_friendly) \
+                    func.lower(CrlUpdateInfo.issuer) == issuer.human_friendly.lower()) \
                 .first()
         except Exception as e:
             self.__handle_exception(e)
