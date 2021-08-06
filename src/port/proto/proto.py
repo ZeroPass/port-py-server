@@ -1,3 +1,4 @@
+from pymrtd.ef.sod import SODError
 from pymrtd.pki.crl import CertificateRevocationList
 import port.log as log
 from . import utils
@@ -85,6 +86,7 @@ peDscNotFound: Final                      = PeNotFound("DSC certificate not foun
 peInvalidCsca: Final                      = PeInvalidOrMissingParam("Invalid CSCA certificate")
 peInvalidDsc: Final                       = PeInvalidOrMissingParam("Invalid DSC certificate")
 peInvalidCrl: Final                       = PeInvalidOrMissingParam("Invalid CRL")
+peInvalidEfSod: Final                     = PeInvalidOrMissingParam("Invalid EF.SOD")
 peMissingAAInfoInDg14: Final              = PePreconditionRequired("Missing ActiveAuthenticationInfo in DG14 file")
 peMissingParamAASigAlgo: Final            = PeInvalidOrMissingParam("Missing param aaSigAlgo")
 peTrustchainCheckFailedExpiredCert: Final = PePreconditionFailed("Expired certificate in the trustchain")
@@ -93,8 +95,8 @@ peTrustchainCheckFailedRevokedCert: Final = PePreconditionFailed("Revoked certif
 peTrustchainVerificationFailed: Final     = PePreconditionFailed("Trustchain verification failed")
 peUnknownPathSodToDsc: Final              = PePreconditionFailed("Unknown connection path from EF.SOD to DSC certificate")
 
-def peInvalidDgFile(dgNumber: ef.dg.DataGroupNumber) -> PePreconditionFailed:
-    return PePreconditionFailed("Invalid EF.{} file".format(dgNumber.native))
+def peInvalidDgFile(dgNumber: ef.dg.DataGroupNumber) -> PeInvalidOrMissingParam:
+    return PeInvalidOrMissingParam("Invalid {} file".format(dgNumber.native))
 
 
 class PortProto:
@@ -638,6 +640,9 @@ class PortProto:
         except CertificateVerificationError as e:
             self._log.error("Failed to verify eMRTD certificate trust chain: %s", e)
             raise peTrustchainVerificationFailed from e
+        except SODError as e:
+            self._log.error("Failed to verify eMRTD EF.SOD file: %s", e)
+            raise peInvalidEfSod from e
         except ProtoError as e:
             self._log.error("Failed to verify eMRTD certificate trust chain: %s", e)
             raise
