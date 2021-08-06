@@ -1,5 +1,6 @@
 #!/usr/bin/python
 import base64, json, os, requests
+from pymrtd.ef.dg import DataGroupNumber
 
 from datetime import datetime
 from port.proto import CID, Challenge, UserId, Session, SessionKey
@@ -119,6 +120,22 @@ def requestGreeting(url: str, uid: UserId, s: Session):
     result = response['result']
     return result['msg']
 
+def alter_sod(sod: ef.SOD):
+     # copy doesn't work and set doesn't work so replace raw hash of DG1
+    s = ef.SOD.load(sod.dump() \
+        .replace(sod.ldsSecurityObject.dgHashes.find(DataGroupNumber(1)).hash,\
+             bytes.fromhex('BADEF50D00000000FF6A22FFEF1567FF88079F415C66EAD250AB5F23781AC2CD')))
+    assert sod.dump() != s.dump()
+    return s
+
+def alter_dg15(dg15: ef.DG15):
+    # replace first 16 bytes of rsa public key
+    d15 = ef.DG15.load(dg15.dump() \
+        .replace(bytes.fromhex('BD8620D45693E1CD8678639F22E9553F'),\
+             bytes.fromhex('BADEFD615900BC3EBADEFD615900BC3E')))
+    assert dg15.dump() != d15.dump()
+    return d15
+
 def main():
     url = "http://localhost:80"
 
@@ -148,6 +165,21 @@ def main():
         print("Server returned challenge={} expires={}\n".format(c.hex(), cet))
         assert c == sigc
 
+        try:
+            print("Trying to register new user with altered EF.SOD file ...")
+            uid, s, et = requestRegister(url, tvUid, alter_sod(sod), dg15, sigc.id, csigs)
+            raise AssertionError("Registration with altered EF.SOD file succeeded!")
+        except Exception as e:
+            print("Server returned error: {}\n".format(e))
+            assert str(e) == "{'code': 422, 'message': 'Invalid EF.SOD'}"
+
+        try:
+            print("Trying to register new user with altered EF.DG15 file ...")
+            uid, s, et = requestRegister(url, tvUid, sod, alter_dg15(dg15), sigc.id, csigs)
+            raise AssertionError("Registration with altered EF.DG15 file succeeded!")
+        except Exception as e:
+            print("Server returned error: {}\n".format(e))
+            assert str(e) == "{'code': 422, 'message': 'Invalid EF.DG15 file'}"
 
         print("Registering new user ...")
         uid, s, et = requestRegister(url, tvUid, sod, dg15, sigc.id, csigs)
