@@ -306,7 +306,7 @@ class PortProto:
             msg = "Hi, {} {}!".format(dg1.mrz.surname, dg1.mrz.name)
         return msg
 
-    def addCscaCertificate(self, csca: CscaCertificate, allowSelfIssued: bool = False) -> None:
+    def addCscaCertificate(self, csca: CscaCertificate, allowSelfIssued: bool = False) -> CscaStorage:
         """
         Adds new CSCA certificate into database.
         Before CSCA is added to the DB, the certificate is verified that it conforms to the ICAO 9303 standard.
@@ -320,6 +320,7 @@ class PortProto:
                                 Warning: self-issued CSCA should only be allowed from privileged and verified sources
                                          e.g. fully verified CSCA master list, server admin).
                                          Self-issued CSCA should be PROHIBITED, for example, through public api.
+        :return CscaStorage:
         :raises peCscaTooNewOrExpired: If CSCA is too new (nvb > now) or has expired.
         :raises peInvalidCsca: When CSCA doesn't conform to the ICAO 9303 standard.
         """
@@ -391,6 +392,7 @@ class PortProto:
             # 6.) Save any CRL distribution url stored in csca
             self._save_crl_url_from_cert(cs.country, csca)
             self._log.info("The new CSCA certificate was inserted into the DB. id=%s C=%s serial=%s", cs.id, cs.country, cs.serial.hex())
+            return cs
         except ProtoError:
             raise
         except CertificateVerificationError as e: # Conformance check failed or signature verification failed
@@ -404,7 +406,7 @@ class PortProto:
             self._log.error("  e=%s", e)
             raise
 
-    def addDscCertificate(self, dsc: DocumentSignerCertificate) -> None:
+    def addDscCertificate(self, dsc: DocumentSignerCertificate) -> DscStorage:
         """
         Adds new DSC certificate into database.
         Before DSC is added to the DB, the certificate is checked:
@@ -417,6 +419,7 @@ class PortProto:
             - that the same DSC doesn't exist yet.
 
         :param dsc: The DSC certificate to add.
+        :return DscStorage:
         :raises peDscTooNewOrExpired: If DSC is too new (nvb > now) or has expired.
         :raises peInvalidDsc: When DSC doesn't conform to the ICAO 9303 standard.
         :raises peDscCantIssuePassport: If DSC can't issue passport document.
@@ -471,6 +474,7 @@ class PortProto:
             # 7.) Save any CRL distribution url stored in DSC
             self._save_crl_url_from_cert(cs.country, dsc)
             self._log.info("The new DSC certificate was inserted into the DB. id=%s C=%s serial=%s", cs.id, cs.country, cs.serial.hex())
+            return cs
         except ProtoError:
             raise
         except CertificateVerificationError as e: # Conformance check failed or signature verification failed
