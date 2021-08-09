@@ -16,6 +16,7 @@ from datetime import datetime
 from pymrtd.pki.ml import CscaMasterList
 from pymrtd.pki import x509
 from port.database.storage.storageManager import PortDatabaseConnection, truncateAll
+from port.proto import utils
 
 from port.settings import *
 
@@ -81,7 +82,7 @@ class Builder:
     def verifyCSCAandWrite(self, csca: CscaCertificate, issuingCert: CscaCertificate, connection: PortDatabaseConnection):
         try:
             #is CSCA still valid?
-            if not csca.isValidOn(datetime.utcnow()):
+            if not csca.isValidOn(utils.time_now()):
                 raise Exception()
 
             #is signature of CSCA correct?
