@@ -45,7 +45,7 @@ class DevProto(PortProto):
             if c == fc:
                 return (c,cct)
             self._db.deleteChallenge(c.id)
-            cet = self._get_challenge_expiration(datetime.utcnow())
+            cet = self._get_challenge_expiration(utils.time_now())
             self._db.addChallenge(uid, fc, cet)
             return (fc, cet)
         return super().createNewChallenge(uid)
@@ -53,9 +53,9 @@ class DevProto(PortProto):
     def _get_default_account_expiration(self):
         return utils.time_now() + timedelta(minutes=1)
 
-    def __validate_certificate_path(self, sod: ef.SOD): #pylint: disable=unused-private-member
+    def _verify_sod_is_genuine(self, sod: ef.SOD): #pylint: disable=unused-private-member
         if not self._no_tcv:
-            super().__validate_certificate_path(sod)
+            super()._verify_sod_is_genuine(sod)
         else:
             self._log.warning("Skipping verification of eMRTD certificate trustchain")
 

@@ -1,4 +1,6 @@
+from asn1crypto.cms import IssuerAndSerialNumber
 from pymrtd.ef.sod import SODError
+from pymrtd.pki.cms import SignerInfo
 from pymrtd.pki.crl import CertificateRevocationList
 import port.log as log
 from . import utils
@@ -89,6 +91,7 @@ peInvalidCrl: Final                       = PeInvalidOrMissingParam("Invalid CRL
 peInvalidEfSod: Final                     = PeInvalidOrMissingParam("Invalid EF.SOD")
 peMissingAAInfoInDg14: Final              = PePreconditionRequired("Missing ActiveAuthenticationInfo in DG14 file")
 peMissingParamAASigAlgo: Final            = PeInvalidOrMissingParam("Missing param aaSigAlgo")
+peEfSodNotGenuine: Final                  = PeInvalidOrMissingParam("EF.SOD file not genuine")
 peTrustchainCheckFailedExpiredCert: Final = PePreconditionFailed("Expired certificate in the trustchain")
 peTrustchainCheckFailedNoCsca: Final      = PePreconditionFailed("Missing issuer CSCA certificate in the trustchain")
 peTrustchainCheckFailedRevokedCert: Final = PePreconditionFailed("Revoked certificate in the trustchain")
@@ -219,9 +222,9 @@ class PortProto:
         self._db.addOrUpdateAccount(a)
 
         self._log.debug("New account created: uid=%s", uid.hex())
-        if len(sod.dsCertificates) > 0:
+        if len(sod.dscCertificates) > 0:
             self._log.debug("Issuing country of account's eMRTD: %s",
-                utils.code_to_country_name(sod.dsCertificates[0].issuerCountry))
+                utils.code_to_country_name(sod.dscCertificates[0].issuerCountry))
         self._log.verbose("valid_until=%s", a.validUntil)
         self._log.verbose("login_count=%s", a.loginCount)
         self._log.verbose("dg1=None")
@@ -451,15 +454,7 @@ class PortProto:
                     raise peDscCantIssuePassport
 
             # 4.) Find the CSCA certificate that issued DSC.
-            issuerCert: Optional[CscaStorage] = None
-            cscas: List[CscaStorage] = self._db.findCscaCertificates(dsc.issuer, dsc.authorityKey)
-            for c in (cscas or []):
-                # This check ensures to not take any LCSCA certificate as the issuer cert
-                # since they can have shorter expiration time
-                if c.notValidAfter >= dsc.notValidAfter:
-                    issuerCert = c
-                    break
-
+            issuerCert = self._find_first_csca_for_dsc(dsc)
             if issuerCert is None:
                 raise peCscaNotFound
 
@@ -563,6 +558,20 @@ class PortProto:
             self._log.error("  e=%s", e)
             raise
 
+    def _find_first_csca_for_dsc(self, dsc: DocumentSignerCertificate) -> Optional[CscaStorage]:
+        """
+        Returns first issuing CSCA certificate of DSC certificate which is not LCSCA.
+        :param dsc: DSC certificate to retrieve the issuing CSCA certificate for
+        :return Optional[CscaStorage]:
+        """
+        cscas: List[CscaStorage] = self._db.findCscaCertificates(dsc.issuer, dsc.authorityKey)
+        for c in (cscas or []):
+            # This check ensures to not take any LCSCA certificate as the issuer cert
+            # since they can have shorter expiration time
+            if c.notValidAfter >= dsc.notValidAfter:
+                return c
+        return None
+
     def _verify_cert_trustchain(self, crt: CertificateStorage) -> None:
         """
         Verifies certificate trustchain and if fails ProtoError exception is risen.
@@ -570,7 +579,7 @@ class PortProto:
             1.) Check if certificate is valid on current date.
             2.) Check that certificate isn't revoked.
             3.) If certificate has issuer, check issuer certificate is stored in DB and has valid trustchain.
-        :para crt: The certificate to verify the trustchain for.
+        :param crt: The certificate to verify the trustchain for.
         :raises: PePreconditionFailed if there is invalid or revoked certificate in the trustchain.
                  Invalid certificate is either not valid at present time, is missing issuer certificate or issuer certificate is invalid.
         """
@@ -594,6 +603,116 @@ class PortProto:
                     crt.id, crt.country, crt.serial.hex(), crt.issuerId)
                 raise peTrustchainCheckFailedNoCsca
             self._verify_cert_trustchain(issuer)
+
+    def _verify_sod_is_genuine(self, sod: ef.SOD) -> None:
+        """
+        Verifies EF.SOD file was issued by at least 1 valid country DSC certificate
+        aka passive authentication as specivied in ICAO9303 part 11 5.1 Passive Authentication.
+        https://www.icao.int/publications/Documents/9303_p12_cons_en.pdf
+
+        Valid DSC in this context means DSC certificate which has valid trustchain.
+        If DSC certificate doesn't exists yet in DB and is found in `sod` object
+        it will be inserted into DB.
+
+        In essence, the function goes over the list of signers and tries to find the first signer for
+        which the signature verification over `sod` object succeeds and has valid trust chain.
+        The verification per signer is as follows:
+        1.) Try to find the DSC certificate in DB.
+        2.) If found, do the DSC trustchain verification
+            else insert DSC into DB though `addDscCertificate` method
+        3.) Verify DSC issuer EF.SOD.
+        4.) If there was no error in the above steps return from function
+
+        :param sod: EF.SOD file to verify.
+        :raises peInvalidEfSod: If no valid signer if found, EF.SOD is not signed, contains invalid signer infos.
+        :raises peTrustchainVerificationFailed: If certificate trustchain verification fails.
+        :raises peEfSodNotGenuine: If Ef.SOD verification with DSC certificate fails i.e. signature verification fails.
+                                   E.g.: when EF.SOD was intentionally altered or is corrupted.
+        :raises peDscNotFound: When no signing DSC certificate is found.
+        :raises ProtoError: any exception which is risen from addDscCertificate method when new DSC is added or
+                            risen from _verify_cert_trustchain method.
+        """
+        self._log.debug("_verify_sod_is_genuine: %s", sod)
+        lastException = None
+        si: SignerInfo
+        for si in sod.signers:
+            try:
+                if si.signedAttributes is None:
+                    self._log.debug("Skipping verifying %s file with SI='%s'. No signed attributes.", sod, si)
+                    raise peInvalidEfSod
+
+                self._log.debug("Trying to verify %s file with SI='%s'", sod, si)
+                sid = si.id
+                if isinstance(sid, IssuerAndSerialNumber):
+                    dsc = self._db.findDscBySerial(sid['issuer'], sid['serial_number'].native)
+                elif isinstance(sid, bytes):
+                    dsc = self._db.findDscBySubjectKey(sid)
+                else:
+                    self._log.debug("Invalid SI version=%s", si.version.native)
+                    raise peInvalidEfSod
+
+                # Add DSC to DB if doesn't exist yet,
+                # and verify DSC certificate trustchain
+                if dsc is None:
+                    self._log.debug("The DSC certificate was not found in DB for SI='%s', getting certificate from %s file.", si, sod)
+                    dsc = sod.getDscCertificate(si)
+                    if dsc is None:
+                        self._log.debug("Skipping verifying %s file with SI='%s'. No DSC certificate found.", sod, si)
+                        raise peDscNotFound
+                    dsc = self.addDscCertificate(dsc) # Note, the dsc validity and trustchain should be checked in this function.
+                else:
+                    self._verify_cert_trustchain(dsc)
+
+                # Verify Ef.SOD with found DSC certificate
+                sod.verify(si=si, dsc=dsc.getCertificate())
+                return # The EF.SOD was successfully verified
+            except Exception as e:
+                self._log.warning("An exception was encountered while trying to verify %s file with SI='%s'", sod, si)
+                self._log.warning("  error=%s", e)
+                lastException = e
+
+        if isinstance(lastException, SODError):
+            self._log.error("Failed to validate authenticity of %s file: %s", sod, lastException)
+            raise peEfSodNotGenuine from lastException
+        if isinstance(lastException, ProtoError):
+            self._log.error("Failed to verify certificate trust chain for %s file: %s", sod, lastException)
+            raise lastException
+        self._log.error("Failed to validate authenticity of %s file! e=%s", sod, lastException)
+        if lastException is not None:
+            self._log.exception(lastException)
+            raise lastException
+        raise peInvalidEfSod
+
+    def __verify_emrtd_trustchain(self, sod: ef.SOD, dg14: Union[ef.DG14, None], dg15: ef.DG15) -> None:
+        """"
+        Verify eMRTD trust chain from eMRTD EF.SOD to issuing CSCA
+        :raises: An exception is risen if any part of trust chain verification fails
+        """
+        assert isinstance(sod, ef.SOD)
+        assert isinstance(dg14, (ef.DG14, type(None)))
+        assert isinstance(dg15, ef.DG15)
+
+        try:
+            self._log.info("Verifying eMRTD trust chain for %s %s %s", sod, dg14 if dg14 is not None else "", dg15)
+            if dg14 is not None:
+                self.__verify_sod_contains_hash_of(sod, dg14)
+
+            self.__verify_sod_contains_hash_of(sod, dg15)
+            self._verify_sod_is_genuine(sod)
+            self._log.success("eMRTD trust chain was successfully verified!")
+        except CertificateVerificationError as e:
+            self._log.error("Failed to verify eMRTD certificate trust chain: %s", e)
+            raise peTrustchainVerificationFailed from e
+        except SODError as e:
+            self._log.error("Failed to verify eMRTD EF.SOD file: %s", e)
+            raise peInvalidEfSod from e
+        except ProtoError as e:
+            self._log.error("Failed to verify eMRTD certificate trust chain: %s", e)
+            raise
+        except Exception as e:
+            self._log.error("Failed to verify eMRTD certificate trust chain! e=%s", e)
+            self._log.exception(e)
+            raise
 
     def __verify_challenge(self, cid: CID, aaPubKey: AAPublicKey, csigs: List[bytes], aaSigAlgo: SignatureAlgorithm = None ) -> None:
         """
@@ -622,37 +741,6 @@ class PortProto:
             self._log.success("Challenge signed with eMRTD was successfully verified!")
         except:
             self._log.error("Challenge verification failed!")
-            raise
-
-    def __verify_emrtd_trustchain(self, sod: ef.SOD, dg14: Union[ef.DG14, None], dg15: ef.DG15) -> None:
-        """"
-        Verify eMRTD trust chain from eMRTD EF.SOD to issuing CSCA
-        :raises: An exception is risen if any part of trust chain verification fails
-        """
-        assert isinstance(sod, ef.SOD)
-        assert isinstance(dg14, (ef.DG14, type(None)))
-        assert isinstance(dg15, ef.DG15)
-
-        try:
-            self._log.info("Verifying eMRTD trust chain for %s %s %s", sod, dg14 if dg14 is not None else "", dg15)
-            if dg14 is not None:
-                self.__verify_sod_contains_hash_of(sod, dg14)
-
-            self.__verify_sod_contains_hash_of(sod, dg15)
-            self.__validate_certificate_path(sod)
-            self._log.success("eMRTD trust chain was successfully verified!")
-        except CertificateVerificationError as e:
-            self._log.error("Failed to verify eMRTD certificate trust chain: %s", e)
-            raise peTrustchainVerificationFailed from e
-        except SODError as e:
-            self._log.error("Failed to verify eMRTD EF.SOD file: %s", e)
-            raise peInvalidEfSod from e
-        except ProtoError as e:
-            self._log.error("Failed to verify eMRTD certificate trust chain: %s", e)
-            raise
-        except Exception as e:
-            self._log.error("Failed to verify eMRTD certificate trust chain! e=%s", e)
-            self._log.exception(e)
             raise
 
     def _save_crl_url_from_cert(self, country: CountryCode, cert: Certificate):
