@@ -40,7 +40,7 @@ def is_valid_alpha2(code: Optional[str]) -> bool:
 
     :param code: - The country code to check, it can be mixed case.
                    If `code` is None, False is returned.
-    :returns: True if valid, otherwise false
+    :return: True if valid, otherwise false
     """
     return code is not None \
         and len(code) == 2 \
@@ -53,7 +53,7 @@ def format_alpha2(code: str) -> str:
     @see https://www.icao.int/publications/Documents/9303_p3_cons_en.pdf
 
     :param code: - The country code to format. Must be 2 letters and it can be mixed case.
-    :returns: Uppercased country code
+    :return: Uppercased country code
     :raises: ValueError if code is not exact 2 chars
     """
     if not is_valid_alpha2(code):
