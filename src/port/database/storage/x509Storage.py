@@ -26,7 +26,7 @@ class CertificateStorage:
     subjectKey: Optional[bytes]
     certificate: bytes
 
-    _type = None
+    _type = None # certificate type
 
     def __init__(self, cert: Certificate, issuerId: Optional[CertificateId] = None):
         assert isinstance(cert, Certificate)
@@ -51,7 +51,7 @@ class CertificateStorage:
             self._cached_ser_no = bytes_to_int(self.serial, signed=True)
         return self._cached_ser_no
 
-    def getCertificate(self):
+    def getCertificate(self) -> "CertificateStorage._type":
         """Returns x509. Certificate object"""
         if not hasattr(self, '_cached_crt_obj') or self._cached_crt_obj is None:
             self._cached_crt_obj = self._type.load(self.certificate)
