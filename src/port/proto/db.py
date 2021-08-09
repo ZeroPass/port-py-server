@@ -5,8 +5,6 @@ from abc import ABC, abstractmethod
 from asn1crypto import x509
 from datetime import datetime
 
-from sqlalchemy.sql.functions import func
-
 from port.database.storage.storageManager import PortDatabaseConnection
 from port.database.storage.challengeStorage import ChallengeStorage
 from port.database.storage.accountStorage import AccountStorage
@@ -16,8 +14,10 @@ from port.proto.utils import bytes_to_int, sha512_256
 from pymrtd.pki.crl import CertificateRevocationList
 from pymrtd.pki.x509 import Certificate, CscaCertificate, DocumentSignerCertificate
 
-from sqlalchemy import or_
+from sqlalchemy import or_, and_
 from sqlalchemy.orm.scoping import scoped_session
+from sqlalchemy.sql.functions import func
+
 from typing import Final, List, NoReturn, Optional, Tuple, TypeVar, Union
 
 from .challenge import CID, Challenge
@@ -39,6 +39,8 @@ seChallengeNotFound: Final     = SeEntryNotFound("Challenge not found")
 seCrlUpdateInfoNotFound: Final = SeEntryNotFound("CRL Update Info not found")
 seCscaExists: Final            = SeEntryAlreadyExists("CSCA already exists")
 seDscExists: Final             = SeEntryAlreadyExists("DSC already exists")
+
+#pylint: disable=too-many-public-methods
 
 class StorageAPI(ABC):
     ''' Abstract storage interface for user data and MRTD trustchain certificates (CSCA, DSC) '''
@@ -258,6 +260,13 @@ class StorageAPI(ABC):
     def revokeCertificate(self, cri: CertificateRevocationInfo) -> None:
         """
         Inserts or updates certificate revocation information in the DB.
+        :param cri: The certificate revocation information.
+        """
+
+    @abstractmethod
+    def unrevokeCertificate(self, cri: CertificateRevocationInfo) -> None:
+        """
+        Deletes certificate revocation information in the DB.
         :param cri: The certificate revocation information.
         """
 
@@ -865,6 +874,25 @@ class DatabaseAPI(StorageAPI):
         except Exception as e:
             self.__handle_exception(e)
 
+    def unrevokeCertificate(self, cri: CertificateRevocationInfo) -> None:
+        """
+        Deletes certificate revocation information in the DB.
+        :param cri: The certificate revocation information.
+        """
+        assert isinstance(cri, CertificateRevocationInfo)
+        self._log.debug("Unrevoking certificate criId=%s C=%s serial=%s certId=%s crlId=%s",
+            cri.id, cri.country, cri.serial.hex(), cri.certId, cri.crlId)
+        try:
+            self.__db \
+                .query(CertificateRevocationInfo) \
+                .filter(or_(CertificateRevocationInfo.id == cri.id,\
+                       and_(CertificateRevocationInfo.country == cri.country,\
+                            CertificateRevocationInfo.serial == cri.serial,
+                            CertificateRevocationInfo.crlId == cri.crlId))) \
+                .delete()
+        except Exception as e:
+            self.__handle_exception(e)
+
     def isCertificateRevoked(self, crt: Union[Certificate, CertificateStorage]) -> bool:
         """
         Verifies in the DB if certificate is revoked.
@@ -1326,6 +1354,26 @@ class MemoryDB(StorageAPI):
         self._log.debug("Revoking certificate C=%s serial=%s certId=%s crlId=%s", cri.country, cri.serial.hex(), cri.certId, cri.crlId)
         cri.id = bytes_to_int(sha512_256(cri.country.encode('utf-8') + cri.serial)[0:8])
         self._d['crt'][cri.country][cri.id] = cri
+
+    def unrevokeCertificate(self, cri: CertificateRevocationInfo) -> None:
+        """
+        Deletes certificate revocation information in the DB.
+        :param cri: The certificate revocation information.
+        """
+        assert isinstance(cri, CertificateRevocationInfo)
+        self._log.debug("Unrevoking certificate criId=%s C=%s serial=%s certId=%s crlId=%s",
+            cri.id, cri.country, cri.serial.hex(), cri.certId, cri.crlId)
+        if cri.country in self._d['crt']:
+            if cri.id is not None and cri.id in self._d['crt'][cri.country]:
+                del self._d['crt'][cri.country][cri.id]
+            else:
+                cri_to_remove = []
+                c: CertificateRevocationInfo
+                for c in self._d['crt'][cri.country].values():
+                    if c.serial == cri.serial and c.crlId == cri.certId:
+                        cri_to_remove.append(c.id)
+                for cid in cri_to_remove:
+                    del self._d['crt'][cri.country][cid]
 
     def isCertificateRevoked(self, crt: TypeVar("T",Certificate, CertificateStorage)) -> bool:
         """
