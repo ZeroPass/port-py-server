@@ -1,0 +1,11 @@
+Test vector certificates and lds objects taken from:
+
+  - MTS(11)0044_DMIMTS-00127_ePassport_Prototype_Platform :
+    docbox.etsi.org/MTS/MTS/05-CONTRIBUTIONS/2011/MTS(11)0044_DMIMTS-00127_ePassport_Prototype_Platform.zip
+    part of https://www.etsi.org/deliver/etsi_tr/103200_103299/103200/01.01.01_60/tr_103200v010101p.pdf
+
+    test specs:
+       https://www.etsi.org/deliver/etsi_tr/103200_103299/103200/01.01.01_60/tr_103200v010101p.pdf
+
+  - BSI TR03105 test data set:
+    https://www.bsi.bund.de/SharedDocs/Downloads/DE/BSI/Publikationen/TechnischeRichtlinien/TR03105/BSI_TR-03105-5_ReferenceDataSet_zip.html
