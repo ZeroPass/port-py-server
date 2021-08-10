@@ -9,15 +9,13 @@ from pymrtd.pki.x509 import DocumentSignerCertificate, Certificate, CscaCertific
 from port.management.filter import CrlStorageError, Filter, readFromDB_CRL, writeToDB_CRL, writeToDB_CSCA, writeToDB_DSC
 
 from typing import Dict
-from datetime import datetime
 
 
 #from pymrtd import ef
 from pymrtd.pki.ml import CscaMasterList
 from pymrtd.pki import x509
-from port.database.storage.storageManager import PortDatabaseConnection, truncateAll
+from port.database import PortDatabaseConnection, truncateAll
 from port.proto import utils
-
 from port.settings import *
 
 logger = logging.getLogger(__name__)

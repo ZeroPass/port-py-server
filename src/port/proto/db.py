@@ -5,10 +5,18 @@ from abc import ABC, abstractmethod
 from asn1crypto import x509
 from datetime import datetime
 
-from port.database.storage.storageManager import PortDatabaseConnection
-from port.database.storage.challengeStorage import ChallengeStorage
-from port.database.storage.accountStorage import AccountStorage
-from port.database.storage.x509Storage import CertificateRevocationInfo, CertificateStorage, CrlId, PkiDistributionUrl, CrlUpdateInfo, DscStorage, CscaStorage
+from port.database import (
+    AccountStorage,
+    CertificateRevocationInfo,
+    CertificateStorage,
+    ChallengeStorage,
+    PkiDistributionUrl,
+    CrlUpdateInfo,
+    DscStorage,
+    CscaStorage,
+    PortDatabaseConnection
+)
+
 from port.proto.utils import bytes_to_int, sha512_256
 
 from pymrtd.pki.crl import CertificateRevocationList
@@ -19,10 +27,7 @@ from sqlalchemy.orm.scoping import scoped_session
 from sqlalchemy.sql.functions import func
 
 from typing import Final, List, NoReturn, Optional, Tuple, TypeVar, Union
-
-from .challenge import CID, Challenge
-from .user import UserId
-from .types import CertificateId, CountryCode
+from .types import CertificateId, Challenge, CID, CountryCode, CrlId, UserId
 
 class StorageAPIError(Exception):
     pass

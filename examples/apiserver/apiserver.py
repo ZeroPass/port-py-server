@@ -11,7 +11,7 @@ _script_path = Path(os.path.dirname(sys.argv[0]))
 
 from port import log
 from port.api import PortApiServer
-from port.database.storage.x509Storage import CertificateRevocationInfo, CertificateStorage
+from port.database import CertificateRevocationInfo, CertificateStorage
 from port.proto import (
     Challenge,
     CountryCode,

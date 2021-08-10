@@ -11,7 +11,7 @@ from port.proto.proto import PeInvalidOrMissingParam, PeNotFound, PePrecondition
 from port.proto.types import CountryCode
 from unittest import mock
 
-from port.database.storage.x509Storage import CertificateRevocationInfo
+from port.database import CertificateRevocationInfo
 
 _dir = os.path.dirname(os.path.realpath(__file__))
 CERTS_DIR = py.path.local(_dir) /'..'/'tv/certs'

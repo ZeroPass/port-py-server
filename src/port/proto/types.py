@@ -1,8 +1,13 @@
+import base64
+import os
 from asn1crypto.x509 import Name
+from cryptography.hazmat.primitives.hashes import Hash, SHA512_256
+from cryptography.hazmat.backends import default_backend
+from datetime import datetime
 from pymrtd import ef
 from pymrtd.pki import x509
 from typing import cast, Union
-from .utils import bytes_to_int, format_alpha2, int_count_bytes, sha512_256
+from .utils import bytes_to_int, format_alpha2, int_count_bytes, int_to_bytes, sha512_256
 
 class CountryCode(str):
     """
@@ -93,3 +98,86 @@ class SodId(IIntegerId):
     def fromSOD(cls, sod: ef.SOD) -> "SodId":
         assert isinstance(sod, ef.SOD)
         return cls(sha512_256(sod.dump()))
+
+class UserIdError(Exception):
+    pass
+
+class UserId(bytes):
+    """ Represents accounts userId"""
+
+    max_size: int = 20
+
+    def __new__(cls, userId: bytes) -> "UserId":
+        if not isinstance(userId, bytes) or \
+            len(userId) > UserId.max_size:
+            raise UserIdError("Invalid userId data")
+        return cast(UserId, super().__new__(cls, userId))  # type: ignore  # https://github.com/python/typeshed/issues/2630  # noqa: E501
+
+    @staticmethod
+    def fromBase64(b64Str: str) -> "UserId":
+        assert isinstance(b64Str, str)
+        return UserId(base64.b64decode(b64Str))
+
+    def toBase64(self):
+        return str(base64.b64encode(self), 'ascii')
+
+    def __str__(self) -> str:
+        try:
+            return self.decode("utf-8")
+        except: #pylint: disable=bare-except
+            return self.hex()
+
+    def __repr__ (self) -> str:
+        return "UserId({!s})".format(self)
+
+class CID(IIntegerId):
+    """ Represents challenge id """
+    min = -2147483648
+    max = 2147483647
+
+class ChallengeError(Exception):
+    pass
+
+class Challenge(bytes):
+    """ Class generates and holds proto challenge """
+
+    _hash_algo = SHA512_256
+
+    def __new__(cls, challenge: bytes) -> "Challenge":
+        if isinstance(challenge, bytes):
+            if len(challenge) != cls._hash_algo.digest_size:
+                raise ChallengeError("Invalid challenge length")
+            return cast(Challenge, super().__new__(cls, challenge))  # type: ignore  # https://github.com/python/typeshed/issues/2630  # noqa: E501
+        else:
+            raise ChallengeError("Invalid challenge type")
+
+    @property
+    def id(self) -> CID:
+        if not hasattr(self, "_id"):
+            self._id = CID(self) #pylint: disable=attribute-defined-outside-init
+        return self._id
+
+    @staticmethod
+    def fromhex(hexStr: str) -> "Challenge":
+        assert isinstance(hexStr, str)
+        return Challenge(bytes.fromhex(hexStr))
+
+    @staticmethod
+    def fromBase64(b64Str: str) -> "Challenge":
+        assert isinstance(b64Str, str)
+        return Challenge(base64.b64decode(b64Str))
+
+    def toBase64(self):
+        return str(base64.b64encode(self), 'ascii')
+
+    @staticmethod
+    def generate(time: datetime, extraData: bytes) -> "Challenge":
+        assert isinstance(time, datetime)
+        ts = int_to_bytes(int(time.timestamp()))
+        rs = os.urandom(Challenge._hash_algo.digest_size)
+
+        h = Hash(Challenge._hash_algo(), backend=default_backend())
+        h.update(ts)
+        h.update(extraData)
+        h.update(rs)
+        return Challenge(h.finalize())

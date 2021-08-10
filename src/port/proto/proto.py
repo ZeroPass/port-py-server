@@ -1,24 +1,19 @@
-from asn1crypto.cms import IssuerAndSerialNumber
-from pymrtd.ef.sod import SODError
-from pymrtd.pki.cms import SignerInfo
-from pymrtd.pki.crl import CertificateRevocationList
 import port.log as log
+
 from . import utils
-from .challenge import CID, Challenge
 from .db import StorageAPI
 from .session import Session, SessionKey
-from .types import CountryCode
-from .user import UserId
+from .types import Challenge, CID, CountryCode, UserId
 
-from asn1crypto.x509 import Name
+from asn1crypto.cms import IssuerAndSerialNumber
 from datetime import datetime, timedelta
+from port.database import AccountStorage, CertificateStorage, CscaStorage, DscStorage, PkiDistributionUrl
 
 from pymrtd import ef
+from pymrtd.pki.cms import SignerInfo
+from pymrtd.pki.crl import CertificateRevocationList
 from pymrtd.pki.keys import AAPublicKey, SignatureAlgorithm
 from pymrtd.pki.x509 import Certificate, CertificateVerificationError, CscaCertificate, DocumentSignerCertificate
-
-from port.database.storage.accountStorage import AccountStorage
-from port.database.storage.x509Storage import CertificateStorage, CscaStorage, DscStorage, PkiDistributionUrl
 
 from threading import Timer
 from typing import Final, List, Optional, Tuple, Union
@@ -671,7 +666,7 @@ class PortProto:
                 self._log.warning("  error=%s", e)
                 lastException = e
 
-        if isinstance(lastException, SODError):
+        if isinstance(lastException, ef.SODError):
             self._log.error("Failed to validate authenticity of %s file: %s", sod, lastException)
             raise peEfSodNotGenuine from lastException
         if isinstance(lastException, ProtoError):
@@ -703,7 +698,7 @@ class PortProto:
         except CertificateVerificationError as e:
             self._log.error("Failed to verify eMRTD certificate trust chain: %s", e)
             raise peTrustchainVerificationFailed from e
-        except SODError as e:
+        except ef.SODError as e:
             self._log.error("Failed to verify eMRTD EF.SOD file: %s", e)
             raise peInvalidEfSod from e
         except ProtoError as e:

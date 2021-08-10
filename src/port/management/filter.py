@@ -3,8 +3,7 @@ from asn1crypto.cms import CertificateRevocationLists
 from port.proto.utils import bytes_to_int
 
 from port.settings import *
-from port.database.storage.storageManager import PortDatabaseConnection
-from port.database.storage.x509Storage import CrlUpdateInfo, CscaStorage, DscStorage
+from port.database import CrlUpdateInfo, CscaStorage, DscStorage, PortDatabaseConnection
 from port.proto.types import CountryCode
 
 from pymrtd.pki.crl import CertificateRevocationList

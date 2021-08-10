@@ -22,13 +22,26 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import mapper, sessionmaker, scoped_session
 from sqlalchemy.orm.session import Session
 from sqlalchemy.sql.schema import UniqueConstraint
-from port.database.storage.accountStorage import AccountStorage
-from port.database.storage.challengeStorage import ChallengeStorage
-from port.database.storage.x509Storage import CertificateRevocationInfo, CrlUpdateInfo, CscaStorage, DscStorage, PkiDistributionUrl
 
-from port.proto.challenge import Challenge, CID
-from port.proto.types import CertificateId, CountryCode, CrlId, SodId
-from port.proto.user import UserId
+from .account import AccountStorage
+from .challenge import ChallengeStorage
+from .x509 import (
+    CertificateRevocationInfo,
+    CrlUpdateInfo,
+    CscaStorage,
+    DscStorage,
+    PkiDistributionUrl
+)
+
+from port.proto.types import (
+    CertificateId,
+    Challenge,
+    CID,
+    CountryCode,
+    CrlId,
+    SodId,
+    UserId
+)
 
 from typing import Final, Optional
 
