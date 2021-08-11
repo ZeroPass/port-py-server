@@ -7,8 +7,8 @@ from datetime import timedelta
 from pymrtd import ef
 from pymrtd.pki.x509 import CscaCertificate, DocumentSignerCertificate
 from port.proto.db import MemoryDB
-from port.proto.proto import PeInvalidOrMissingParam, PeNotFound, PePreconditionFailed, PortProto, ProtoError, utils
-from port.proto.types import CountryCode
+from port.proto.proto import PeNotFound, PePreconditionFailed, PeUnauthorized, PortProto, ProtoError, utils
+from port.proto.types import CertificateId, CountryCode
 from unittest import mock
 
 from port.database import CertificateRevocationInfo
@@ -76,13 +76,20 @@ def verify_sod_is_genuine_test(sod: ef.SOD, csca: CscaCertificate, dsc: Document
                 raise e
 
         # Test verification should succeed
-        proto._verify_sod_is_genuine(sod)
+        dscStorage = proto._verify_sod_is_genuine(sod)
+        assert dscStorage is not None
 
         # Test DSC is in the database
         ds = db.findDscBySubjectKey(dsc.subjectKey)
-        assert ds is not None
-        assert ds.getCertificate().dump() == dsc.dump()
-        proto._verify_sod_is_genuine(sod) # Performe another check, now with DSC in DB
+        assert ds            is not None
+        assert ds.id         == CertificateId.fromCertificate(dsc)
+        assert dsc.dump()    == ds.getCertificate().dump()
+        assert dscStorage.id == ds.id
+
+         # Performe another check, now with DSC in DB
+        dscStorage = proto._verify_sod_is_genuine(sod)
+        assert dscStorage is not None
+        assert dscStorage.id == ds.id
 
         # Test altering SOD content results in error
         with pytest.raises(PeUnauthorized, match="EF.SOD file not genuine"):
@@ -103,11 +110,13 @@ def verify_sod_is_genuine_test(sod: ef.SOD, csca: CscaCertificate, dsc: Document
 
 @pytest.mark.datafiles(
     CERTS_DIR / 'csca_de_0130846f22c2.der',
-    CERTS_DIR / 'csca_si_448831f1.cer',
-    CERTS_DIR / 'dsc_de_0142fd5cf927.cer',
     CERTS_DIR / 'dsc_de_0130846f2b3e.cer',
-    CERTS_DIR / 'dsc_si_448833b8.cer',
     LDS_DIR  /  'ef.sod_de_9712AB14.bin',
+
+    CERTS_DIR / 'dsc_de_0142fd5cf927.cer',
+
+    CERTS_DIR / 'csca_si_448831f1.cer',
+    CERTS_DIR / 'dsc_si_448833b8.cer',
     LDS_DIR  /  'ef.sod_si_454CB206.bin'
 )
 def test_verify_sod_is_genuine(datafiles):

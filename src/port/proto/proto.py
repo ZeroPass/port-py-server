@@ -580,9 +580,11 @@ class PortProto:
             2.) Check that certificate isn't revoked.
             3.) If certificate has issuer, check issuer certificate is stored in DB and has valid trustchain.
         :param crt: The certificate to verify the trustchain for.
-        :raises: PePreconditionFailed if there is invalid or revoked certificate in the trustchain.
+        :raises PePreconditionFailed: When there is invalid or revoked certificate in the trustchain.
                  Invalid certificate is either not valid at present time, is missing issuer certificate or issuer certificate is invalid.
+        :raises StorageAPIError: If there is an DB storage error when trying to retrieve issuer CSCA certificate of `crt`.
         """
+        assert isinstance(crt, CertificateStorage)
         self._log.debug("Verifying certificate trustchain id=%s C=%s serial=%s issuer_id=%s",
             crt.id, crt.country, crt.serial.hex(), crt.issuerId)
 
@@ -593,7 +595,7 @@ class PortProto:
 
         if self._db.isCertificateRevoked(crt):
             self._log.error("Failed to verify certificate trustchain: Revoked certificate in the chain, id=%s C=%s serial=%s",
-                    crt.id, crt.country, crt.serial.hex())
+                crt.id, crt.country, crt.serial.hex())
             raise peTrustchainCheckFailedRevokedCert
 
         if not crt.isSelfIssued():
@@ -604,7 +606,7 @@ class PortProto:
                 raise peTrustchainCheckFailedNoCsca
             self._verify_cert_trustchain(issuer)
 
-    def _verify_sod_is_genuine(self, sod: ef.SOD) -> None:
+    def _verify_sod_is_genuine(self, sod: ef.SOD) -> DscStorage:
         """
         Verifies EF.SOD file was issued by at least 1 valid country DSC certificate
         aka passive authentication as specivied in ICAO9303 part 11 5.1 Passive Authentication.
@@ -664,8 +666,9 @@ class PortProto:
                     self._verify_cert_trustchain(dsc)
 
                 # Verify Ef.SOD with found DSC certificate
-                sod.verify(si=si, dsc=dsc.getCertificate())
-                return # The EF.SOD was successfully verified
+                self._log.debug("Verifying %s with dscId=%s", sod, dsc.id)
+                sod.verify(si, dsc.getCertificate())
+                return dsc # The EF.SOD was successfully verified
             except Exception as e:
                 self._log.warning("An exception was encountered while trying to verify %s file with SI='%s'", sod, si)
                 self._log.warning("  error=%s", e)
