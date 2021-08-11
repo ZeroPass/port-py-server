@@ -171,7 +171,7 @@ def main():
             raise AssertionError("Registration with altered EF.SOD file succeeded!")
         except Exception as e:
             print("Server returned error: {}\n".format(e))
-            assert str(e) == "{'code': 422, 'message': 'EF.SOD file not genuine'}"
+            assert str(e) == "{'code': 401, 'message': 'EF.SOD file not genuine'}"
 
         try:
             print("Trying to register new user with altered EF.DG15 file ...")

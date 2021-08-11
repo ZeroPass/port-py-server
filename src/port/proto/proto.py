@@ -22,13 +22,15 @@ class ProtoError(Exception):
     """ General protocol exception """
     code = 400
 
-class PeSigVerifyFailed(ProtoError):
-    """ Challenge signature verification error """
+class PeUnauthorized(ProtoError):
     code = 401
 
-class PeMacVerifyFailed(ProtoError):
+class PeSigVerifyFailed(PeUnauthorized):
+    """ Challenge signature verification error """
+
+class PeMacVerifyFailed(PeUnauthorized):
     """ Session mac verification error """
-    code = 401
+
 
 class PeNotFound(ProtoError):
     """ Non existing elements error (e.g.: account doesn't exist, CSCA can't be faound etc...) """
@@ -80,13 +82,13 @@ peDscExists: Final                        = PeConflict("DSC certificate already 
 peDscTooNewOrExpired: Final               = ProtoError("DSC certificate is too new or has expired")
 peDscCantIssuePassport: Final             = PeInvalidOrMissingParam("DSC certificate can't issuer biometric passport")
 peDscNotFound: Final                      = PeNotFound("DSC certificate not found")
+peEfSodNotGenuine: Final                  = PeUnauthorized("EF.SOD file not genuine")
 peInvalidCsca: Final                      = PeInvalidOrMissingParam("Invalid CSCA certificate")
 peInvalidDsc: Final                       = PeInvalidOrMissingParam("Invalid DSC certificate")
 peInvalidCrl: Final                       = PeInvalidOrMissingParam("Invalid CRL")
 peInvalidEfSod: Final                     = PeInvalidOrMissingParam("Invalid EF.SOD")
 peMissingAAInfoInDg14: Final              = PePreconditionRequired("Missing ActiveAuthenticationInfo in DG14 file")
 peMissingParamAASigAlgo: Final            = PeInvalidOrMissingParam("Missing param aaSigAlgo")
-peEfSodNotGenuine: Final                  = PeInvalidOrMissingParam("EF.SOD file not genuine")
 peTrustchainCheckFailedExpiredCert: Final = PePreconditionFailed("Expired certificate in the trustchain")
 peTrustchainCheckFailedNoCsca: Final      = PePreconditionFailed("Missing issuer CSCA certificate in the trustchain")
 peTrustchainCheckFailedRevokedCert: Final = PePreconditionFailed("Revoked certificate in the trustchain")

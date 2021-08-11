@@ -85,7 +85,7 @@ def verify_sod_is_genuine_test(sod: ef.SOD, csca: CscaCertificate, dsc: Document
         proto._verify_sod_is_genuine(sod) # Performe another check, now with DSC in DB
 
         # Test altering SOD content results in error
-        with pytest.raises(PeInvalidOrMissingParam, match="EF.SOD file not genuine"):
+        with pytest.raises(PeUnauthorized, match="EF.SOD file not genuine"):
             proto._verify_sod_is_genuine(alter_sod(sod))
 
         # Test verifying SOD fails when CSCA is revoked
