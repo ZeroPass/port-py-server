@@ -1,4 +1,4 @@
-from port.proto.types import UserId
+from port.proto.types import SodId, UserId
 from port.proto.session import Session
 
 from pymrtd import ef

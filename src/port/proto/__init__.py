@@ -8,7 +8,7 @@ from port.proto.db import (
     StorageAPIError
 )
 
-from .proto import (
+from port.proto.proto import (
     PortProto,
     PeConflict,
     PeChallengeExpired,
@@ -17,14 +17,24 @@ from .proto import (
     ProtoError
 )
 
-from .session import (
+from port.proto.session import (
     Session,
     SessionKey
 )
 
-from .types import CertificateId, Challenge, ChallengeError, CID, CountryCode, CrlId, SodId, UserId, UserIdError
+from port.proto.types import (
+    CertificateId,
+    Challenge,
+    ChallengeError,
+    CID,
+    CountryCode,
+    CrlId,
+    SodId,
+    UserId,
+    UserIdError
+)
 
-import port.proto.utils as utils
+from port.proto import utils
 
 __all__ = [
     "CertificateId",

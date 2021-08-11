@@ -1,15 +1,11 @@
-from datetime import datetime
 import enum
-
 from asn1crypto import x509
 from asn1crypto.crl import RevokedCertificate
-
+from datetime import datetime
 from port.proto.types import CertificateId, CountryCode, CrlId
 from port.proto.utils import bytes_to_int, int_to_bytes, sha512_256
-
 from pymrtd.pki.crl import CertificateRevocationList
 from pymrtd.pki.x509 import Certificate, CscaCertificate, DocumentSignerCertificate
-
 from typing import Optional, Union
 
 class CertificateStorage:

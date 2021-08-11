@@ -1,13 +1,11 @@
 import port.log as log
 
-from . import utils
-from .db import StorageAPI
-from .session import Session, SessionKey
-from .types import Challenge, CID, CountryCode, UserId
-
 from asn1crypto.cms import IssuerAndSerialNumber
 from datetime import datetime, timedelta
-from port.database import AccountStorage, CertificateStorage, CscaStorage, DscStorage, PkiDistributionUrl
+
+from port.database import CertificateStorage, CscaStorage, DscStorage, PkiDistributionUrl
+from port.database.account import AccountStorage
+from port.database.sod import SodTrack
 
 from pymrtd import ef
 from pymrtd.pki.cms import SignerInfo
@@ -17,6 +15,11 @@ from pymrtd.pki.x509 import Certificate, CertificateVerificationError, CscaCerti
 
 from threading import Timer
 from typing import Final, List, Optional, Tuple, Union
+
+from . import utils
+from .db import StorageAPI, StorageAPIError
+from .session import Session, SessionKey
+from .types import Challenge, CID, CountryCode, UserId
 
 class ProtoError(Exception):
     """ General protocol exception """
