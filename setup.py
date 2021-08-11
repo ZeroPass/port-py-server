@@ -23,6 +23,7 @@ setup(
     python_requires=">=3.9",
     install_requires=[
         'coloredlogs>=15.0.1',
+        'cryptography>=3.4.7',
         'json-rpc>=1.13.0',
         'ldif3>=3.2.2',
         'pycountry>=20.7.3',
