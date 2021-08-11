@@ -695,9 +695,9 @@ class PortProto:
         try:
             self._log.info("Verifying eMRTD trust chain for %s %s %s", sod, dg14 if dg14 is not None else "", dg15)
             if dg14 is not None:
-                self.__verify_sod_contains_hash_of(sod, dg14)
+                self._verify_sod_contains_hash_of(sod, dg14)
 
-            self.__verify_sod_contains_hash_of(sod, dg15)
+            self._verify_sod_contains_hash_of(sod, dg15)
             self._verify_sod_is_genuine(sod)
             self._log.success("eMRTD trust chain was successfully verified!")
         except CertificateVerificationError as e:
@@ -769,12 +769,19 @@ class PortProto:
         date       = date.replace(tzinfo=None)
         return utils.has_expired(expireTime, date)
 
-    def __verify_sod_contains_hash_of(self, sod: ef.SOD, dg: ef.DataGroup):
+    def _verify_sod_contains_hash_of(self, sod: ef.SOD, dg: ef.DataGroup) -> None:
+        """
+        Verifies that EF.SOD contains hash of `dg` file.
+        :param sod: The EF.SOD.
+        :param dg: The EF.DG file to verify.
+        :raises peInvalidDgFile: If `sod` doesn't contain hash for `dg` or
+                                 the hash of `dg` is different than hash stored in `sod`.
+        """
         assert isinstance(sod, ef.SOD)
         assert isinstance(dg, ef.DataGroup)
+        self._log.debug("Verifying %s contains matching hash of file %s", sod, dg)
 
-        self._log.debug("Verifying EF.SOD contains matching hash of file %s", dg)
-        if self._log.getEffectiveLevel() <= log.VERBOSE:
+        if self._log.getEffectiveLevel() <= log.VERBOSE: # verbose log
             sod_dghv = sod.ldsSecurityObject.dgHashes.find(dg.number)
             self._log.verbose("EF.SOD contains hash of %s file: %s", dg.number.native, (sod_dghv is not None))
             if sod_dghv is not None:
