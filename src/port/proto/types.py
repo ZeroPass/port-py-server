@@ -86,9 +86,9 @@ class CrlId(IIntegerId):
 
 class SodId(IIntegerId):
     """
-    Represents ef.SOD ID as uint64
+    Represents ef.SOD ID as uint64.
     SodId is calculated by taking the first 8 bytes of SHA-512/256 hash
-    over SOD ASN.1 DER encoded bytes
+    over ASN.1 DER encoded bytes of EF.SOD.ldsSecurityObject.
     """
 
     min = -9223372036854775808 # min 64 bit int
@@ -96,8 +96,19 @@ class SodId(IIntegerId):
 
     @classmethod
     def fromSOD(cls, sod: ef.SOD) -> "SodId":
+        """
+        Generates SodId from `sod`.
+        The SodId is generated from SHA-512/256 hash of
+        ASN.1 DER encoded bytes of EF.SOD.ldsSecurityObject.
+        Going this way should produce exact same SodId for 2 EF.SODs
+        with equal LdsSecurityObject content but different or altered signers.
+        This prevents EF.SOD registration melability.
+
+        :param sod: The EF.SOD to generate SodId.
+        :return: SodId of `sod`.
+        """
         assert isinstance(sod, ef.SOD)
-        return cls(sha512_256(sod.dump()))
+        return cls(sha512_256(sod.ldsSecurityObject.dump()))
 
 class UserIdError(Exception):
     pass
