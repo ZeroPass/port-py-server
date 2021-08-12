@@ -6,7 +6,6 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
-    future,
     Integer,
     LargeBinary,
     MetaData,
@@ -14,17 +13,18 @@ from sqlalchemy import (
     Table,
     Text,
     TypeDecorator,
-    VARBINARY
+    VARBINARY,
+    UniqueConstraint
 )
-
+from sqlalchemy.future import Engine
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import mapper, sessionmaker, scoped_session
 from sqlalchemy.orm.session import Session
-from sqlalchemy.sql.schema import UniqueConstraint
 
 from .account import AccountStorage
 from .challenge import ChallengeStorage
+from .sod import SodTrack
 from .x509 import (
     CertificateRevocationInfo,
     CrlUpdateInfo,
@@ -166,6 +166,29 @@ protoChallenges: Final = Table('proto_challenges', metadata,
     Column("expires"  , DateTime(timezone=False), nullable=False                                   )
 )
 
+# table contais info about MRTD EF.SOD files which were used to attest accounts
+sod: Final = Table('sod', metadata,
+    Column('id'       , SodIdSqlType    , primary_key=True, autoincrement=False                          ),
+    Column('dscId'    , CertIdSqlType() , ForeignKey('dsc.id'), nullable=False, unique=False, index=True ),
+    Column('hashAlgo' , String(256)     , nullable=False, unique=False, index=True                       ),
+    Column('dg1Hash'  , VARBINARY(256)  , nullable=True , unique=True, index=True                        ),
+    Column('dg2Hash'  , VARBINARY(256)  , nullable=True , unique=True, index=True                        ),
+    Column('dg3Hash'  , VARBINARY(256)  , nullable=True , unique=True, index=True                        ),
+    Column('dg4Hash'  , VARBINARY(256)  , nullable=True , unique=True, index=True                        ),
+    Column('dg5Hash'  , VARBINARY(256)  , nullable=True , unique=True, index=True                        ),
+    Column('dg6Hash'  , VARBINARY(256)  , nullable=True , unique=True, index=True                        ),
+    Column('dg7Hash'  , VARBINARY(256)  , nullable=True , unique=True, index=True                        ),
+    Column('dg8Hash'  , VARBINARY(256)  , nullable=True , unique=True, index=True                        ),
+    Column('dg9Hash'  , VARBINARY(256)  , nullable=True , unique=True, index=True                        ),
+    Column('dg10Hash'  , VARBINARY(256) , nullable=True , unique=True, index=True                        ),
+    Column('dg11Hash'  , VARBINARY(256) , nullable=True , unique=True, index=True                        ),
+    Column('dg12Hash'  , VARBINARY(256) , nullable=True , unique=True, index=True                        ),
+    Column('dg13Hash'  , VARBINARY(256) , nullable=True , unique=True, index=True                        ),
+    Column('dg14Hash'  , VARBINARY(256) , nullable=True , unique=True, index=True                        ),
+    Column('dg15Hash'  , VARBINARY(256) , nullable=True , unique=True, index=True                        ),
+    Column('dg16Hash'  , VARBINARY(256) , nullable=True , unique=True, index=True                        ),
+)
+
 # table contains info about attested accounts
 accounts: Final = Table('accounts', metadata,
     Column('uid'        , UserIdSqlType(), primary_key=True), # uid = UserId
@@ -190,7 +213,7 @@ class PortDatabaseConnection:
     _base = None
 
     @property
-    def engine(self) -> future.Engine:
+    def engine(self) -> Engine:
         return self._engine
 
     @property
@@ -259,11 +282,14 @@ class PortDatabaseConnection:
         # challenge
         mapper(ChallengeStorage, protoChallenges)
 
+        # sod
+        mapper(SodTrack, sod)
+
         # account
         mapper(AccountStorage, accounts)
 
         #creating tables
-        self._base.metadata.create_all(self._engine, tables=[crlUpdateInfo, crt, pkiDistributionInfo, dsc, csca, protoChallenges, accounts])
+        self._base.metadata.create_all(self._engine, tables=[crlUpdateInfo, crt, pkiDistributionInfo, dsc, csca, protoChallenges, sod, accounts])
 
     @staticmethod
     def __buildUrl(dialect:str, host:str, db: str, username: str, password: str):

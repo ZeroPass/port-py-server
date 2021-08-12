@@ -8,6 +8,7 @@ from datetime import datetime
 from port.database.account import AccountStorage
 from port.database.challenge import ChallengeStorage
 from port.database.connection import PortDatabaseConnection
+from port.database.sod import SodTrack
 from port.database.x509 import (
     CertificateRevocationInfo,
     CertificateStorage,
@@ -28,7 +29,7 @@ from sqlalchemy.orm.query import Query
 from sqlalchemy.sql.functions import func
 
 from typing import Final, List, NoReturn, Optional, Tuple, TypeVar, Union
-from .types import CertificateId, Challenge, CID, CountryCode, CrlId, UserId
+from .types import CertificateId, Challenge, CID, CountryCode, CrlId, SodId, UserId
 
 class StorageAPIError(Exception):
     pass
@@ -45,6 +46,7 @@ seChallengeNotFound: Final     = SeEntryNotFound("Challenge not found")
 seCrlUpdateInfoNotFound: Final = SeEntryNotFound("CRL Update Info not found")
 seCscaExists: Final            = SeEntryAlreadyExists("CSCA already exists")
 seDscExists: Final             = SeEntryAlreadyExists("DSC already exists")
+seEfSodExists: Final           = SeEntryAlreadyExists("EF.SOD already exists")
 
 #pylint: disable=too-many-public-methods
 
@@ -115,6 +117,54 @@ class StorageAPI(ABC):
     @abstractmethod
     def getAccountExpiry(self, uid: UserId) -> datetime:
         """ Get account's credentials expiry """
+
+    @abstractmethod
+    def addSodTrack(self, sod: SodTrack) -> None:
+        """
+        Insert EF.SOD track into database.
+        :param sod: EF.SOD track to add.
+        """
+
+    @abstractmethod
+    def deleteSodTrack(self, sodId: SodId) -> None:
+        """
+        Deletes EF.SOD track from database.
+        :param sodId: Id of the EF.SOD track to remove from database
+        """
+
+    @abstractmethod
+    def findSodTrack(self, sodId: SodId) -> Optional[SodTrack]:
+        """
+        Returns EF.SOD track from database.
+        :param sodId: Id of the EF.SOD track to retrieve.
+        :return: SodTrack object if `sodId` exists, otherwise None.
+        """
+
+    @abstractmethod
+    def findMatchingSodTracks(self, sod: SodTrack) -> Optional[List[SodTrack]]:
+        """
+        Returns list of EF.SOD track from database that matches part of content of `sod`.
+        The query is pulled over either the matching SodId, or hashAlgo and any of the dg hashes match.
+        :param sod: The EF.SOD track to match content of.
+        :return: list of SodTrack or None if no matching SodTrack is found.
+        """
+
+    @abstractmethod
+    def sodTrackMatches(self, sod: SodTrack) -> bool:
+        """
+        Checks if in the database exists any such EF.SOD track that has
+        either the same SodId, or hashAlgo and any of the dg hashes match.
+        Note, the point of such extensive check is to possible detect any "sybil" passport
+        that had EF.SOD reissued but some of EF.DG files remained the same as in the old passport.
+
+        For example:
+            Passport was lost, a country reissues new passport which contains
+            the same EF.DG2 (owner image) as the old passport.
+            In such case, this function should return True.
+
+        :param sod: The EF.SOD track check for.
+        :return: True if EF.SOD track exists, otherwise False.
+        """
 
     # eMRTD PKI certificates methods
     @abstractmethod
@@ -532,6 +582,141 @@ class DatabaseAPI(StorageAPI):
                 self._log.debug(":getAccountExpiry(): Account not found")
                 raise seAccountNotFound
             return accnt.validUntil
+        except Exception as e:
+            self.__handle_exception(e)
+
+    def addSodTrack(self, sod: SodTrack) -> None:
+        """
+        Insert EF.SOD track into database.
+        :param sod: EF.SOD track to add.
+        :raises DatabaseAPIError: On DB connection errors.
+        :raises seEfSodExists: if there is EF.SOD track that has the same sodId or hashAlgo and any of the dgHashes match.
+        """
+        assert isinstance(sod, SodTrack)
+        self._log.debug("Inserting new EF.SOD track into database sodId=%s", sod.id)
+        try:
+            if self.sodTrackMatches(sod):
+                raise seEfSodExists
+            self.__db.add(sod)
+            self.__db.commit()
+        except Exception as e:
+            self.__handle_exception(e)
+
+    def deleteSodTrack(self, sodId: SodId) -> None:
+        """
+        Deletes EF.SOD track from database.
+        :param sodId: Id of the EF.SOD track to remove from database
+        :raises DatabaseAPIError: On DB connection errors.
+        """
+        assert isinstance(sodId, SodId)
+        self._log.debug("Deleting EF.SOD track from database sodId=%s", sodId)
+        try:
+            self.__db \
+                .query(SodTrack.id) \
+                .filter(SodTrack.id == sodId) \
+                .delete()
+        except Exception as e:
+            self.__handle_exception(e)
+
+    def findSodTrack(self, sodId: SodId) -> Optional[SodTrack]:
+        """
+        Returns EF.SOD track from database.
+        :param sodId: Id of the EF.SOD track to retrieve.
+        :return: SodTrack object if `sodId` exists, otherwise None.
+        :raises DatabaseAPIError: On DB connection errors.
+        """
+        assert isinstance(sodId, SodId)
+        try:
+            return self.__db \
+                .query(SodTrack) \
+                .filter(SodTrack.id == sodId) \
+                .first()
+        except Exception as e:
+            self.__handle_exception(e)
+
+    def findMatchingSodTracks(self, sod: SodTrack) -> Optional[List[SodTrack]]:
+        """
+        Returns list of EF.SOD track from database that matches part of content of `sod`.
+        The query is pulled over either the matching SodId, or hashAlgo and any of the dg hashes match.
+        :param sod: The EF.SOD track to match content of.
+        :return: list of SodTrack or None if no matching SodTrack is found.
+        :raises DatabaseAPIError: On DB connection errors.
+        """
+        assert isinstance(sod, SodTrack)
+        try:
+            # Check if sodId exist in db or (hashAlgo is same and one of dgHashes exists in DB)
+            filterByHashes = None
+            if sod.hashAlgo is not None:
+                filterByHashes = and_(SodTrack.hashAlgo == sod.hashAlgo, \
+                    or_(sod.dg1Hash is not None and SodTrack.dg1Hash == sod.dg1Hash, \
+                        sod.dg2Hash is not None and SodTrack.dg2Hash == sod.dg2Hash, \
+                        sod.dg3Hash is not None and SodTrack.dg3Hash == sod.dg3Hash, \
+                        sod.dg4Hash is not None and SodTrack.dg4Hash == sod.dg4Hash, \
+                        sod.dg5Hash is not None and SodTrack.dg5Hash == sod.dg5Hash, \
+                        sod.dg6Hash is not None and SodTrack.dg6Hash == sod.dg6Hash, \
+                        sod.dg7Hash is not None and SodTrack.dg7Hash == sod.dg7Hash, \
+                        sod.dg8Hash is not None and SodTrack.dg8Hash == sod.dg8Hash, \
+                        sod.dg9Hash is not None and SodTrack.dg9Hash == sod.dg9Hash, \
+                        sod.dg10Hash is not None and SodTrack.dg10Hash == sod.dg10Hash, \
+                        sod.dg11Hash is not None and SodTrack.dg11Hash == sod.dg11Hash, \
+                        sod.dg12Hash is not None and SodTrack.dg12Hash == sod.dg12Hash, \
+                        sod.dg13Hash is not None and SodTrack.dg13Hash == sod.dg13Hash, \
+                        sod.dg14Hash is not None and SodTrack.dg14Hash == sod.dg14Hash, \
+                        sod.dg15Hash is not None and SodTrack.dg15Hash == sod.dg15Hash, \
+                        sod.dg16Hash is not None and SodTrack.dg16Hash == sod.dg16Hash  \
+                )).self_group()
+            l = self.__db \
+                .query(SodTrack) \
+                .filter(or_(SodTrack.id == sod.id, filterByHashes is not None and filterByHashes)) \
+                .all()
+            return l if len(l) > 0 else None
+        except Exception as e:
+            self.__handle_exception(e)
+
+    def sodTrackMatches(self, sod: SodTrack) -> bool:
+        """
+        Checks if in the database exists any such EF.SOD track that has
+        either the same SodId, or hashAlgo and any of the dg hashes match.
+        When hashAlgo is None the check by dg hashes is not performed.
+        Note, the point of such extensive check is to possible detect any "sybil" passport
+        that had EF.SOD reissued but some of EF.DG files remained the same as in the old passport.
+
+        For example:
+            Passport was lost, a country reissues new passport which contains
+            the same EF.DG2 (owner image) as the old passport.
+            In such case, this function should return True.
+
+        :param sod: The EF.SOD track check for.
+        :return: True if EF.SOD track exists, otherwise False.
+        :raises DatabaseAPIError: On DB connection errors.
+        """
+        assert isinstance(sod, SodTrack)
+        try:
+            # Check if sodId exist in db or (hashAlgo is same and one of dgHashes exists in DB)
+            filterByHashes = None
+            if sod.hashAlgo is not None:
+                filterByHashes = and_(SodTrack.hashAlgo == sod.hashAlgo, \
+                    or_(sod.dg1Hash is not None and SodTrack.dg1Hash == sod.dg1Hash, \
+                        sod.dg2Hash is not None and SodTrack.dg2Hash == sod.dg2Hash, \
+                        sod.dg3Hash is not None and SodTrack.dg3Hash == sod.dg3Hash, \
+                        sod.dg4Hash is not None and SodTrack.dg4Hash == sod.dg4Hash, \
+                        sod.dg5Hash is not None and SodTrack.dg5Hash == sod.dg5Hash, \
+                        sod.dg6Hash is not None and SodTrack.dg6Hash == sod.dg6Hash, \
+                        sod.dg7Hash is not None and SodTrack.dg7Hash == sod.dg7Hash, \
+                        sod.dg8Hash is not None and SodTrack.dg8Hash == sod.dg8Hash, \
+                        sod.dg9Hash is not None and SodTrack.dg9Hash == sod.dg9Hash, \
+                        sod.dg10Hash is not None and SodTrack.dg10Hash == sod.dg10Hash, \
+                        sod.dg11Hash is not None and SodTrack.dg11Hash == sod.dg11Hash, \
+                        sod.dg12Hash is not None and SodTrack.dg12Hash == sod.dg12Hash, \
+                        sod.dg13Hash is not None and SodTrack.dg13Hash == sod.dg13Hash, \
+                        sod.dg14Hash is not None and SodTrack.dg14Hash == sod.dg14Hash, \
+                        sod.dg15Hash is not None and SodTrack.dg15Hash == sod.dg15Hash, \
+                        sod.dg16Hash is not None and SodTrack.dg16Hash == sod.dg16Hash  \
+                )).self_group()
+            q = self.__db \
+                .query(SodTrack) \
+                .filter(or_(SodTrack.id == sod.id, filterByHashes is not None and filterByHashes))
+            return self._exists(q)
         except Exception as e:
             self.__handle_exception(e)
 
@@ -997,11 +1182,12 @@ class MemoryDB(StorageAPI):
         self._d = {
             'proto_challenges' : {},
             'accounts' : {},
+            'sod'      : {},                # <sodId, SodTrack>
             'cscas'    : defaultdict(list), # <country, List[CscaStorage]>
             'dscs'     : defaultdict(list), # <country, List[DscStorage]>
             'crlui'    : defaultdict(dict), # <country, <CrlId, CrlUpdateInfo>>
             'crt'      : defaultdict(dict), # <country, <CertificateRevocationInfo.id, CertificateRevocationInfo>>
-            'pkidurl'  : {} # <PkiDistributionUrl.id, LPkiDistributionUrl>
+            'pkidurl'  : {}                 # <PkiDistributionUrl.id, LPkiDistributionUrl>
         }
 
     def getChallenge(self, cid: CID) -> Tuple[Challenge, datetime]:
@@ -1089,6 +1275,96 @@ class MemoryDB(StorageAPI):
             raise seAccountNotFound
         a = self.getAccount(uid)
         return a.validUntil
+
+    def addSodTrack(self, sod: SodTrack) -> None:
+        """
+        Insert EF.SOD track into database.
+        :param sod: EF.SOD track to add.
+        """
+        assert isinstance(sod, SodTrack)
+        self._log.debug("Inserting new EF.SOD track into database sodId=%s", sod.id)
+        if self.sodTrackMatches(sod):
+            raise seEfSodExists
+        self._d['sod'][sod.id] = sod
+
+    def deleteSodTrack(self, sodId: SodId) -> None:
+        """
+        Deletes EF.SOD track from database.
+        :param sodId: Id of the EF.SOD track to remove from database
+        """
+        assert isinstance(sodId, SodId)
+        self._log.debug("Deleting EF.SOD track from database sodId=%s", sodId)
+        if sodId in self._d['sod']:
+            del self._d['sod']
+
+
+    def findSodTrack(self, sodId: SodId) -> Optional[SodTrack]:
+        """
+        Returns EF.SOD track from database.
+        :param sodId: Id of the EF.SOD track to retrieve.
+        :return: SodTrack object if `sodId` exists, otherwise None.
+        """
+        if sodId in self._d['sod']:
+            return self._d['sod']
+        return None
+
+    @staticmethod
+    def _anyOfDgHash(l: SodTrack, r: SodTrack):
+        return (l.dg1Hash is not None and r.dg1Hash == l.dg1Hash) or \
+            (l.dg2Hash is not None and r.dg2Hash == l.dg2Hash) or \
+            (l.dg3Hash is not None and r.dg3Hash == l.dg3Hash) or \
+            (l.dg4Hash is not None and r.dg4Hash == l.dg4Hash) or \
+            (l.dg5Hash is not None and r.dg5Hash == l.dg5Hash) or \
+            (l.dg6Hash is not None and r.dg6Hash == l.dg6Hash) or \
+            (l.dg7Hash is not None and r.dg7Hash == l.dg7Hash) or \
+            (l.dg8Hash is not None and r.dg8Hash == l.dg8Hash) or \
+            (l.dg9Hash is not None and r.dg9Hash == l.dg9Hash) or \
+            (l.dg10Hash is not None and r.dg10Hash == l.dg10Hash) or \
+            (l.dg11Hash is not None and r.dg11Hash == l.dg11Hash) or \
+            (l.dg12Hash is not None and r.dg12Hash == l.dg12Hash) or \
+            (l.dg13Hash is not None and r.dg13Hash == l.dg13Hash) or \
+            (l.dg14Hash is not None and r.dg14Hash == l.dg14Hash) or \
+            (l.dg15Hash is not None and r.dg15Hash == l.dg15Hash) or \
+            (l.dg16Hash is not None and r.dg16Hash == l.dg16Hash)
+
+    def findMatchingSodTracks(self, sod: SodTrack) -> Optional[List[SodTrack]]:
+        """
+        Returns list of EF.SOD track from database that matches part of content of `sod`.
+        The query is pulled over either the matching SodId, or hashAlgo and any of the dg hashes match.
+        :param sod: The EF.SOD track to match content of.
+        :return: list of SodTrack or None if no matching SodTrack is found.
+        """
+        l: List[SodTrack] = []
+        if sod.id in self._d['sod']:
+            l.append(self._d['sod'][sod.id])
+        for s in self._d['sod'].values():
+            if s.id != sod.id and s.hashAlgo == sod.hashAlgo \
+                and MemoryDB._anyOfDgHash(sod, s):
+                l.append(s)
+        return l if len(l) > 0 else None
+
+    def sodTrackMatches(self, sod: SodTrack) -> bool:
+        """
+        Checks if in the database exists any such EF.SOD track that has
+        either the same SodId, or hashAlgo and any of the dg hashes match.
+        Note, the point of such extensive check is to possible detect any "sybil" passport
+        that had EF.SOD reissued but some of EF.DG files remained the same as in the old passport.
+
+        For example:
+            Passport was lost, a country reissues new passport which contains
+            the same EF.DG2 (owner image) as the old passport.
+            In such case, this function should return True.
+
+        :param sod: The EF.SOD track check for.
+        :return: True if EF.SOD track exists, otherwise False.
+        """
+        if sod.id in self._d['sod']:
+            return True
+        for s in self._d['sod'].values():
+            if s.hashAlgo == sod.hashAlgo \
+                and MemoryDB._anyOfDgHash(sod, s):
+                return True
+        return False
 
     def addCsca(self, csca: CscaCertificate, issuerId: Optional[CertificateId] = None) -> CertificateId:
         """
