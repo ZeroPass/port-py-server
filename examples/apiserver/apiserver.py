@@ -1,5 +1,10 @@
 #!/usr/bin/python
-import argparse, coloredlogs, os, signal, sys, ssl
+import argparse
+import coloredlogs
+import os
+import signal
+import sys
+import ssl
 
 from collections import defaultdict
 from datetime import datetime, timedelta
@@ -26,17 +31,15 @@ from port.proto import (
 )
 from port.settings import Config, DbConfig, ServerConfig
 
-from pymrtd import ef
 from pymrtd.pki import x509
-
 from typing import Callable, Tuple
-
 
 class DevProto(PortProto):
     def __init__(self, storage: StorageAPI, cttl: int, fc: bool, no_tcv: bool):
         super().__init__(storage, cttl)
         self._fc = fc
         self._no_tcv = no_tcv
+        self._log = log.getLogger("port.dev_proto")
 
     def createNewChallenge(self, uid: UserId) -> Tuple[Challenge, datetime]:
         if self._fc:
@@ -53,11 +56,12 @@ class DevProto(PortProto):
     def _get_default_account_expiration(self):
         return utils.time_now() + timedelta(minutes=1)
 
-    def _verify_sod_is_genuine(self, sod: ef.SOD): #pylint: disable=unused-private-member
+    def _verify_cert_trustchain(self, crt: CertificateStorage) -> None:
         if not self._no_tcv:
-            super()._verify_sod_is_genuine(sod)
+            super()._verify_cert_trustchain(crt)
         else:
-            self._log.warning("Skipping verification of eMRTD certificate trustchain")
+            self._log.warning("Skipping verification of certificate trustchain")
+
 
 class DevApiServer(PortApiServer):
     def __init__(self, db: StorageAPI, config: Config, fc=False, no_tcv=False):
