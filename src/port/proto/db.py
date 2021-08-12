@@ -22,8 +22,9 @@ from port.proto.utils import bytes_to_int, sha512_256
 from pymrtd.pki.crl import CertificateRevocationList
 from pymrtd.pki.x509 import Certificate, CscaCertificate, DocumentSignerCertificate
 
-from sqlalchemy import or_, and_
+from sqlalchemy import and_, literal, or_
 from sqlalchemy.orm.scoping import scoped_session
+from sqlalchemy.orm.query import Query
 from sqlalchemy.sql.functions import func
 
 from typing import Final, List, NoReturn, Optional, Tuple, TypeVar, Union
@@ -404,9 +405,8 @@ class DatabaseAPI(StorageAPI):
         try:
             cs = ChallengeStorage(uid, challenge, expires)
 
-            if self.__db.query(ChallengeStorage) \
-                .filter(or_(ChallengeStorage.id == challenge.id, ChallengeStorage.uid == uid))\
-                .count() > 0:
+            if self._exists(self.__db.query(ChallengeStorage.id) \
+                .filter(or_(ChallengeStorage.id == challenge.id, ChallengeStorage.uid == uid))):
                 raise seChallengeExists
 
             self.__db.add(cs)
@@ -442,16 +442,22 @@ class DatabaseAPI(StorageAPI):
         except Exception as e:
             self.__handle_exception(e)
 
+    def _exists(self, q: Query) -> bool:
+        #https://docs.sqlalchemy.org/en/14/orm/query.html?highlight=count#sqlalchemy.orm.Query.exists
+        return self.__db \
+            .query(literal(True)) \
+            .filter(q.exists()) \
+            .scalar()
+
     def accountExists(self, uid: UserId) -> bool:
         """
         :raises: DatabaseAPIError on DB connection errors.
         """
         assert isinstance(uid, UserId)
         try:
-            return self.__db \
-                .query(AccountStorage) \
-                .filter(AccountStorage.uid == uid) \
-                .count() > 0
+            return self._exists(self.__db \
+                .query(AccountStorage.uid) \
+                .filter(AccountStorage.uid == uid))
         except Exception as e:
             self.__handle_exception(e)
 
@@ -554,7 +560,7 @@ class DatabaseAPI(StorageAPI):
         assert isinstance(csca, CscaStorage)
         self._log.debug("Inserting new CSCA into database C=%s serial=%s", csca.country, csca.serial.hex())
         try:
-            if self.__db.query(CscaStorage).filter(CscaStorage.id == csca.id).count() > 0:
+            if self._exists(self.__db.query(CscaStorage.id).filter(CscaStorage.id == csca.id)):
                 raise seCscaExists
             self.__db.add(csca)
             self.__db.commit()
@@ -692,7 +698,7 @@ class DatabaseAPI(StorageAPI):
         assert isinstance(dsc, DscStorage)
         self._log.debug("Inserting new DSC into database C=%s serial=%s", dsc.country, dsc.serial.hex())
         try:
-            if self.__db.query(DscStorage).filter(DscStorage.id == dsc.id).count() > 0:
+            if self._exists(self.__db.query(DscStorage.id).filter(DscStorage.id == dsc.id)):
                 raise seDscExists
             self.__db.add(dsc)
             self.__db.commit()
@@ -921,7 +927,7 @@ class DatabaseAPI(StorageAPI):
                 .filter_by(country = country) \
                 .filter(or_(CertificateRevocationInfo.certId == certId,
                             CertificateRevocationInfo.serial == serial))
-            return q.count() > 0
+            return self._exists(q)
         except Exception as e:
             self.__handle_exception(e)
 
