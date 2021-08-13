@@ -72,6 +72,7 @@ class PeCredentialsExpired(ProtoError):
 
 peAccountAlreadyRegistered: Final         = PeConflict("Account already registered")
 peAccountExpired: Final                   = PeCredentialsExpired("Account has expired")
+peAccountNotAttested: Final               = PeUnauthorized("Account is not attested")
 peChallengeExpired: Final                 = PeChallengeExpired("Challenge has expired")
 peChallengeVerificationFailed: Final      = PeSigVerifyFailed("Challenge signature verification failed")
 peCscaExists: Final                       = PeConflict("CSCA certificate already exists")
@@ -334,20 +335,34 @@ class PortProto:
             self._log.error("Login cannot continue due to max no. of anonymous logins and no DG1 file was provided!")
             raise peDg1Required
 
-        # 2. If we got DG1 verify EF.SOD contains its hash,
+        # 2. Verify challenge
+        self.__verify_challenge(cid, a.getAAPublicKey(), csigs, a.getAASigAlgo())
+
+        # 3. Verify account is still valid
+        self._log.debug("Verifying account attestation is still valid for sodId=%s", a.sodId)
+        sod = self._db.findSodTrack(a.sodId)
+        if sod is None:
+            raise peAccountNotAttested
+
+        dsc = self._db.findDsc(sod.dscId)
+        if dsc is None:
+            raise peAccountNotAttested
+        self._verify_cert_trustchain(dsc)
+
+        # 4. If we got DG1 verify EF.SOD contains its hash,
         #    and assign it to the account
         if dg1 is not None:
             self._log.debug("Verifying received DG1(surname=%s name=%s) file is valid ...", dg1.mrz.surname, dg1.mrz.name)
-            sod = a.getSOD()
-            self.__verify_sod_contains_hash_of(sod, dg1)
+            #self._verify_sod_contains_hash_of(sod, dg1)
+            if not sod.contains(dg1):
+                self._log.error("EF.SOD doesn't contain %s", dg1)
+                raise peInvalidDgFile(dg1.number)
             a.setDG1(dg1)
 
         # 3. Verify account credentials haven't expired
         if utils.has_expired(a.validUntil, utils.time_now()):
             raise peAccountExpired
 
-        # 4. Verify challenge
-        self.__verify_challenge(cid, a.getAAPublicKey(), csigs, a.getAASigAlgo())
         self._db.deleteChallenge(cid) # Verifying has succeeded, delete challenge from db
 
         # 5. Generate session key and session
