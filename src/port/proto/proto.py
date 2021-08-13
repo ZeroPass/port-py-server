@@ -8,6 +8,7 @@ from port.database.account import AccountStorage
 from port.database.sod import SodTrack
 
 from pymrtd import ef
+from pymrtd.ef.sod import DataGroupHash
 from pymrtd.pki.cms import SignerInfo
 from pymrtd.pki.crl import CertificateRevocationList
 from pymrtd.pki.keys import AAPublicKey, SignatureAlgorithm
@@ -86,17 +87,17 @@ peDscTooNewOrExpired: Final               = ProtoError("DSC certificate is too n
 peDscCantIssuePassport: Final             = PeInvalidOrMissingParam("DSC certificate can't issuer biometric passport")
 peDscNotFound: Final                      = PeNotFound("DSC certificate not found")
 peEfSodNotGenuine: Final                  = PeUnauthorized("EF.SOD file not genuine")
+peMatchingEfSod: Final                    = PeConflict("Matching EF.SOD file already registered")
 peInvalidCsca: Final                      = PeInvalidOrMissingParam("Invalid CSCA certificate")
 peInvalidDsc: Final                       = PeInvalidOrMissingParam("Invalid DSC certificate")
-peInvalidCrl: Final                       = PeInvalidOrMissingParam("Invalid CRL")
-peInvalidEfSod: Final                     = PeInvalidOrMissingParam("Invalid EF.SOD")
+peInvalidCrl: Final                       = PeInvalidOrMissingParam("Invalid CRL file")
+peInvalidEfSod: Final                     = PeInvalidOrMissingParam("Invalid EF.SOD file")
 peMissingAAInfoInDg14: Final              = PePreconditionRequired("Missing ActiveAuthenticationInfo in DG14 file")
 peMissingParamAASigAlgo: Final            = PeInvalidOrMissingParam("Missing param aaSigAlgo")
 peTrustchainCheckFailedExpiredCert: Final = PePreconditionFailed("Expired certificate in the trustchain")
 peTrustchainCheckFailedNoCsca: Final      = PePreconditionFailed("Missing issuer CSCA certificate in the trustchain")
 peTrustchainCheckFailedRevokedCert: Final = PePreconditionFailed("Revoked certificate in the trustchain")
 peTrustchainVerificationFailed: Final     = PePreconditionFailed("Trustchain verification failed")
-peUnknownPathSodToDsc: Final              = PePreconditionFailed("Unknown connection path from EF.SOD to DSC certificate")
 
 def peInvalidDgFile(dgNumber: ef.dg.DataGroupNumber) -> PeInvalidOrMissingParam:
     return PeInvalidOrMissingParam("Invalid {} file".format(dgNumber.native))
@@ -178,7 +179,8 @@ class PortProto:
         self._db.deleteChallenge(cid)
         self._log.debug("Challenge canceled cid=%s", cid)
 
-    def register(self, uid: UserId, sod: ef.SOD, dg15: ef.DG15, cid: CID, csigs: List[bytes], dg14: ef.DG14 = None) -> Tuple[UserId, SessionKey, datetime]:
+    def register(self, uid: UserId, sod: ef.SOD, dg15: ef.DG15, cid: CID, csigs: List[bytes], dg14: ef.DG14 = None, allowSodOverride: bool = False) \
+        -> Tuple[UserId, SessionKey, datetime]:
         """
         Register new user account.
 
@@ -187,19 +189,56 @@ class PortProto:
         :param cid: Challenge id
         :param csigs: List of signatures made over challenge chunks
         :param dg14: (Optional) eMRTD DataGroup file 14
+        :param allowSodOverride: If True any existing account under `uid` will have the new `sod` assigned to it.
+                                 The previously EF.SOD will stay in DB for the 'sybil' protection and no account will be able to re-register it.
         :return: Tuple of user id, session key and session expiration time
+
+        :raises peAccountAlreadyRegistered: When account with `uid` already exist and has not expired yet.
+        :raises peDg14Required: If dg15 is ECC key and `dg14` is None.
+        :raises peEfSodNotGenuine: If `sod` verification with DSC certificate fails i.e. signature verification fails.
+                                   E.g.: when EF.SOD was intentionally altered or is corrupted.
+        :raises peDscNotFound: When no `sod` signing DSC certificate is found.
+        :raises peInvalidDgFile: If `sod` doesn't contain the same hashes of `dg15` and `dg14` (if present)
+        :raises peInvalidEfSod: If no valid signer is found for `sod`, `sod` is not signed or contains invalid signer infos.
+        :raises peMatchingEfSod: If the same or matching EF.SOD already exists in the DB.
+        :raises peMissingAAInfoInDg14: If `dg14` is missing AAInfo data.
+        :raises peTrustchainVerificationFailed: If `sod` certificate trustchain verification fails aka passive authentication.
+        :raises ProtoError: any exception which is risen from addDscCertificate method when new DSC is added or
+                            risen from _verify_cert_trustchain method.
+        :raises StorageApiError: In any case when there is an error in connection to the DB storage
+                                 or problem with storing object in storage.
         """
-        # 1. Verify account doesn't exist yet
+        self._log.debug("register: uid=%s, %s %s %s cid=%s allowSodOverride=%s",
+            uid, sod, dg15, dg14 if dg14 is not None else "", cid, allowSodOverride)
+
+        # 1. Verify EF.SOD contains DG files
+        #    Note: We do this first, since it should be cheap check.
+        if dg14 is not None:
+            self._verify_sod_contains_hash_of(sod, dg14)
+        self._verify_sod_contains_hash_of(sod, dg15)
+
+        # 2. Verify if account already exists, and if it does
+        #    check that it has expired already or allowSodOverride == True.
         if self._db.accountExists(uid):
-            et = self._db.getAccountExpiry(uid)
-            if not utils.has_expired(et, utils.time_now()):
-                raise peAccountAlreadyRegistered
-            self._log.debug("Account has expired, registering new credentials")
+            # TODO: check if account.sodId exists and if not, set allowSodOverride = True
+            #       If account sod exist and if expired/revoked, set allowSodOverride = True, delete  sod
+            if not allowSodOverride:
+                et = self._db.getAccountExpiry(uid)
+                if not utils.has_expired(et, utils.time_now()):
+                    raise peAccountAlreadyRegistered
+            self._log.debug("%s, registering new credentials", "allowSodOverride=True"
+                if allowSodOverride == True else "Account has expired") #pylint: disable=singleton-comparison
 
-        # 2. Verify emrtd PKI trust chain
-        self.__verify_emrtd_trustchain(sod, dg14, dg15)
+        # Following 2 emrtd checks are done first for the precautionary reasons
+        # to prevent potential spoofing attacks if there are any undiscovered bugs.
 
-        # 3. Verify challenge authentication
+        # 3. Verify EF.SOD is genuine aka passive authn
+        #    Before any other operation with sod,
+        #    verify that an actual country issued the mrtd.
+        dsc: DscStorage = self._verify_sod_is_genuine(sod)
+        self._log.success("%s appears to be genuine! issuer dscId=%s", sod, dsc.id)
+
+        # 4 . Verify challenge authentication
         aaSigAlgo = None
         aaPubKey = dg15.aaPublicKey
         if aaPubKey.isEcKey():
@@ -208,17 +247,58 @@ class PortProto:
             elif dg14.aaSignatureAlgo is None:
                 raise peMissingAAInfoInDg14
             aaSigAlgo = dg14.aaSignatureAlgo
-
         self.__verify_challenge(cid, aaPubKey, csigs, aaSigAlgo)
-        self._db.deleteChallenge(cid) # Verifying has succeeded, delete challenge from db
+
+        # 5. Check if matching EF.SOD exist in the DB
+        self._log.debug("Searching for any EF.SOD track in DB which matches %s", sod)
+        st = SodTrack.fromSOD(sod, dscId=dsc.id)
+        if self._log.level <= log.DEBUG:
+            self._log.debug("  sodId=%s", st.id)
+            self._log.debug("  hashAlgo=%s", sod.ldsSecurityObject.dgHashAlgo['algorithm'].native)
+            dgh: DataGroupHash
+            for dgh in sod.ldsSecurityObject.dgHashes:
+                self._log.debug("  %s=%s", dgh.number.native, dgh.hash.hex())
+
+        sods = self._db.findMatchingSodTracks(st)
+        if sods is not None:
+            self._log.debug("Found %s matching track(s) in the DB. Verifying that all have invalid trustchain...", len(sods))
+            for s in sods: # Should be only 1
+                try:
+                    # Throw an error by default if IDs match.
+                    # This prevents 2 accounts having same SodId in case the DSC of `s`
+                    # has invalid tc, and `s` would be then deleted from DB in this for loop.
+                    if s.id != st.id:
+                        ds = self._db.findDsc(s.dscId)
+                        if ds is None:
+                            raise Exception() # get me out to the deleting part
+                        self._verify_cert_trustchain(ds)
+                    self._log.error("Found valid matching EF.SOD track with sodId=%s for %s with sodId=%s", s.id, sod, st.id)
+                    raise peMatchingEfSod
+                except type(peMatchingEfSod):
+                    raise
+                except StorageAPIError as e:
+                    self._log.error("An exception was encountered while verifying if EF.SOD track with sodId=%s has valid certificate trustchain.", s.id)
+                    self._log.error("  e=%s", e)
+                    raise
+                except AssertionError:
+                    raise
+                except: #pylint: disable=bare-except
+                    self._log.debug("Matched EF.SOD track with sodId=%s has invalid trustchain, deleting from DB ...", s.id)
+                    # TODO: deleting sod track will fail if there is existing account in tb that holds it's sodId
+                    #       "(Due to a.sodId == foregin key in sod table"
+                    self._db.deleteSodTrack(s.id)
+
+        # 7. Save EF.SOD track and delete challenge
+        self._db.addSodTrack(st)
+        self._db.deleteChallenge(cid) # All checks have succeeded, delete challenge from db
 
         # 4. Generate session key and session
         sk = SessionKey.generate()
         s  = Session(sk)
 
-        # 5. Insert account into db
+        # 8. Insert account into db
         et = self._get_default_account_expiration()
-        a = AccountStorage(uid, sod, aaPubKey, aaSigAlgo, None, s, et)
+        a = AccountStorage(uid, st.id, aaPubKey, aaSigAlgo, None, s, et)
         self._db.addOrUpdateAccount(a)
 
         self._log.debug("New account created: uid=%s", uid.hex())
@@ -626,7 +706,8 @@ class PortProto:
         4.) If there was no error in the above steps return from function
 
         :param sod: EF.SOD file to verify.
-        :raises peInvalidEfSod: If no valid signer if found, EF.SOD is not signed, contains invalid signer infos.
+        :return: DscStorage of the first valid DSC certificate which signed EF.SOD.
+        :raises peInvalidEfSod: If no valid signer is found, EF.SOD is not signed, contains invalid signer infos.
         :raises peTrustchainVerificationFailed: If certificate trustchain verification fails.
         :raises peEfSodNotGenuine: If Ef.SOD verification with DSC certificate fails i.e. signature verification fails.
                                    E.g.: when EF.SOD was intentionally altered or is corrupted.
