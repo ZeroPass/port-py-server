@@ -523,9 +523,8 @@ class DatabaseAPI(StorageAPI):
                 .filter(AccountStorage.uid == account.uid)
             if accnts.count() > 0:
                 accnts[0].uid         = account.uid
-                accnts[0].sod         = account.sod
+                accnts[0].sodId       = account.sodId
                 accnts[0].aaPublicKey = account.aaPublicKey
-                accnts[0].sod         = account.sod
                 accnts[0].dg1         = account.dg1
                 accnts[0].session     = account.session
                 accnts[0].validUntil  = account.validUntil
@@ -549,7 +548,6 @@ class DatabaseAPI(StorageAPI):
                 .first()
             if accnt is None:
                 raise seAccountNotFound
-            assert isinstance(accnt, AccountStorage)
             return accnt
         except Exception as e:
             self.__handle_exception(e)
