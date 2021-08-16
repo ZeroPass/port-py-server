@@ -1322,7 +1322,7 @@ class MemoryDB(StorageAPI):
         """
         assert isinstance(uid, UserId)
         if uid not in self._d['accounts']:
-            raise None
+            return None
         return self._d['accounts'][uid]
 
     def getAccount(self, uid: UserId) -> AccountStorage:
@@ -1378,6 +1378,7 @@ class MemoryDB(StorageAPI):
         :param sodId: Id of the EF.SOD track to retrieve.
         :return: SodTrack object if `sodId` exists, otherwise None.
         """
+        assert isinstance(sodId, SodId)
         if sodId in self._d['sod']:
             return self._d['sod']
         return None
