@@ -349,6 +349,7 @@ class PortProto:
         if dg1 is not None:
             self._log.debug("Verifying received DG1(surname=%s name=%s) file is valid ...", dg1.mrz.surname, dg1.mrz.name)
             #self._verify_sod_contains_hash_of(sod, dg1)
+            sod = self._db.findSodTrack(a.sodId)
             if not sod.contains(dg1):
                 self._log.error("EF.SOD doesn't contain %s", dg1)
                 raise peInvalidDgFile(dg1.number)
