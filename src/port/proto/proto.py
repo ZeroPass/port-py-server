@@ -336,44 +336,45 @@ class PortProto:
             self._log.error("Login cannot continue due to max no. of anonymous logins and no DG1 file was provided!")
             raise peDg1Required
 
-        # 2. Verify challenge
+        # 2. Verify account hasn't expired (expired attestation)
+        if a.expires is not None \
+            and utils.has_expired(a.expires, utils.time_now()):
+            raise peAccountExpired
+
+        # 3. Verify challenge
         self.__verify_challenge(cid, a.getAAPublicKey(), csigs, a.getAASigAlgo())
 
-        # 3. Verify account is still valid
+        # 4. Verify account still has still valid attestation
         self._log.debug("Verifying account attestation is still valid for sodId=%s", a.sodId)
-        if not self._is_account_attested(a):
+        if a.sodId is None \
+            or ((sod := self._db.findSodTrack(a.sodId)) and sod is None) \
+            or not self._is_account_attested(a, sod):
             raise peAccountNotAttested
 
-        # 4. If we got DG1 verify EF.SOD contains its hash,
+        # 5. If we got DG1 verify EF.SOD contains its hash,
         #    and assign it to the account
         if dg1 is not None:
             self._log.debug("Verifying received DG1(surname=%s name=%s) file is valid ...", dg1.mrz.surname, dg1.mrz.name)
-            #self._verify_sod_contains_hash_of(sod, dg1)
-            sod = self._db.findSodTrack(a.sodId)
             if not sod.contains(dg1):
                 self._log.error("EF.SOD doesn't contain %s", dg1)
                 raise peInvalidDgFile(dg1.number)
             a.setDG1(dg1)
 
-        # 3. Verify account credentials haven't expired
-        if utils.has_expired(a.expires, utils.time_now()):
-            raise peAccountExpired
-
         self._db.deleteChallenge(cid) # Verifying has succeeded, delete challenge from db
 
-        # 5. Generate session key and session
+        # 6. Generate session key and session
         sk = SessionKey.generate()
         s  = Session(sk)
         a.setSession(s)
 
-        # 6. Update account
+        # 7. Update account
         a.loginCount += 1
         self._db.updateAccont(a)
         if dg1 is not None:
             self._log.info("File DG1(surname=%s name=%s) issued by %s is now tied to eMRTD pubkey=%s",
                 dg1.mrz.surname, dg1.mrz.name, utils.code_to_country_name(dg1.mrz.country), a.aaPublicKey.hex())
 
-        # 7. Return session key and session expiry date
+        # 8. Return session key and session expiry date
         self._log.debug("User has been successfully logged-in. uid=%s session_expires: %s", uid.hex(), a.expires)
         self._log.verbose("session=%s", s.bytes().hex())
         return (sk, a.expires)
