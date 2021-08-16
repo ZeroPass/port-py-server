@@ -778,38 +778,64 @@ class PortProto:
             raise lastException
         raise peInvalidEfSod
 
-    def _is_account_attested(self, accnt: AccountStorage) -> bool:
+    def _is_sod_track_valid(self, st: SodTrack) -> bool:
         """
-        Checks if account is attested with valid eMRTD biometric passport.
-        In short, verifies that account has assigned valid EF.SOD track which has valid certificates trustchain.
-        i.e. CSCA -> DSC -> EF.SOD track -> account
-        :param `accnt`: The account to verify.
-        :return: True if account has valid eMRT attestation, otherwise False.
+        Checks if EF.SOD track is still, verifies `st` has valid certificate trustchain.
+        i.e. CSCA -> DSC -> EF.SOD track
+        :param `st`: The EF.SOD track to check.
+        :return: True if `st` has valid certificate trustchain, otherwise False.
         :raises StorageAPIError: On DB errors.
         :raises Exception*: Any other exception that is risen in the verification process, and is not `PePreconditionFailed`.
                             i.e not trustchain verification error.
         """
-        assert isinstance(accnt, AccountStorage)
+        assert isinstance(st, SodTrack)
         try:
-            if accnt.sodId is None:
-                return False
-            st = self._db.findSodTrack(accnt.sodId)
-            if st is None:
-                return False
             dsc = self._db.findDsc(st.dscId)
             if dsc is None:
                 return False
             self._verify_cert_trustchain(dsc)
             return True
         except PePreconditionFailed as e:
-            self._log.debug("Looks like an account's attestation doesn't have valid certificate trustchain.")
+            self._log.debug("Looks like SodTrack doesn't have valid certificate trustchain.")
             self._log.debug("  tc_error=%s", e)
+            return False
+        except AssertionError:
+            raise
         except StorageAPIError as e:
-            self._log.error("A DB error was encountered while trying to checking if account is attested.")
+            self._log.error("A DB error was encountered while trying to checking if SodTrack is valid.")
             self._log.error("  e=%s", e)
             raise
         except Exception as e:
-            self._log.error("An exception was encountered while trying to checking if account is attested.")
+            self._log.error("An exception was encountered while trying to checking if SodTrack is valid.")
+            self._log.error("  e=%s", e)
+            raise
+
+    def _is_account_attested(self, accnt: AccountStorage, st: Optional[SodTrack] = None) -> bool:
+        """
+        Checks if account is attested with valid eMRTD biometric passport.
+        In short, verifies that account has assigned valid EF.SOD track which has valid certificates trustchain.
+        i.e. CSCA -> DSC -> EF.SOD track -> account
+        :param `accnt`: The account to verify.
+        :param `st` (Optional): The SodTrack of `accnt` to verify the certificate trustchain of.
+        :return: True if `accnt` has valid eMRTD attestation, otherwise False.
+        :raises StorageAPIError: On DB errors.
+        :raises Exception*: Any other exception that is risen in the verification process, and is not `PePreconditionFailed`.
+                            i.e not trustchain verification error.
+        """
+        assert isinstance(accnt, AccountStorage)
+        assert isinstance(st, (SodTrack, type(None)))
+        try:
+            if accnt.sodId is None \
+                or (st is not None and accnt.sodId != st.id):
+                return False
+
+            if st is None:
+                st = self._db.findSodTrack(accnt.sodId)
+            if st is None:
+                return False
+            return self._is_sod_track_valid(st)
+        except StorageAPIError as e:
+            self._log.error("A DB error was encountered while trying to checking if account is attested.")
             self._log.error("  e=%s", e)
             raise
 
