@@ -341,14 +341,8 @@ class PortProto:
 
         # 3. Verify account is still valid
         self._log.debug("Verifying account attestation is still valid for sodId=%s", a.sodId)
-        sod = self._db.findSodTrack(a.sodId)
-        if sod is None:
+        if not self._is_account_attested(a):
             raise peAccountNotAttested
-
-        dsc = self._db.findDsc(sod.dscId)
-        if dsc is None:
-            raise peAccountNotAttested
-        self._verify_cert_trustchain(dsc)
 
         # 4. If we got DG1 verify EF.SOD contains its hash,
         #    and assign it to the account
@@ -782,6 +776,41 @@ class PortProto:
             self._log.exception(lastException)
             raise lastException
         raise peInvalidEfSod
+
+    def _is_account_attested(self, accnt: AccountStorage) -> bool:
+        """
+        Checks if account is attested with valid eMRTD biometric passport.
+        In short, verifies that account has assigned valid EF.SOD track which has valid certificates trustchain.
+        i.e. CSCA -> DSC -> EF.SOD track -> account
+        :param `accnt`: The account to verify.
+        :return: True if account has valid eMRT attestation, otherwise False.
+        :raises StorageAPIError: On DB errors.
+        :raises Exception*: Any other exception that is risen in the verification process, and is not `PePreconditionFailed`.
+                            i.e not trustchain verification error.
+        """
+        assert isinstance(accnt, AccountStorage)
+        try:
+            if accnt.sodId is None:
+                return False
+            st = self._db.findSodTrack(accnt.sodId)
+            if st is None:
+                return False
+            dsc = self._db.findDsc(st.dscId)
+            if dsc is None:
+                return False
+            self._verify_cert_trustchain(dsc)
+            return True
+        except PePreconditionFailed as e:
+            self._log.debug("Looks like an account's attestation doesn't have valid certificate trustchain.")
+            self._log.debug("  tc_error=%s", e)
+        except StorageAPIError as e:
+            self._log.error("A DB error was encountered while trying to checking if account is attested.")
+            self._log.error("  e=%s", e)
+            raise
+        except Exception as e:
+            self._log.error("An exception was encountered while trying to checking if account is attested.")
+            self._log.error("  e=%s", e)
+            raise
 
     def __verify_emrtd_trustchain(self, sod: ef.SOD, dg14: Union[ef.DG14, None], dg15: ef.DG15) -> None:
         """"
