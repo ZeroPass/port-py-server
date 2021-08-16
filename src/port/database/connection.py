@@ -191,15 +191,14 @@ sod: Final = Table('sod', metadata,
 
 # table contains info about attested accounts
 accounts: Final = Table('accounts', metadata,
-    Column('uid'        , UserIdSqlType(), primary_key=True                                              ), # uid = UserId
-    Column('sodId'      , SodIdSqlType   , ForeignKey('sod.id'), nullable=False, unique=False, index=True),
-    Column('aaPublicKey', LargeBinary    , nullable=False                                                ),
-    Column('aaSigAlgo'  , LargeBinary    , nullable=True                                                 ),
-    Column('dg1'        , LargeBinary    , nullable=True                                                 ),
-    Column('session'    , LargeBinary    , nullable=False                                                ), # Note: Should be moved to separate table
-    Column('validUntil' , DateTime(timezone=False)                                                       ),
-    Column('loginCount' , Integer        , default=0                                                     ),
-    Column('isValid'    , Boolean                                                                        )
+    Column('uid'        , UserIdSqlType()         , primary_key=True                                            ), # uid = UserId
+    Column('sodId'      , SodIdSqlType            , ForeignKey('sod.id'), nullable=True, unique=True, index=True), # If null, the account is not attested
+    Column('expires'    , DateTime(timezone=False), nullable=True                                               ), # Usually set to DSC expiration time. If NULL, expires when EF.SOD TC expires
+    Column('aaPublicKey', LargeBinary             , nullable=False                                              ),
+    Column('aaSigAlgo'  , LargeBinary             , nullable=True                                               ),
+    Column('dg1'        , LargeBinary             , nullable=True                                               ),
+    Column('session'    , LargeBinary             , nullable=False                                              ), # Note: Should be moved to separate table
+    Column('loginCount' , Integer                 , default=0                                                   ),
 )
 
 class PortDbConnectionError(Exception):

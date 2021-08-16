@@ -299,18 +299,19 @@ class PortProto:
 
         # 8. Insert account into db
         et = self._get_default_account_expiration()
-        a = AccountStorage(uid, st.id, aaPubKey, aaSigAlgo, None, s, et)
-        self._db.updateAccont(a)
+        accnt = AccountStorage(uid, st.id, et, aaPubKey, aaSigAlgo, None, s)
+        self._db.updateAccont(accnt)
 
         self._log.debug("New account created: uid=%s", uid.hex())
         if len(sod.dscCertificates) > 0:
             self._log.debug("Issuing country of account's eMRTD: %s",
                 utils.code_to_country_name(sod.dscCertificates[0].issuerCountry))
-        self._log.verbose("valid_until=%s", a.validUntil)
-        self._log.verbose("login_count=%s", a.loginCount)
+        self._log.verbose("sodId=%s", st.id)
+        self._log.verbose("expires=%s", accnt.expires)
+        self._log.verbose("login_count=%s", accnt.loginCount)
         self._log.verbose("dg1=None")
-        self._log.verbose("pubkey=%s", a.aaPublicKey.hex())
-        self._log.verbose("sigAlgo=%s", "None" if aaSigAlgo is None else a.aaSigAlgo.hex())
+        self._log.verbose("pubkey=%s", accnt.aaPublicKey.hex())
+        self._log.verbose("sigAlgo=%s", "None" if aaSigAlgo is None else accnt.aaSigAlgo.hex())
         self._log.verbose("session=%s", s.bytes().hex())
 
         # 6. Return user id, session key and session expiry date
@@ -360,7 +361,7 @@ class PortProto:
             a.setDG1(dg1)
 
         # 3. Verify account credentials haven't expired
-        if utils.has_expired(a.validUntil, utils.time_now()):
+        if utils.has_expired(a.expires, utils.time_now()):
             raise peAccountExpired
 
         self._db.deleteChallenge(cid) # Verifying has succeeded, delete challenge from db
@@ -378,9 +379,9 @@ class PortProto:
                 dg1.mrz.surname, dg1.mrz.name, utils.code_to_country_name(dg1.mrz.country), a.aaPublicKey.hex())
 
         # 7. Return session key and session expiry date
-        self._log.debug("User has been successfully logged-in. uid=%s session_expires: %s", uid.hex(), a.validUntil)
+        self._log.debug("User has been successfully logged-in. uid=%s session_expires: %s", uid.hex(), a.expires)
         self._log.verbose("session=%s", s.bytes().hex())
-        return (sk, a.validUntil)
+        return (sk, a.expires)
 
     def sayHello(self, uid, mac):
         """

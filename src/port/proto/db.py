@@ -617,7 +617,7 @@ class DatabaseAPI(StorageAPI):
                 .first()
             if accnt is None:
                 raise seAccountNotFound
-            return accnt.validUntil
+            return accnt.expires
         except Exception as e:
             self.__handle_exception(e)
 
@@ -1348,7 +1348,7 @@ class MemoryDB(StorageAPI):
         if uid not in self._d['accounts']:
             raise seAccountNotFound
         a = self.getAccount(uid)
-        return a.validUntil
+        return a.expires
 
     def addSodTrack(self, sod: SodTrack) -> None:
         """

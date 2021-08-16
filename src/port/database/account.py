@@ -10,24 +10,24 @@ from typing import Optional
 class AccountStorage:
     """Class for interaction between code structure and database"""
     uid: UserId
-    sodId: SodId
+    sodId: Optional[SodId] # If None, account is not attested by passport
+    expires: Optional[datetime] # The date the account expires, usually set to dsc expiration time
     aaPublicKey: bytes
     aaSigAlgo: Optional[bytes]
     dg1: Optional[bytes]
     session: bytes
-    validUntil: datetime
     loginCount: int
-    isValid: bool
 
-    def __init__(self, uid: UserId, sodId: SodId, aaPublicKey: AAPublicKey, aaSigAlgo: Optional[SignatureAlgorithm], dg1: Optional[ef.DG1], session: Session, validUntil: datetime, loginCount: int = 0):
+    def __init__(self, uid: UserId, sodId: Optional[SodId], expires: Optional[datetime], aaPublicKey: AAPublicKey, aaSigAlgo: Optional[SignatureAlgorithm], dg1: Optional[ef.DG1], session: Session, loginCount: int = 0):
         """Initialization object"""
         assert isinstance(uid, UserId)
-        assert isinstance(sodId, SodId)
+        assert isinstance(sodId, (SodId, type(None)))
+        assert isinstance(expires, (datetime, type(None)))
         assert isinstance(aaPublicKey, AAPublicKey)
         assert isinstance(aaSigAlgo, (SignatureAlgorithm, type(None)))
         assert isinstance(dg1, (ef.DG1, type(None)))
         assert isinstance(session, Session)
-        assert isinstance(validUntil, datetime)
+
         assert isinstance(loginCount, int)
 
         if aaSigAlgo is not None:
@@ -37,13 +37,12 @@ class AccountStorage:
 
         self.uid         = uid
         self.sodId       = sodId
+        self.expires     = expires
         self.aaPublicKey = aaPublicKey.dump()
         self.aaSigAlgo   = aaSigAlgo
         self.dg1         = dg1
         self.session     = session.bytes()
-        self.validUntil  = validUntil
         self.loginCount  = loginCount
-        self.isValid     = True
 
     def getAAPublicKey(self) -> AAPublicKey:
         return AAPublicKey.load(self.aaPublicKey)
@@ -70,10 +69,3 @@ class AccountStorage:
     def setSession(self, s: Session):
         assert isinstance(s, Session)
         self.session = s.bytes()
-
-    def getValidUntil(self) -> datetime:
-        return self.validUntil
-
-    def getIsValid(self) -> bool:
-        """Return isValid from object"""
-        return self.isValid
