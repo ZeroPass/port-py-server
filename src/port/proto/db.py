@@ -99,24 +99,51 @@ class StorageAPI(ABC):
 
     # User methods
     @abstractmethod
-    def accountExists(self, uid: UserId) -> bool:
-        pass
-
-    @abstractmethod
-    def addOrUpdateAccount(self, account: AccountStorage) -> None:
-        pass
+    def updateAccont(self, account: AccountStorage) -> None:
+        """
+        Adds new accout to storage or updates existing.
+        :param account: Account storage to add.
+        """
 
     @abstractmethod
     def deleteAccount(self, uid: UserId) -> None:
-        pass
+        """
+        Deletes the account under `uid` from DB.
+        :param `uid: The user ID of the account.
+        """
+
+    @abstractmethod
+    def accountExists(self, uid: UserId) -> bool:
+        """
+        Checks if the account with `uid` exists in DB.
+        :param `uid`: The user ID of the account.
+        :return: True if account exists, otherwise False.
+        """
+
+    @abstractmethod
+    def findAccount(self, uid: UserId) -> Optional[AccountStorage]:
+        """
+        Returns account under `uid` from DB if exists in the DB.
+        :param `uid`: The account user ID.
+        :return: AccountStorage if account exitsts, otherwise None.
+        """
 
     @abstractmethod
     def getAccount(self, uid: UserId) -> AccountStorage:
-        """ Get account """
+        """
+        Returns account under `uid` from DB.
+        :param `uid`: The account user ID.
+        :return: AccountStorage
+        :raises seAccountNotFound: If account is not found.
+        """
 
     @abstractmethod
     def getAccountExpiry(self, uid: UserId) -> datetime:
-        """ Get account's credentials expiry """
+        """
+        Returns account attestation expiration.
+        :param `uid`: The account user ID.
+        :raises seAccountNotFound: If account is not found in the DB.
+        """
 
     @abstractmethod
     def addSodTrack(self, sod: SodTrack) -> None:
@@ -385,6 +412,13 @@ class DatabaseAPI(StorageAPI):
     def __db(self) -> scoped_session:
         return self._dbc.session
 
+    def _exists(self, q: Query) -> bool:
+        #https://docs.sqlalchemy.org/en/14/orm/query.html?highlight=count#sqlalchemy.orm.Query.exists
+        return self.__db \
+            .query(literal(True)) \
+            .filter(q.exists()) \
+            .scalar()
+
     def __handle_exception(self, e) -> NoReturn:
         if isinstance(e, StorageAPIError):
             raise e from e
@@ -492,15 +526,42 @@ class DatabaseAPI(StorageAPI):
         except Exception as e:
             self.__handle_exception(e)
 
-    def _exists(self, q: Query) -> bool:
-        #https://docs.sqlalchemy.org/en/14/orm/query.html?highlight=count#sqlalchemy.orm.Query.exists
-        return self.__db \
-            .query(literal(True)) \
-            .filter(q.exists()) \
-            .scalar()
+    def updateAccont(self, account: AccountStorage) -> None:
+        """
+        Adds new accout to storage or updates existing.
+        :param account: Account storage to add.
+        :raises: DatabaseAPIError on DB connection errors.
+        """
+        assert isinstance(account, AccountStorage)
+        self._log.debug("Adding or updating account. uid=%s", account.uid)
+        try:
+            self.__db.merge(account)
+            self.__db.commit()
+        except Exception as e:
+            self.__handle_exception(e)
+
+    def deleteAccount(self, uid: UserId) -> None:
+        """
+        Deletes the account under `uid` from DB.
+        :param `uid: The user ID of the account.
+        :raises: DatabaseAPIError on DB connection errors.
+        """
+        assert isinstance(uid, UserId)
+        self._log.debug("Deleting account from DB. uid=%s", uid)
+        try:
+            self.__db \
+                .query(AccountStorage) \
+                .filter(AccountStorage.uid == uid) \
+                .delete()
+            self.__db.commit()
+        except Exception as e:
+            self.__handle_exception(e)
 
     def accountExists(self, uid: UserId) -> bool:
         """
+        Checks if the account with `uid` exists in DB.
+        :param `uid`: The user ID of the account.
+        :return: True if account exists, otherwise False.
         :raises: DatabaseAPIError on DB connection errors.
         """
         assert isinstance(uid, UserId)
@@ -511,63 +572,41 @@ class DatabaseAPI(StorageAPI):
         except Exception as e:
             self.__handle_exception(e)
 
-    def addOrUpdateAccount(self, account: AccountStorage) -> None:
+    def findAccount(self, uid: UserId) -> Optional[AccountStorage]:
         """
+        Returns account under `uid` from DB if exists in the DB.
+        :param `uid`: The account user ID.
+        :return: AccountStorage if account exitsts, otherwise None.
         :raises: DatabaseAPIError on DB connection errors.
         """
-        assert isinstance(account, AccountStorage)
-        self._log.debug("Adding or updating account in DB. uid=%s", account.uid)
+        assert isinstance(uid, UserId)
         try:
-            accnts = self.__db \
+            return self.__db \
                 .query(AccountStorage) \
-                .filter(AccountStorage.uid == account.uid)
-            if accnts.count() > 0:
-                accnts[0].uid         = account.uid
-                accnts[0].sodId       = account.sodId
-                accnts[0].aaPublicKey = account.aaPublicKey
-                accnts[0].dg1         = account.dg1
-                accnts[0].session     = account.session
-                accnts[0].validUntil  = account.validUntil
-                accnts[0].loginCount  = account.loginCount
-                accnts[0].isValid     = account.isValid
-            else:
-                self.__db.add(account)
-            self.__db.commit()
+                .filter(AccountStorage.uid == uid) \
+                .first()
         except Exception as e:
             self.__handle_exception(e)
 
     def getAccount(self, uid: UserId) -> AccountStorage:
         """
+        Returns account under `uid` from DB.
+        :param `uid`: The account user ID.
+        :return: AccountStorage
+        :raises seAccountNotFound: If account is not found.
         :raises: DatabaseAPIError on DB connection errors.
         """
         assert isinstance(uid, UserId)
-        try:
-            accnt = self.__db \
-                .query(AccountStorage) \
-                .filter(AccountStorage.uid == uid) \
-                .first()
-            if accnt is None:
-                raise seAccountNotFound
-            return accnt
-        except Exception as e:
-            self.__handle_exception(e)
-
-    def deleteAccount(self, uid: UserId) -> None:
-        """
-        :raises: DatabaseAPIError on DB connection errors.
-        """
-        assert isinstance(uid, UserId)
-        try:
-            self.__db \
-                .query(AccountStorage) \
-                .filter(AccountStorage.uid == uid) \
-                .delete()
-            self.__db.commit()
-        except Exception as e:
-            self.__handle_exception(e)
+        a = self.findAccount(uid)
+        if a is None:
+            raise seAccountNotFound
+        return a
 
     def getAccountExpiry(self, uid: UserId) -> datetime:
         """
+        Returns account attestation expiration.
+        :param `uid`: The account user ID.
+        :raises seAccountNotFound: If account is not found in the DB.
         :raises: DatabaseAPIError on DB connection errors.
         """
         assert isinstance(uid, UserId)
@@ -577,7 +616,6 @@ class DatabaseAPI(StorageAPI):
                 .filter(AccountStorage.uid == uid) \
                 .first()
             if accnt is None:
-                self._log.debug(":getAccountExpiry(): Account not found")
                 raise seAccountNotFound
             return accnt.validUntil
         except Exception as e:
@@ -1248,26 +1286,64 @@ class MemoryDB(StorageAPI):
             if cet >= time }
         self._d['proto_challenges'] = d
 
-    def accountExists(self, uid: UserId) -> bool:
-        assert isinstance(uid, UserId)
-        return uid in self._d['accounts']
-
-    def addOrUpdateAccount(self, account: AccountStorage) -> None:
+    def updateAccont(self, account: AccountStorage) -> None:
+        """
+        Adds new accout to storage or updates existing.
+        :param account: Account storage to add.
+        """
         assert isinstance(account, AccountStorage)
         self._d['accounts'][account.uid] = account
 
-    def getAccount(self, uid: UserId) -> AccountStorage:
-        assert isinstance(uid, UserId)
-        if uid not in self._d['accounts']:
-            raise seAccountNotFound
-        return self._d['accounts'][uid]
 
     def deleteAccount(self, uid: UserId) -> None:
+        """
+        Deletes the account under `uid` from DB.
+        :param `uid: The user ID of the account.
+        """
         assert isinstance(uid, UserId)
+        self._log.debug("Deleting account from DB. uid=%s", uid)
         if uid in self._d['accounts']:
             del self._d['accounts'][uid]
 
+    def accountExists(self, uid: UserId) -> bool:
+        """
+        Checks if the account with `uid` exists in DB.
+        :param `uid`: The user ID of the account.
+        :return: True if account exists, otherwise False.
+        """
+        assert isinstance(uid, UserId)
+        return uid in self._d['accounts']
+
+    def findAccount(self, uid: UserId) -> Optional[AccountStorage]:
+        """
+        Returns account under `uid` from DB if exists in the DB.
+        :param `uid`: The account user ID.
+        :return: AccountStorage if account exitsts, otherwise None.
+        """
+        assert isinstance(uid, UserId)
+        if uid not in self._d['accounts']:
+            raise None
+        return self._d['accounts'][uid]
+
+    def getAccount(self, uid: UserId) -> AccountStorage:
+        """
+        Returns account under `uid` from DB.
+        :param `uid`: The account user ID.
+        :return: AccountStorage
+        :raises seAccountNotFound: If account is not found.
+        """
+        assert isinstance(uid, UserId)
+        a = self.findAccount(uid)
+        if a is None:
+            raise seAccountNotFound
+        return a
+
     def getAccountExpiry(self, uid: UserId) -> datetime:
+        """
+        Returns account attestation expiration.
+        :param `uid`: The account user ID.
+        :raises seAccountNotFound: If account is not found in the DB.
+        """
         assert isinstance(uid, UserId)
         if uid not in self._d['accounts']:
             raise seAccountNotFound

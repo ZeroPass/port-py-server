@@ -300,7 +300,7 @@ class PortProto:
         # 8. Insert account into db
         et = self._get_default_account_expiration()
         a = AccountStorage(uid, st.id, aaPubKey, aaSigAlgo, None, s, et)
-        self._db.addOrUpdateAccount(a)
+        self._db.updateAccont(a)
 
         self._log.debug("New account created: uid=%s", uid.hex())
         if len(sod.dscCertificates) > 0:
@@ -372,7 +372,7 @@ class PortProto:
 
         # 6. Update account
         a.loginCount += 1
-        self._db.addOrUpdateAccount(a)
+        self._db.updateAccont(a)
         if dg1 is not None:
             self._log.info("File DG1(surname=%s name=%s) issued by %s is now tied to eMRTD pubkey=%s",
                 dg1.mrz.surname, dg1.mrz.name, utils.code_to_country_name(dg1.mrz.country), a.aaPublicKey.hex())
@@ -920,7 +920,7 @@ class PortProto:
 
         # Update account's session nonce
         a.setSession(s)
-        self._db.addOrUpdateAccount(a)
+        self._db.updateAccont(a)
 
         if not success:
             raise PeMacVerifyFailed("Invalid session MAC")
