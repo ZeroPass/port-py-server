@@ -298,7 +298,7 @@ class PortProto:
         s  = Session(sk)
 
         # 8. Insert account into db
-        et = self._get_default_account_expiration()
+        et = self._get_account_expiration(uid, st, dsc) #pylint: disable=assignment-from-none
         accnt = AccountStorage(uid, st.id, et, aaPubKey, aaSigAlgo, None, s)
         self._db.updateAccont(accnt)
 
@@ -954,11 +954,19 @@ class PortProto:
             raise peInvalidDgFile(dg.number)
         self._log.debug("%s file is valid!", dg)
 
-    def _get_default_account_expiration(self): #pylint: disable=no-self-use
-        """ Returns until the session is valid. """
-        # Note: in ideal situation passport expiration date would be read from DG1 file and returned here.
-        #       For now we return fix 10min period but should be calculated from the expiration time of DSC who signed the account's EF.SOD.
-        return utils.time_now() + timedelta(minutes=10)
+    def _get_account_expiration(self, uid: UserId, sod: SodTrack, dsc: DscStorage) -> Optional[datetime]: #pylint: disable=no-self-use,unused-argument,useless-return
+        """
+        Returns datetime till account attestation can be valid. Should be less or equal to `dsc.notValidAfter`.
+        `None` is returned by default aka attestation valid until atestation has valid passive auth trustchain
+        :param `uid`: The account user ID.
+        :param `sod`: The account attested EF.SOD track.
+        :param `dsc`: The account attested DSC certificate storage.
+        """
+        assert isinstance(uid, UserId)
+        assert isinstance(sod, SodTrack)
+        assert isinstance(dsc, DscStorage)
+        assert sod.dscId == dsc.id
+        return None
 
     def __verify_session_mac(self, a: AccountStorage, data: bytes, mac: bytes):
         """

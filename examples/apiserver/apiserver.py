@@ -16,7 +16,7 @@ _script_path = Path(os.path.dirname(sys.argv[0]))
 
 from port import log
 from port.api import PortApiServer
-from port.database import CertificateRevocationInfo, CertificateStorage
+from port.database import AccountStorage, CertificateRevocationInfo, CertificateStorage, DscStorage, SodTrack
 from port.proto import (
     Challenge,
     CountryCode,
@@ -32,7 +32,7 @@ from port.proto import (
 from port.settings import Config, DbConfig, ServerConfig
 
 from pymrtd.pki import x509
-from typing import Callable, Tuple
+from typing import Callable, Optional, Tuple
 
 class DevProto(PortProto):
     def __init__(self, storage: StorageAPI, cttl: int, fc: bool, no_tcv: bool):
@@ -53,7 +53,8 @@ class DevProto(PortProto):
             return (fc, cet)
         return super().createNewChallenge(uid)
 
-    def _get_default_account_expiration(self):
+    def _get_account_expiration(self, uid: UserId, sod: SodTrack, dsc: DscStorage) -> Optional[datetime]: #pylint: disable=no-self-use,unused-argument
+        """Return 1 minute expiration time"""
         return utils.time_now() + timedelta(minutes=1)
 
     def _verify_cert_trustchain(self, crt: CertificateStorage) -> None:
