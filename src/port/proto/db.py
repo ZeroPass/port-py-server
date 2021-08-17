@@ -1207,7 +1207,7 @@ class MemoryDB(StorageAPI):
     The data is stored in memory (RAM) and gets deleted as instance of MemoryDB is destroyed.
     The purpose of MemoryDB is testing of port proto without needing to set up (or reset) proper database.
     Internally data is stored as dictionary in 4 categories:
-        proto_challenges -> Dictionary[CID, Tuple[UserId, Challenge, datetime - expires]]
+        proto_challenge  -> Dictionary[CID, Tuple[UserId, Challenge, datetime - expires]]
         account          -> Dictionary[UserId, AccountStorage]
         cscas            -> Set[List[CscaStorage]]
         dscs             -> Set[DscStorage]
@@ -1216,7 +1216,7 @@ class MemoryDB(StorageAPI):
     def __init__(self):
         self._log = logging.getLogger(MemoryDB.__name__)
         self._d = {
-            'proto_challenges' : {},
+            'proto_challenge' : {},
             'account' : {},
             'sod'     : {},                # <sodId, SodTrack>
             'cscas'   : defaultdict(list), # <country, List[CscaStorage]>
@@ -1237,7 +1237,7 @@ class MemoryDB(StorageAPI):
         """
         assert isinstance(cid, CID)
         try:
-            _, c, et = self._d['proto_challenges'][cid]
+            _, c, et = self._d['proto_challenge'][cid]
             return (c, et)
         except Exception as e:
             raise seChallengeNotFound from e
@@ -1251,7 +1251,7 @@ class MemoryDB(StorageAPI):
         :return: Optional[Tuple[Challenge, datetime]]
         """
         assert isinstance(uid, UserId)
-        for _, (suid, c, et) in self._d['proto_challenges'].items():
+        for _, (suid, c, et) in self._d['proto_challenge'].items():
             if suid == uid:
                 return (c, et)
         return None
@@ -1266,25 +1266,25 @@ class MemoryDB(StorageAPI):
         """
         assert isinstance(challenge, Challenge)
         assert isinstance(expires, datetime)
-        if challenge.id in self._d['proto_challenges']:
+        if challenge.id in self._d['proto_challenge']:
             raise seChallengeExists
 
-        for _, (suid, _, _) in self._d['proto_challenges'].items():
+        for _, (suid, _, _) in self._d['proto_challenge'].items():
             if suid == uid:
                 raise seChallengeExists
-        self._d['proto_challenges'][challenge.id] = (uid, challenge, expires)
+        self._d['proto_challenge'][challenge.id] = (uid, challenge, expires)
 
     def deleteChallenge(self, cid: CID) -> None:
         assert isinstance(cid, CID)
-        if cid in self._d['proto_challenges']:
-            self._d['proto_challenges'].pop(cid)
+        if cid in self._d['proto_challenge']:
+            self._d['proto_challenge'].pop(cid)
 
     def deleteExpiredChallenges(self, time: datetime) -> None:
         assert isinstance(time, datetime)
         d = { cid:(uid, c, cet)
-            for cid, (uid, c, cet) in self._d['proto_challenges'].items()
+            for cid, (uid, c, cet) in self._d['proto_challenge'].items()
             if cet >= time }
-        self._d['proto_challenges'] = d
+        self._d['proto_challenge'] = d
 
     def updateAccont(self, account: AccountStorage) -> None:
         """

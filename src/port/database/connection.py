@@ -159,7 +159,7 @@ csca: Final = Table('csca', metadata, *certColumns())
 dsc: Final  = Table('dsc' , metadata, *certColumns(issuerCertTable='csca'))
 
 # table for storing Port protocol challenges used for passport active authentication
-protoChallenges: Final = Table('proto_challenges', metadata,
+protoChallenge: Final = Table('proto_challenge', metadata,
     Column('id'       , CidSqlType              , primary_key=True, autoincrement=False            ),
     Column('uid'      , UserIdSqlType()         , nullable=False  , unique=True        , index=True), # ForeignKey('account.uid'). Note: must not be set to foregin key since the account might not exist yet
     Column('challenge', ChallengeSqlType()      , nullable=False                                   ),
@@ -279,7 +279,7 @@ class PortDatabaseConnection:
         mapper(CscaStorage, csca)
 
         # challenge
-        mapper(ChallengeStorage, protoChallenges)
+        mapper(ChallengeStorage, protoChallenge)
 
         # sod
         mapper(SodTrack, sod)
@@ -288,7 +288,7 @@ class PortDatabaseConnection:
         mapper(AccountStorage, account)
 
         #creating tables
-        self._base.metadata.create_all(self._engine, tables=[crlUpdateInfo, crt, pkiDistributionInfo, dsc, csca, protoChallenges, sod, account])
+        self._base.metadata.create_all(self._engine, tables=[crlUpdateInfo, crt, pkiDistributionInfo, dsc, csca, protoChallenge, sod, account])
 
     @staticmethod
     def __buildUrl(dialect:str, host:str, db: str, username: str, password: str):
