@@ -814,7 +814,8 @@ class PortProto:
     def _is_account_attested(self, accnt: AccountStorage, st: Optional[SodTrack] = None) -> bool:
         """
         Checks if account is attested with valid eMRTD biometric passport.
-        In short, verifies that account has assigned valid EF.SOD track which has valid certificates trustchain.
+        In short, verifies that account attestation has not expired and
+        has assigned valid EF.SOD track with valid certificates trustchain.
         i.e. CSCA -> DSC -> EF.SOD track -> account
         :param `accnt`: The account to verify.
         :param `st` (Optional): The SodTrack of `accnt` to verify the certificate trustchain of.
@@ -828,6 +829,9 @@ class PortProto:
         try:
             if accnt.sodId is None \
                 or (st is not None and accnt.sodId != st.id):
+                return False
+            if accnt.expires is not None \
+                and utils.has_expired(accnt.expires, utils.time_now()):
                 return False
 
             if st is None:
