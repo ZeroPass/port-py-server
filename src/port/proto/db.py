@@ -1369,7 +1369,7 @@ class MemoryDB(StorageAPI):
         assert isinstance(sodId, SodId)
         self._log.debug("Deleting EF.SOD track from database sodId=%s", sodId)
         if sodId in self._d['sod']:
-            del self._d['sod']
+            del self._d['sod'][sodId]
 
 
     def findSodTrack(self, sodId: SodId) -> Optional[SodTrack]:
@@ -1433,6 +1433,7 @@ class MemoryDB(StorageAPI):
         :param sod: The EF.SOD track check for.
         :return: True if EF.SOD track exists, otherwise False.
         """
+        assert isinstance(sod, SodTrack)
         if sod.id in self._d['sod']:
             return True
         for s in self._d['sod'].values():
