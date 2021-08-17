@@ -1380,7 +1380,7 @@ class MemoryDB(StorageAPI):
         """
         assert isinstance(sodId, SodId)
         if sodId in self._d['sod']:
-            return self._d['sod']
+            return self._d['sod'][sodId]
         return None
 
     @staticmethod
