@@ -35,7 +35,6 @@ class PeSigVerifyFailed(PeUnauthorized):
 class PeMacVerifyFailed(PeUnauthorized):
     """ Session mac verification error """
 
-
 class PeNotFound(ProtoError):
     """ Non existing elements error (e.g.: account doesn't exist, CSCA can't be faound etc...) """
     code = 404
@@ -66,12 +65,12 @@ class PeChallengeExpired(ProtoError):
     """ Challenge has expired """
     code = 498
 
-class PeCredentialsExpired(ProtoError):
+class PeAttestationExpired(ProtoError):
     """ Challenge has expired """
     code = 498
 
 peAccountAlreadyRegistered: Final         = PeConflict("Account already registered")
-peAccountExpired: Final                   = PeCredentialsExpired("Account has expired")
+peAttestationExpired: Final               = PeAttestationExpired("Account attestation has expired")
 peAccountNotAttested: Final               = PeUnauthorized("Account is not attested")
 peChallengeExpired: Final                 = PeChallengeExpired("Challenge has expired")
 peChallengeVerificationFailed: Final      = PeSigVerifyFailed("Challenge signature verification failed")
@@ -318,6 +317,9 @@ class PortProto:
         :param csigs: List of signatures made over challenge chunks
         :param dg1: (Optional) eMRTD DataGroup file 1
         :return: Tuple of session key and session expiration time
+        :raises peAccountNotAttested: If previous account attestation is not valid anymore,
+                                      e.g.: accnt.sodId=None, accnt EF.SOD certificate trustchain is not valid anymore.
+        :raises peAttestationExpired: If account attestation has expired.
         """
         # Get account
         a = self._db.getAccount(uid)
@@ -331,7 +333,7 @@ class PortProto:
         # 2. Verify account hasn't expired (expired attestation)
         if a.expires is not None \
             and utils.has_expired(a.expires, utils.time_now()):
-            raise peAccountExpired
+            raise peAttestationExpired
 
         # 3. Verify challenge
         self.__verify_challenge(cid, a.getAAPublicKey(), csigs, a.getAASigAlgo())
