@@ -1208,7 +1208,7 @@ class MemoryDB(StorageAPI):
     The purpose of MemoryDB is testing of port proto without needing to set up (or reset) proper database.
     Internally data is stored as dictionary in 4 categories:
         proto_challenges -> Dictionary[CID, Tuple[UserId, Challenge, datetime - expires]]
-        accounts         -> Dictionary[UserId, AccountStorage]
+        account          -> Dictionary[UserId, AccountStorage]
         cscas            -> Set[List[CscaStorage]]
         dscs             -> Set[DscStorage]
     '''
@@ -1217,13 +1217,13 @@ class MemoryDB(StorageAPI):
         self._log = logging.getLogger(MemoryDB.__name__)
         self._d = {
             'proto_challenges' : {},
-            'accounts' : {},
-            'sod'      : {},                # <sodId, SodTrack>
-            'cscas'    : defaultdict(list), # <country, List[CscaStorage]>
-            'dscs'     : defaultdict(list), # <country, List[DscStorage]>
-            'crlui'    : defaultdict(dict), # <country, <CrlId, CrlUpdateInfo>>
-            'crt'      : defaultdict(dict), # <country, <CertificateRevocationInfo.id, CertificateRevocationInfo>>
-            'pkidurl'  : {}                 # <PkiDistributionUrl.id, LPkiDistributionUrl>
+            'account' : {},
+            'sod'     : {},                # <sodId, SodTrack>
+            'cscas'   : defaultdict(list), # <country, List[CscaStorage]>
+            'dscs'    : defaultdict(list), # <country, List[DscStorage]>
+            'crlui'   : defaultdict(dict), # <country, <CrlId, CrlUpdateInfo>>
+            'crt'     : defaultdict(dict), # <country, <CertificateRevocationInfo.id, CertificateRevocationInfo>>
+            'pkidurl' : {}                 # <PkiDistributionUrl.id, LPkiDistributionUrl>
         }
 
     def getChallenge(self, cid: CID) -> Tuple[Challenge, datetime]:
@@ -1292,7 +1292,7 @@ class MemoryDB(StorageAPI):
         :param account: Account storage to add.
         """
         assert isinstance(account, AccountStorage)
-        self._d['accounts'][account.uid] = account
+        self._d['account'][account.uid] = account
 
 
     def deleteAccount(self, uid: UserId) -> None:
@@ -1302,8 +1302,8 @@ class MemoryDB(StorageAPI):
         """
         assert isinstance(uid, UserId)
         self._log.debug("Deleting account from DB. uid=%s", uid)
-        if uid in self._d['accounts']:
-            del self._d['accounts'][uid]
+        if uid in self._d['account']:
+            del self._d['account'][uid]
 
     def accountExists(self, uid: UserId) -> bool:
         """
@@ -1312,7 +1312,7 @@ class MemoryDB(StorageAPI):
         :return: True if account exists, otherwise False.
         """
         assert isinstance(uid, UserId)
-        return uid in self._d['accounts']
+        return uid in self._d['account']
 
     def findAccount(self, uid: UserId) -> Optional[AccountStorage]:
         """
@@ -1321,9 +1321,9 @@ class MemoryDB(StorageAPI):
         :return: AccountStorage if account exitsts, otherwise None.
         """
         assert isinstance(uid, UserId)
-        if uid not in self._d['accounts']:
+        if uid not in self._d['account']:
             return None
-        return self._d['accounts'][uid]
+        return self._d['account'][uid]
 
     def getAccount(self, uid: UserId) -> AccountStorage:
         """
@@ -1345,7 +1345,7 @@ class MemoryDB(StorageAPI):
         :raises seAccountNotFound: If account is not found in the DB.
         """
         assert isinstance(uid, UserId)
-        if uid not in self._d['accounts']:
+        if uid not in self._d['account']:
             raise seAccountNotFound
         a = self.getAccount(uid)
         return a.expires

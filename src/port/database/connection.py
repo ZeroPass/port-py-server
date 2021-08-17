@@ -161,7 +161,7 @@ dsc: Final  = Table('dsc' , metadata, *certColumns(issuerCertTable='csca'))
 # table for storing Port protocol challenges used for passport active authentication
 protoChallenges: Final = Table('proto_challenges', metadata,
     Column('id'       , CidSqlType              , primary_key=True, autoincrement=False            ),
-    Column('uid'      , UserIdSqlType()         , nullable=False  , unique=True        , index=True), # ForeignKey('accounts.uid'). Note: must not be set to foregin key since the account might not exist yet
+    Column('uid'      , UserIdSqlType()         , nullable=False  , unique=True        , index=True), # ForeignKey('account.uid'). Note: must not be set to foregin key since the account might not exist yet
     Column('challenge', ChallengeSqlType()      , nullable=False                                   ),
     Column("expires"  , DateTime(timezone=False), nullable=False                                   )
 )
@@ -189,8 +189,8 @@ sod: Final = Table('sod', metadata,
     Column('dg16Hash'  , VARBINARY(256) , nullable=True , unique=True, index=True                        ),
 )
 
-# table contains info about attested accounts
-accounts: Final = Table('accounts', metadata,
+# table contains info about attested account
+account: Final = Table('account', metadata,
     Column('uid'        , UserIdSqlType()         , primary_key=True                                            ), # uid = UserId
     Column('sodId'      , SodIdSqlType            , ForeignKey('sod.id'), nullable=True, unique=True, index=True), # If null, the account is not attested
     Column('expires'    , DateTime(timezone=False), nullable=True                                               ), # Usually set to DSC expiration time. If NULL, expires when EF.SOD TC expires
@@ -285,10 +285,10 @@ class PortDatabaseConnection:
         mapper(SodTrack, sod)
 
         # account
-        mapper(AccountStorage, accounts)
+        mapper(AccountStorage, account)
 
         #creating tables
-        self._base.metadata.create_all(self._engine, tables=[crlUpdateInfo, crt, pkiDistributionInfo, dsc, csca, protoChallenges, sod, accounts])
+        self._base.metadata.create_all(self._engine, tables=[crlUpdateInfo, crt, pkiDistributionInfo, dsc, csca, protoChallenges, sod, account])
 
     @staticmethod
     def __buildUrl(dialect:str, host:str, db: str, username: str, password: str):

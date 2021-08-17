@@ -114,7 +114,7 @@ class UserIdError(Exception):
     pass
 
 class UserId(bytes):
-    """ Represents accounts userId"""
+    """ Represents account userId"""
 
     max_size: int = 20
 
