@@ -245,7 +245,7 @@ class PortProto:
             elif dg14.aaSignatureAlgo is None:
                 raise peMissingAAInfoInDg14
             aaSigAlgo = dg14.aaSignatureAlgo
-        self.__verify_challenge(cid, aaPubKey, csigs, aaSigAlgo)
+        self._verify_challenge(cid, aaPubKey, csigs, aaSigAlgo)
 
         # 5. Check if matching EF.SOD exist in the DB
         self._log.debug("Searching for any EF.SOD track in DB which matches %s", sod)
@@ -336,7 +336,7 @@ class PortProto:
             raise peAttestationExpired
 
         # 3. Verify challenge
-        self.__verify_challenge(cid, a.getAAPublicKey(), csigs, a.getAASigAlgo())
+        self._verify_challenge(cid, a.getAAPublicKey(), csigs, a.getAASigAlgo())
 
         # 4. Verify account still has still valid attestation
         self._log.debug("Verifying account attestation is still valid for sodId=%s", a.sodId)
@@ -870,7 +870,7 @@ class PortProto:
             self._log.exception(e)
             raise
 
-    def __verify_challenge(self, cid: CID, aaPubKey: AAPublicKey, csigs: List[bytes], aaSigAlgo: SignatureAlgorithm = None ) -> None:
+    def _verify_challenge(self, cid: CID, aaPubKey: AAPublicKey, csigs: List[bytes], aaSigAlgo: SignatureAlgorithm = None ) -> None:
         """
         Check if signature is correct and the time frame is OK
         :raises:
@@ -891,12 +891,23 @@ class PortProto:
 
             # Verify challenge signatures
             ccs = [c[0:8], c[8:16], c[16:24], c[24:32]]
+            if csigs is None or len(csigs) != len(ccs):
+                self._log.error("The size of csigs list doesn't match the size of ccs list")
+                raise peChallengeVerificationFailed
             for idx, sig in enumerate(csigs):
                 if not aaPubKey.verifySignature(ccs[idx], sig, aaSigAlgo):
+                    self._log.error("Signature verification failed for challenge chunk at idx=%s", idx)
                     raise peChallengeVerificationFailed
             self._log.success("Challenge signed with eMRTD was successfully verified!")
-        except:
+        except PeInvalidOrMissingParam:
+            raise
+        except PeChallengeExpired:
+            raise
+        except PeSigVerifyFailed:
+            raise
+        except Exception as e:
             self._log.error("Challenge verification failed!")
+            self._log.error("  e=%s", e)
             raise
 
     def _save_crl_url_from_cert(self, country: CountryCode, cert: Certificate):
