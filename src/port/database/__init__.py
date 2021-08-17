@@ -1,4 +1,4 @@
-from .account import AccountStorage
+from port.database.account import AccountStorage
 from port.database.challenge import ChallengeStorage
 from port.database.connection import PortDatabaseConnection, truncateAll
 from port.database.sod import SodTrack
