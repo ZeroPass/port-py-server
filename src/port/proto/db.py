@@ -211,6 +211,13 @@ class StorageAPI(ABC):
         """
 
     @abstractmethod
+    def deleteCsca(self, cscaId: CertificateId) -> None:
+        """
+        Deletes CSC Certificate from DB.
+        :param `cscaId`: ID of `CscaStorage` to delete from storage.
+        """
+
+    @abstractmethod
     def findCsca(self, certId: CertificateId)-> Optional[CscaStorage]:
         """
         Returns CSCA certificate storage objects that match the id.
@@ -271,6 +278,13 @@ class StorageAPI(ABC):
         """
         Inserts new DSC certificate storage into database
         :param dsc: DscStorage to insert into database.
+        """
+
+    @abstractmethod
+    def deleteDsc(self, dscId: CertificateId) -> None:
+        """
+        Deletes DSC Certificate from DB.
+        :param `dscId`: ID of `DscStorage` to delete from storage.
         """
 
     @abstractmethod
@@ -771,6 +785,22 @@ class DatabaseAPI(StorageAPI):
         self.addCscaStorage(cs)
         return cs.id
 
+    def deleteCsca(self, cscaId: CertificateId) -> None:
+        """
+        Deletes CSC Certificate from DB.
+        :param `cscaId`: ID of `CscaStorage` to delete from storage.
+        :raises DatabaseAPIError: On DB connection errors.
+        """
+        assert isinstance(cscaId, CertificateId)
+        self._log.debug("Deleting CSCA certificate id=%s", cscaId)
+        try:
+            self.__db \
+                .query(CscaStorage) \
+                .filter(CscaStorage.id == cscaId) \
+                .delete()
+        except Exception as e:
+            self.__handle_exception(e)
+
     def addCscaStorage(self, csca: CscaStorage) -> None: #pylint: disable=arguments-differ
         """
         Inserts new CSCA certificate storage into database
@@ -923,6 +953,22 @@ class DatabaseAPI(StorageAPI):
                 raise seDscExists
             self.__db.add(dsc)
             self.__db.commit()
+        except Exception as e:
+            self.__handle_exception(e)
+
+    def deleteDsc(self, dscId: CertificateId) -> None:
+        """
+        Deletes DSC Certificate from DB.
+        :param `dscId`: ID of `DscStorage` to delete from storage.
+        :raises DatabaseAPIError: On DB connection errors.
+        """
+        assert isinstance(dscId, CertificateId)
+        self._log.debug("Deleting DSC certificate id=%s", dscId)
+        try:
+            self.__db \
+                .query(DscStorage) \
+                .filter(DscStorage.id == dscId) \
+                .delete()
         except Exception as e:
             self.__handle_exception(e)
 
@@ -1472,6 +1518,19 @@ class MemoryDB(StorageAPI):
                 raise seCscaExists
         self._d['csca'][csca.country].append(csca)
 
+    def deleteCsca(self, cscaId: CertificateId) -> None:
+        """
+        Deletes CSC Certificate from DB.
+        :param `cscaId`: ID of `CscaStorage` to delete from storage.
+        """
+        assert isinstance(cscaId, CertificateId)
+        self._log.debug("Deleting CSCA certificate id=%s", cscaId)
+        for cscas in self._d['csca'].values():
+            for csca in cscas:
+                if csca.id == cscaId:
+                    cscas.remove(csca)
+                    return
+
     def findCsca(self, certId: CertificateId)-> Optional[CscaStorage]:
         """
         Returns CSCA certificate storage objects that match the id.
@@ -1579,6 +1638,19 @@ class MemoryDB(StorageAPI):
             if c.id == dsc.id:
                 raise seDscExists
         self._d['dsc'][dsc.country].append(dsc)
+
+    def deleteDsc(self, dscId: CertificateId) -> None:
+        """
+        Deletes DSC Certificate from DB.
+        :param `dscId`: ID of `DscStorage` to delete from storage.
+        """
+        assert isinstance(dscId, CertificateId)
+        self._log.debug("Deleting DSC certificate id=%s", dscId)
+        for dscs in self._d['dsc'].values():
+            for dsc in dscs:
+                if dsc.id == dscId:
+                    dscs.remove(dsc)
+                    return
 
     def findDsc(self, certId: CertificateId) -> Optional[DscStorage]:
         """
