@@ -6,12 +6,53 @@ import pytest
 from datetime import timedelta
 from pymrtd import ef
 from pymrtd.pki.x509 import CscaCertificate, DocumentSignerCertificate
-from port.proto.db import MemoryDB
-from port.proto.proto import PeNotFound, PePreconditionFailed, PeUnauthorized, PortProto, ProtoError, utils
-from port.proto.types import CertificateId, CountryCode
+from port.proto.proto import (
+    peAccountAlreadyRegistered,
+    peAccountNotAttested,
+    peAttestationExpired,
+    PeAttestationExpired,
+    peChallengeExpired,
+    PeChallengeExpired,
+    peChallengeVerificationFailed,
+    PeConflict,
+    peCscaExists,
+    peCscaNotFound,
+    peCscaSelfIssued,
+    peCscaTooNewOrExpired,
+    peCrlOld,
+    peCrlTooNew,
+    peDg1Required,
+    peDg14Required,
+    peDscCantIssuePassport,
+    peDscExists,
+    peDscNotFound,
+    peDscTooNewOrExpired,
+    peEfSodNotGenuine,
+    peInvalidCsca,
+    peInvalidCrl,
+    peInvalidDsc,
+    peInvalidEfSod,
+    PeInvalidOrMissingParam,
+    PeMacVerifyFailed,
+    peMatchingEfSod,
+    peMissingAAInfoInDg14,
+    peMissingParamAASigAlgo,
+    PeNotFound,
+    PePreconditionFailed,
+    PePreconditionRequired,
+    PeSigVerifyFailed,
+    peTrustchainCheckFailedExpiredCert,
+    peTrustchainCheckFailedNoCsca,
+    peTrustchainCheckFailedRevokedCert,
+    peTrustchainVerificationFailed,
+    PeUnauthorized,
+    PortProto,
+    ProtoError
+)
+from port.proto import CertificateId, Challenge, CountryCode, MemoryDB, SodId, UserId, utils
+from port.database import CertificateRevocationInfo, DscStorage, SodTrack
 from unittest import mock
-
-from port.database import CertificateRevocationInfo
+from typing import Callable, Optional, Tuple
 
 _dir = os.path.dirname(os.path.realpath(__file__))
 CERTS_DIR = py.path.local(_dir) /'..'/'tv/certs'
@@ -23,6 +64,139 @@ def alter_sod(sod: ef.SOD):
         .replace(sod.ldsSecurityObject.dgHashes.find(ef.dg.DataGroupNumber(1)).hash,\
              bytes.fromhex('BADEF50D00000000FF6A22FFEF1567FF88079F415C66EAD250AB5F23781AC2CD')))
     return s
+
+def test_proto_errors():
+    # Test PE exception classes
+    pe = ProtoError()
+    assert pe.code == 400
+
+    peua = PeUnauthorized()
+    assert peua.code == 401
+    assert issubclass(PeUnauthorized, ProtoError)
+
+    pesvf = PeSigVerifyFailed()
+    assert pesvf.code == 401
+    assert issubclass(PeSigVerifyFailed, PeUnauthorized)
+
+    pemvf = PeMacVerifyFailed()
+    assert pemvf.code == 401
+    assert issubclass(PeMacVerifyFailed, PeUnauthorized)
+
+    penf = PeNotFound()
+    assert penf.code == 404
+    assert issubclass(PeNotFound, ProtoError)
+
+    pec = PeConflict()
+    assert pec.code == 409
+    assert issubclass(PeConflict, ProtoError)
+
+    pepf = PePreconditionFailed()
+    assert pepf.code == 412
+    assert issubclass(PePreconditionFailed, ProtoError)
+
+    peiomp = PeInvalidOrMissingParam()
+    assert peiomp.code == 422
+    assert issubclass(PeInvalidOrMissingParam, ProtoError)
+
+    pepr = PePreconditionRequired()
+    assert pepr.code == 428
+    assert issubclass(PePreconditionRequired, ProtoError)
+
+    pece = PeChallengeExpired()
+    assert pece.code == 498
+    assert issubclass(PeChallengeExpired, ProtoError)
+
+    peae = PeAttestationExpired()
+    assert peae.code == 498
+    assert issubclass(PeAttestationExpired, ProtoError)
+
+    # Test predefined exception objects
+    assert isinstance(peAccountAlreadyRegistered, PeConflict)
+    assert str(peAccountAlreadyRegistered) == "Account already registered"
+
+    assert isinstance(peAttestationExpired, PeAttestationExpired)
+    assert str(peAttestationExpired) == "Account attestation has expired"
+
+    assert isinstance(peAccountNotAttested, PeUnauthorized)
+    assert str(peAccountNotAttested) == "Account is not attested"
+
+    assert isinstance(peChallengeExpired, PeChallengeExpired)
+    assert str(peChallengeExpired) == "Challenge has expired"
+
+    assert isinstance(peChallengeVerificationFailed, PeSigVerifyFailed)
+    assert str(peChallengeVerificationFailed) == "Challenge signature verification failed"
+
+    assert isinstance(peCscaExists, PeConflict)
+    assert str(peCscaExists) == "CSCA certificate already exists"
+
+    assert isinstance(peCscaNotFound, ProtoError)
+    assert str(peCscaNotFound) == "CSCA certificate not found"
+
+    assert isinstance(peCscaSelfIssued, PeNotFound)
+    assert str(peCscaSelfIssued) == "No CSCA link was found for self-issued CSCA"
+
+    assert isinstance(peCscaTooNewOrExpired, ProtoError)
+    assert str(peCscaTooNewOrExpired) == "CSCA certificate is too new or has expired"
+
+    assert isinstance(peCrlOld, PeInvalidOrMissingParam)
+    assert str(peCrlOld) == "Old CRL"
+
+    assert isinstance(peCrlTooNew, PeInvalidOrMissingParam)
+    assert str(peCrlTooNew) == "Can't add future CRL"
+
+    assert isinstance(peDg1Required, PePreconditionRequired)
+    assert str(peDg1Required) == "EF.DG1 required"
+
+    assert isinstance(peDg14Required, PePreconditionRequired)
+    assert str(peDg14Required) == "EF.DG14 required"
+
+    assert isinstance(peDscCantIssuePassport, PeInvalidOrMissingParam)
+    assert str(peDscCantIssuePassport) == "DSC certificate can't issue biometric passport"
+
+    assert isinstance(peDscExists, PeConflict)
+    assert str(peDscExists) == "DSC certificate already exists"
+
+    assert isinstance(peDscNotFound, PeNotFound)
+    assert str(peDscNotFound) == "DSC certificate not found"
+
+    assert isinstance(peDscTooNewOrExpired, ProtoError)
+    assert str(peDscTooNewOrExpired) == "DSC certificate is too new or has expired"
+
+    assert isinstance(peEfSodNotGenuine, PeUnauthorized)
+    assert str(peEfSodNotGenuine) == "EF.SOD file not genuine"
+
+    assert isinstance(peInvalidCsca, PeInvalidOrMissingParam)
+    assert str(peInvalidCsca) == "Invalid CSCA certificate"
+
+    assert isinstance(peInvalidCrl, PeInvalidOrMissingParam)
+    assert str(peInvalidCrl) == "Invalid CRL file"
+
+    assert isinstance(peInvalidDsc, PeInvalidOrMissingParam)
+    assert str(peInvalidDsc) == "Invalid DSC certificate"
+
+    assert isinstance(peInvalidEfSod, PeInvalidOrMissingParam)
+    assert str(peInvalidEfSod) == "Invalid EF.SOD file"
+
+    assert isinstance(peMatchingEfSod, PeConflict)
+    assert str(peMatchingEfSod) == "Matching EF.SOD file already registered"
+
+    assert isinstance(peMissingAAInfoInDg14, PePreconditionRequired)
+    assert str(peMissingAAInfoInDg14) == "Missing ActiveAuthenticationInfo in DG14 file"
+
+    assert isinstance(peMissingParamAASigAlgo, PeInvalidOrMissingParam)
+    assert str(peMissingParamAASigAlgo) == "Missing param aaSigAlgo"
+
+    assert isinstance(peTrustchainCheckFailedExpiredCert, PePreconditionFailed)
+    assert str(peTrustchainCheckFailedExpiredCert) == "Expired certificate in the trustchain"
+
+    assert isinstance(peTrustchainCheckFailedNoCsca, PePreconditionFailed)
+    assert str(peTrustchainCheckFailedNoCsca) == "Missing issuer CSCA certificate in the trustchain"
+
+    assert isinstance(peTrustchainCheckFailedRevokedCert, PePreconditionFailed)
+    assert str(peTrustchainCheckFailedRevokedCert) == "Revoked certificate in the trustchain"
+
+    assert isinstance(peTrustchainVerificationFailed, PePreconditionFailed)
+    assert str(peTrustchainVerificationFailed) == "Trustchain verification failed"
 
 def verify_sod_is_genuine_test(sod: ef.SOD, csca: CscaCertificate, dsc: DocumentSignerCertificate):
     """
