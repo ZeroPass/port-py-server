@@ -290,7 +290,7 @@ class PortProto:
         # 8. Insert account into db
         et = self._get_account_expiration(uid, st, dsc) #pylint: disable=assignment-from-none
         accnt = AccountStorage(uid, st.id, et, aaPubKey, aaSigAlgo, dg1=None, dg2=None, session=s)
-        self._db.updateAccont(accnt)
+        self._db.updateAccount(accnt)
 
         self._log.debug("New account created: uid=%s", uid.hex())
         if len(sod.dscCertificates) > 0:
@@ -364,7 +364,7 @@ class PortProto:
 
         # 7. Update account
         a.loginCount += 1
-        self._db.updateAccont(a)
+        self._db.updateAccount(a)
         if dg1 is not None:
             self._log.info("File DG1(surname=%s name=%s) issued by %s is now tied to eMRTD pubkey=%s",
                 dg1.mrz.surname, dg1.mrz.name, utils.code_to_country_name(dg1.mrz.country), a.aaPublicKey.hex())
@@ -985,7 +985,7 @@ class PortProto:
 
         # Update account's session nonce
         a.setSession(s)
-        self._db.updateAccont(a)
+        self._db.updateAccount(a)
 
         if not success:
             raise PeMacVerifyFailed("Invalid session MAC")

@@ -99,7 +99,7 @@ class StorageAPI(ABC):
 
     # User methods
     @abstractmethod
-    def updateAccont(self, account: AccountStorage) -> None:
+    def updateAccount(self, account: AccountStorage) -> None:
         """
         Adds new accout to storage or updates existing.
         :param account: Account storage to add.
@@ -526,14 +526,14 @@ class DatabaseAPI(StorageAPI):
         except Exception as e:
             self.__handle_exception(e)
 
-    def updateAccont(self, account: AccountStorage) -> None:
+    def updateAccount(self, account: AccountStorage) -> None:
         """
         Adds new accout to storage or updates existing.
         :param account: Account storage to add.
         :raises: DatabaseAPIError on DB connection errors.
         """
         assert isinstance(account, AccountStorage)
-        self._log.debug("Adding or updating account. uid=%s", account.uid)
+        self._log.debug("Inserting or updating account, uid=%s", account.uid)
         try:
             self.__db.merge(account)
             self.__db.commit()
@@ -1286,12 +1286,13 @@ class MemoryDB(StorageAPI):
             if cet >= time }
         self._d['proto_challenge'] = d
 
-    def updateAccont(self, account: AccountStorage) -> None:
+    def updateAccount(self, account: AccountStorage) -> None:
         """
         Adds new accout to storage or updates existing.
         :param account: Account storage to add.
         """
         assert isinstance(account, AccountStorage)
+        self._log.debug("Inserting or updating account, uid=%s", account.uid)
         self._d['account'][account.uid] = account
 
 
