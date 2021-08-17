@@ -265,27 +265,20 @@ class PortProto:
                 try:
                     # Throw an error by default if IDs match.
                     # This prevents 2 accounts having same SodId in case the DSC of `s`
-                    # has invalid tc, and `s` would be then deleted from DB in this for loop.
-                    if s.id != st.id:
-                        ds = self._db.findDsc(s.dscId)
-                        if ds is None:
-                            raise Exception() # get me out to the deleting part
-                        self._verify_cert_trustchain(ds)
-                    self._log.error("Found valid matching EF.SOD track with sodId=%s for %s with sodId=%s", s.id, sod, st.id)
-                    raise peMatchingEfSod
+                    # has invalid tc. In this case `s` would have to be then deleted from DB.
+                    # Note, checking for matching sodId will block attesting expired account
+                    # with the same EF.SOD in case the EF.SOD track is still valid (i.e. trustchain is valid).
+                    if s.id == st.id or self._is_sod_track_valid(s):
+                        self._log.error("Found valid matching EF.SOD track with sodId=%s for %s with sodId=%s", s.id, sod, st.id)
+                        raise peMatchingEfSod
                 except type(peMatchingEfSod):
-                    raise
-                except StorageAPIError as e:
-                    self._log.error("An exception was encountered while verifying if EF.SOD track with sodId=%s has valid certificate trustchain.", s.id)
-                    self._log.error("  e=%s", e)
                     raise
                 except AssertionError:
                     raise
-                except: #pylint: disable=bare-except
-                    self._log.debug("Matched EF.SOD track with sodId=%s has invalid trustchain, deleting from DB ...", s.id)
-                    # TODO: deleting sod track will fail if there is existing account in tb that holds it's sodId
-                    #       "(Due to a.sodId == foregin key in sod table"
-                    self._db.deleteSodTrack(s.id)
+                except Exception as e:
+                    self._log.error("An exception was encountered while verifying if matching EF.SOD track with sodId=%s is valid.", s.id)
+                    self._log.error("  e=%s", e)
+                    raise
 
         # 7. Save EF.SOD track and delete challenge
         self._db.addSodTrack(st)
