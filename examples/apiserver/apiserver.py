@@ -42,16 +42,16 @@ class DevProto(PortProto):
         self._log = log.getLogger("port.dev_proto")
 
     def createNewChallenge(self, uid: UserId) -> Tuple[Challenge, datetime]:
+        c, cct = super().createNewChallenge(uid)
         if self._fc:
             fc = Challenge.fromhex("47E4EE7F211F73265DD17658F6E21C1318BD6C81F37598E20A2756299542EFCF")
-            c, cct = super().createNewChallenge(uid)
             if c == fc:
-                return (c,cct)
+                return (c, cct)
             self._db.deleteChallenge(c.id)
             cet = self._get_challenge_expiration(utils.time_now())
             self._db.addChallenge(uid, fc, cet)
             return (fc, cet)
-        return super().createNewChallenge(uid)
+        return (c, cct)
 
     def _get_account_expiration(self, uid: UserId, sod: SodTrack, dsc: DscStorage) -> Optional[datetime]: #pylint: disable=no-self-use,unused-argument
         """Return 1 minute expiration time"""
