@@ -220,15 +220,13 @@ class PortProto:
 
         # 2. Verify if account already exists, and if it does
         #    check that it has expired already or allowSodOverride == True.
-        if self._db.accountExists(uid):
-            # TODO: check if account.sodId exists and if not, set allowSodOverride = True
-            #       If account sod exist and if expired/revoked, set allowSodOverride = True, delete  sod
+        accnt = self._db.findAccount(uid)
+        if accnt is not None:
             if not allowSodOverride:
-                et = self._db.getAccountExpiry(uid)
-                if not utils.has_expired(et, utils.time_now()):
+                if self._is_account_attested(accnt): # Allow account re-attestation if not attested anymore.
                     raise peAccountAlreadyRegistered
-            self._log.debug("%s, registering new credentials", "allowSodOverride=True"
-                if allowSodOverride == True else "Account has expired") #pylint: disable=singleton-comparison
+            self._log.debug("%s, registering new attestation", "allowSodOverride=True"
+                if allowSodOverride == True else "Account has expired or has invalid attestation") #pylint: disable=singleton-comparison
 
         # Following 2 emrtd checks are done first for the precautionary reasons
         # to prevent potential spoofing attacks if there are any undiscovered bugs.
