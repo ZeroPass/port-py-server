@@ -197,6 +197,7 @@ account: Final = Table('account', metadata,
     Column('aaPublicKey', LargeBinary             , nullable=False                                              ),
     Column('aaSigAlgo'  , LargeBinary             , nullable=True                                               ),
     Column('dg1'        , LargeBinary             , nullable=True                                               ),
+    Column('dg2'        , LargeBinary             , nullable=True                                               ),
     Column('session'    , LargeBinary             , nullable=False                                              ), # Note: Should be moved to separate table
     Column('loginCount' , Integer                 , default=0                                                   ),
 )

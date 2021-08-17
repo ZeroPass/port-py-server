@@ -11,14 +11,15 @@ class AccountStorage:
     """Class for interaction between code structure and database"""
     uid: UserId
     sodId: Optional[SodId] # If None, account is not attested by passport
-    expires: Optional[datetime] # The date the account expires, usually set to dsc expiration time
+    expires: Optional[datetime] # The date the account attestation expires, usually set to dsc expiration time
     aaPublicKey: bytes
     aaSigAlgo: Optional[bytes]
     dg1: Optional[bytes]
+    dg2: Optional[bytes]
     session: bytes
     loginCount: int
 
-    def __init__(self, uid: UserId, sodId: Optional[SodId], expires: Optional[datetime], aaPublicKey: AAPublicKey, aaSigAlgo: Optional[SignatureAlgorithm], dg1: Optional[ef.DG1], session: Session, loginCount: int = 0):
+    def __init__(self, uid: UserId, sodId: Optional[SodId], expires: Optional[datetime], aaPublicKey: AAPublicKey, aaSigAlgo: Optional[SignatureAlgorithm], dg1: Optional[ef.DG1], dg2: Optional[bytes], session: Session, loginCount: int = 0):
         """Initialization object"""
         assert isinstance(uid, UserId)
         assert isinstance(sodId, (SodId, type(None)))
@@ -26,6 +27,7 @@ class AccountStorage:
         assert isinstance(aaPublicKey, AAPublicKey)
         assert isinstance(aaSigAlgo, (SignatureAlgorithm, type(None)))
         assert isinstance(dg1, (ef.DG1, type(None)))
+        assert isinstance(dg2, (bytes, type(None)))
         assert isinstance(session, Session)
 
         assert isinstance(loginCount, int)
@@ -41,6 +43,7 @@ class AccountStorage:
         self.aaPublicKey = aaPublicKey.dump()
         self.aaSigAlgo   = aaSigAlgo
         self.dg1         = dg1
+        self.dg2         = dg2
         self.session     = session.bytes()
         self.loginCount  = loginCount
 
