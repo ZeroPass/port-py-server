@@ -35,7 +35,7 @@ def verify_sod_is_genuine_test(sod: ef.SOD, csca: CscaCertificate, dsc: Document
     proto = PortProto(db, cttl = 0)
 
     # Missing CSCA
-    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidBefore + timedelta(days=1)):
+    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidBefore + timedelta(seconds=1)):
         with pytest.raises(PeNotFound, match="CSCA certificate not found"):
             proto._verify_sod_is_genuine(sod)
 
@@ -43,17 +43,17 @@ def verify_sod_is_genuine_test(sod: ef.SOD, csca: CscaCertificate, dsc: Document
     db.addCsca(csca)
 
     # DSC is not valid yet
-    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidBefore - timedelta(days=1)):
+    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidBefore - timedelta(seconds=1)):
         with pytest.raises(ProtoError, match="DSC certificate is too new or has expired"):
             proto._verify_sod_is_genuine(sod)
 
     # DSC is expired
-    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidAfter + timedelta(days=1)):
+    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidAfter + timedelta(seconds=1)):
         with pytest.raises(ProtoError, match="DSC certificate is too new or has expired"):
             proto._verify_sod_is_genuine(sod)
 
     # Now do tests when DSC is valid at present time
-    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidBefore + timedelta(days=1)):
+    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidBefore + timedelta(seconds=1)):
         # Test verifying SOD fails when CSCA is revoked
         with pytest.raises(PePreconditionFailed, match="Revoked certificate in the trustchain"):
             cscaCri = CertificateRevocationInfo(CountryCode(csca.issuerCountry), csca.serial_number, utils.time_now(), crlId = None)
@@ -111,13 +111,13 @@ def verify_sod_is_genuine_test(sod: ef.SOD, csca: CscaCertificate, dsc: Document
 @pytest.mark.datafiles(
     CERTS_DIR / 'csca_de_0130846f22c2.der',
     CERTS_DIR / 'dsc_de_0130846f2b3e.cer',
-    LDS_DIR  /  'ef.sod_de_9712AB14.bin',
+    LDS_DIR   / 'ef.sod_de_9712AB14.bin',
 
     CERTS_DIR / 'dsc_de_0142fd5cf927.cer',
 
     CERTS_DIR / 'csca_si_448831f1.cer',
     CERTS_DIR / 'dsc_si_448833b8.cer',
-    LDS_DIR  /  'ef.sod_si_454CB206.bin'
+    LDS_DIR   / 'ef.sod_si_454CB206.bin'
 )
 def test_verify_sod_is_genuine(datafiles):
     # Test vector taken from https://www.etsi.org/
@@ -140,7 +140,6 @@ def test_verify_sod_is_genuine(datafiles):
         dsc: DocumentSignerCertificate = DocumentSignerCertificate.load(dsc.read())
     verify_sod_is_genuine_test(sod, csca, dsc)
 
-
     # Test vector taken from German BSI TR-03105-5 ReferenceDataSet
     # https://www.bsi.bund.de/SharedDocs/Downloads/DE/BSI/Publikationen/TechnischeRichtlinien/TR03105/BSI_TR-03105-5_ReferenceDataSet_zip.html
     # EF_SOD.bin
@@ -151,6 +150,6 @@ def test_verify_sod_is_genuine(datafiles):
     sod = ef.SOD.load(tv_sod)
 
     # Missing CSCA
-    with mock.patch('port.proto.utils.time_now', return_value=sod.dscCertificates[0].notValidBefore + timedelta(days=1)):
+    with mock.patch('port.proto.utils.time_now', return_value=sod.dscCertificates[0].notValidBefore + timedelta(seconds=1)):
         with pytest.raises(PeNotFound, match="CSCA certificate not found"):
             proto._verify_sod_is_genuine(sod)
