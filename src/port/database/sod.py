@@ -49,6 +49,22 @@ class SodTrack:
         self.id       = sodId
         self.dscId    = dscId
         self.hashAlgo = hashAlgo
+        self.dg1Hash  = None
+        self.dg2Hash  = None
+        self.dg3Hash  = None
+        self.dg4Hash  = None
+        self.dg5Hash  = None
+        self.dg6Hash  = None
+        self.dg7Hash  = None
+        self.dg8Hash  = None
+        self.dg9Hash  = None
+        self.dg10Hash = None
+        self.dg11Hash = None
+        self.dg12Hash = None
+        self.dg13Hash = None
+        self.dg14Hash = None
+        self.dg15Hash = None
+        self.dg16Hash = None
 
         dg: DataGroupHash
         for dg in (dgHashes or []):
