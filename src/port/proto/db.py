@@ -547,7 +547,7 @@ class DatabaseAPI(StorageAPI):
         :raises: DatabaseAPIError on DB connection errors.
         """
         assert isinstance(uid, UserId)
-        self._log.debug("Deleting account from DB. uid=%s", uid)
+        self._log.debug("Deleting account from DB, uid=%s", uid)
         try:
             self.__db \
                 .query(AccountStorage) \
@@ -629,7 +629,7 @@ class DatabaseAPI(StorageAPI):
         :raises seEfSodExists: if there is EF.SOD track that has the same sodId or hashAlgo and any of the dgHashes match.
         """
         assert isinstance(sod, SodTrack)
-        self._log.debug("Inserting new EF.SOD track into database sodId=%s", sod.id)
+        self._log.debug("Inserting new EF.SOD track into DB, sodId=%s", sod.id)
         try:
             if self.sodTrackMatches(sod):
                 raise seEfSodExists
@@ -645,7 +645,7 @@ class DatabaseAPI(StorageAPI):
         :raises DatabaseAPIError: On DB connection errors.
         """
         assert isinstance(sodId, SodId)
-        self._log.debug("Deleting EF.SOD track from database sodId=%s", sodId)
+        self._log.debug("Deleting EF.SOD track from DB, sodId=%s", sodId)
         try:
             self.__db \
                 .query(SodTrack.id) \
@@ -779,7 +779,7 @@ class DatabaseAPI(StorageAPI):
         :raises SeEntryAlreadyExists: if the same CSCA storage already exists.
         """
         assert isinstance(csca, CscaStorage)
-        self._log.debug("Inserting new CSCA into database C=%s serial=%s", csca.country, csca.serial.hex())
+        self._log.debug("Inserting new CSCA into DB, C=%s serial=%s", csca.country, csca.serial.hex())
         try:
             if self._exists(self.__db.query(CscaStorage.id).filter(CscaStorage.id == csca.id)):
                 raise seCscaExists
@@ -914,10 +914,10 @@ class DatabaseAPI(StorageAPI):
         Inserts new DSC certificate storage into database
         :param dsc: DscStorage to insert into database.
         :raises DatabaseAPIError: On DB connection errors.
-        :raises SeEntryAlreadyExists: If the same DSC certificate storage already exists.
+        :raises seDscExists: If the same DSC certificate storage already exists.
         """
         assert isinstance(dsc, DscStorage)
-        self._log.debug("Inserting new DSC into database C=%s serial=%s", dsc.country, dsc.serial.hex())
+        self._log.debug("Inserting new DSC certificate into DB, C=%s serial=%s", dsc.country, dsc.serial.hex())
         try:
             if self._exists(self.__db.query(DscStorage.id).filter(DscStorage.id == dsc.id)):
                 raise seDscExists
@@ -1207,10 +1207,10 @@ class MemoryDB(StorageAPI):
     The data is stored in memory (RAM) and gets deleted as instance of MemoryDB is destroyed.
     The purpose of MemoryDB is testing of port proto without needing to set up (or reset) proper database.
     Internally data is stored as dictionary in 4 categories:
-        proto_challenge  -> Dictionary[CID, Tuple[UserId, Challenge, datetime - expires]]
-        account          -> Dictionary[UserId, AccountStorage]
-        cscas            -> Set[List[CscaStorage]]
-        dscs             -> Set[DscStorage]
+        proto_challenge -> Dictionary[CID, Tuple[UserId, Challenge, datetime - expires]]
+        account         -> Dictionary[UserId, AccountStorage]
+        csca            -> Set[List[CscaStorage]]
+        dsc             -> Set[DscStorage]
     '''
 
     def __init__(self):
@@ -1219,8 +1219,8 @@ class MemoryDB(StorageAPI):
             'proto_challenge' : {},
             'account' : {},
             'sod'     : {},                # <sodId, SodTrack>
-            'cscas'   : defaultdict(list), # <country, List[CscaStorage]>
-            'dscs'    : defaultdict(list), # <country, List[DscStorage]>
+            'csca'    : defaultdict(list), # <country, List[CscaStorage]>
+            'dsc'     : defaultdict(list), # <country, List[DscStorage]>
             'crlui'   : defaultdict(dict), # <country, <CrlId, CrlUpdateInfo>>
             'crt'     : defaultdict(dict), # <country, <CertificateRevocationInfo.id, CertificateRevocationInfo>>
             'pkidurl' : {}                 # <PkiDistributionUrl.id, LPkiDistributionUrl>
@@ -1302,7 +1302,7 @@ class MemoryDB(StorageAPI):
         :param `uid: The user ID of the account.
         """
         assert isinstance(uid, UserId)
-        self._log.debug("Deleting account from DB. uid=%s", uid)
+        self._log.debug("Deleting account from DB, uid=%s", uid)
         if uid in self._d['account']:
             del self._d['account'][uid]
 
@@ -1357,7 +1357,7 @@ class MemoryDB(StorageAPI):
         :param sod: EF.SOD track to add.
         """
         assert isinstance(sod, SodTrack)
-        self._log.debug("Inserting new EF.SOD track into database sodId=%s", sod.id)
+        self._log.debug("Inserting new EF.SOD track into DB, sodId=%s", sod.id)
         if self.sodTrackMatches(sod):
             raise seEfSodExists
         self._d['sod'][sod.id] = sod
@@ -1368,7 +1368,7 @@ class MemoryDB(StorageAPI):
         :param sodId: Id of the EF.SOD track to remove from database
         """
         assert isinstance(sodId, SodId)
-        self._log.debug("Deleting EF.SOD track from database sodId=%s", sodId)
+        self._log.debug("Deleting EF.SOD track from DB, sodId=%s", sodId)
         if sodId in self._d['sod']:
             del self._d['sod'][sodId]
 
@@ -1466,11 +1466,11 @@ class MemoryDB(StorageAPI):
                  SeEntryAlreadyExists if the same CSCA storage already exists.
         """
         assert isinstance(csca, CscaStorage)
-        self._log.debug("Inserting new CSCA into database C=%s serial=%s", csca.country, csca.serial.hex())
-        for c in self._d['cscas'][csca.country]:
+        self._log.debug("Inserting new CSCA into DB, C=%s serial=%s", csca.country, csca.serial.hex())
+        for c in self._d['csca'][csca.country]:
             if c.id == csca.id:
                 raise seCscaExists
-        self._d['cscas'][csca.country].append(csca)
+        self._d['csca'][csca.country].append(csca)
 
     def findCsca(self, certId: CertificateId)-> Optional[CscaStorage]:
         """
@@ -1479,7 +1479,7 @@ class MemoryDB(StorageAPI):
         :return: list of CscaStorage, or None if no CSCA certificate was found.
         """
         assert isinstance(certId, CertificateId)
-        for _, cscas in self._d['cscas'].items():
+        for _, cscas in self._d['csca'].items():
             for csca in cscas:
                 if csca.id == certId:
                     return csca
@@ -1497,7 +1497,7 @@ class MemoryDB(StorageAPI):
         country = CountryCode(issuer.native['country_name'])
         if isinstance(serial, int):
             serial = CertificateStorage.makeSerial(serial)
-        for csca in self._d['cscas'][country]:
+        for csca in self._d['csca'][country]:
             if csca.issuer.lower() == issuer.human_friendly.lower() \
                 and csca.serial == serial:
                 return csca
@@ -1517,7 +1517,7 @@ class MemoryDB(StorageAPI):
         assert isinstance(subject, x509.Name)
         cscas = []
         country = CountryCode(subject.native['country_name'])
-        for csca in self._d['cscas'][country]:
+        for csca in self._d['csca'][country]:
             if csca.subject.lower() == subject.human_friendly.lower():
                 if subjectKey is None or csca.subjectKey == subjectKey:
                     cscas.append(csca)
@@ -1532,7 +1532,7 @@ class MemoryDB(StorageAPI):
         assert isinstance(subject, x509.Name)
         cscas = []
         country = CountryCode(subject.native['country_name'])
-        for csca in self._d['cscas'][country]:
+        for csca in self._d['csca'][country]:
             if csca.subject.lower() == subject.human_friendly.lower():
                 cscas.append(csca)
         return cscas if len(cscas) != 0 else None
@@ -1547,7 +1547,7 @@ class MemoryDB(StorageAPI):
         assert isinstance(subjectKey, bytes)
         assert isinstance(country, CountryCode)
         cscas = []
-        for csca in self._d['cscas'][country]:
+        for csca in self._d['csca'][country]:
             if csca.subjectKey == subjectKey:
                 cscas.append(csca)
         return cscas if len(cscas) != 0 else None
@@ -1573,12 +1573,12 @@ class MemoryDB(StorageAPI):
         :param dsc: DscStorage to insert into database.
         :raises SeEntryAlreadyExists: If DSC certificate already exists
         """
-        self._log.debug("Inserting new DSC into database C=%s serial=%s",
+        self._log.debug("Inserting new DSC into DB, C=%s serial=%s",
         dsc.country, dsc.serial.hex())
-        for c in self._d['dscs'][dsc.country]:
+        for c in self._d['dsc'][dsc.country]:
             if c.id == dsc.id:
                 raise seDscExists
-        self._d['dscs'][dsc.country].append(dsc)
+        self._d['dsc'][dsc.country].append(dsc)
 
     def findDsc(self, certId: CertificateId) -> Optional[DscStorage]:
         """
@@ -1587,7 +1587,7 @@ class MemoryDB(StorageAPI):
         :return: DscStorage
         """
         assert isinstance(certId, CertificateId)
-        for _, dscs in self._d['dscs'].items():
+        for _, dscs in self._d['dsc'].items():
             for dsc in dscs:
                 if dsc.id == certId:
                     return dsc
@@ -1605,7 +1605,7 @@ class MemoryDB(StorageAPI):
         assert isinstance(serial, int) or isinstance(serial, bytes)
         if isinstance(serial, int):
             serial = CertificateStorage.makeSerial(serial)
-        for dsc in self._d['dscs'][CountryCode(issuer.native['country_name'])]:
+        for dsc in self._d['dsc'][CountryCode(issuer.native['country_name'])]:
             if dsc.issuer.lower() == issuer.human_friendly.lower() \
                 and dsc.serial == serial:
                 return dsc
@@ -1618,7 +1618,7 @@ class MemoryDB(StorageAPI):
         :return: DscStorage
         """
         assert isinstance(subjectKey, bytes)
-        for _, dscs in self._d['dscs'].items():
+        for _, dscs in self._d['dsc'].items():
             for dsc in dscs:
                 if dsc.subjectKey == subjectKey:
                     return dsc
