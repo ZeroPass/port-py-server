@@ -53,8 +53,11 @@ class DevProto(PortProto):
             return (fc, cet)
         return (c, cct)
 
-    def _get_account_expiration(self, uid: UserId, sod: SodTrack, dsc: DscStorage) -> Optional[datetime]: #pylint: disable=no-self-use,unused-argument
+    def _get_account_expiration(self, uid: UserId, account: Optional[AccountStorage], sod: SodTrack, dsc: DscStorage) -> Optional[datetime]: #pylint: disable=no-self-use,unused-argument
         """Return 1 minute expiration time"""
+        if account is not None and account.expires is not None and \
+            not utils.has_expired(account.expires, utils.time_now()):
+            return account.expires
         return utils.time_now() + timedelta(minutes=1)
 
     def _verify_cert_trustchain(self, crt: CertificateStorage) -> None:

@@ -294,7 +294,7 @@ class PortProto:
         s  = Session(sk)
 
         # 8. Insert account into db
-        et = self._get_account_expiration(uid, st, dsc) #pylint: disable=assignment-from-none
+        et = self._get_account_expiration(uid, accnt, st, dsc) #pylint: disable=assignment-from-none
         accnt = AccountStorage(uid, dsc.country, st.id, et, aaPubKey, aaSigAlgo, dg1=None, dg2=None, session=s)
         self._db.updateAccount(accnt)
 
@@ -970,7 +970,7 @@ class PortProto:
             raise peInvalidDgFile(dg.number)
         self._log.debug("%s file is valid!", dg)
 
-    def _get_account_expiration(self, uid: UserId, sod: SodTrack, dsc: DscStorage) -> Optional[datetime]: #pylint: disable=no-self-use,unused-argument,useless-return
+    def _get_account_expiration(self, uid: UserId, account: Optional[AccountStorage], sod: SodTrack, dsc: DscStorage) -> Optional[datetime]: #pylint: disable=no-self-use,unused-argument,useless-return
         """
         Returns datetime till account attestation can be valid. Should be less or equal to `dsc.notValidAfter`.
         `None` is returned by default aka attestation valid until atestation has valid passive auth trustchain
@@ -979,9 +979,13 @@ class PortProto:
         :param `dsc`: The account attested DSC certificate storage.
         """
         assert isinstance(uid, UserId)
+        assert isinstance(account, (AccountStorage, type(None)))
         assert isinstance(sod, SodTrack)
         assert isinstance(dsc, DscStorage)
         assert sod.dscId == dsc.id
+        if account is not None and account.expires is not None and \
+            not utils.has_expired(account.expires, utils.time_now()):
+            return account.expires
         return None
 
     def __verify_session_mac(self, a: AccountStorage, data: bytes, mac: bytes):
