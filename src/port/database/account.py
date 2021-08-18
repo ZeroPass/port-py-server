@@ -1,6 +1,4 @@
 from port.proto.types import CountryCode, SodId, UserId
-from port.proto.session import Session
-
 from pymrtd import ef
 from pymrtd.pki.keys import AAPublicKey, SignatureAlgorithm
 
@@ -18,10 +16,9 @@ class AccountStorage:
     aaCount: int                # ActiveAuthentication counter, counts how many AAs have been done. When greater than 0, account is ActiveAuthenticated with eMRTD.
     dg1: Optional[bytes]
     dg2: Optional[bytes]
-    session: bytes
 
     def __init__(self, uid: UserId, country: CountryCode, sodId: Optional[SodId], expires: Optional[datetime], \
-        aaPublicKey: AAPublicKey, aaSigAlgo: Optional[SignatureAlgorithm], aaCount: int, dg1: Optional[ef.DG1], dg2: Optional[bytes], session: Session):
+        aaPublicKey: AAPublicKey, aaSigAlgo: Optional[SignatureAlgorithm], aaCount: int, dg1: Optional[ef.DG1], dg2: Optional[bytes]):
         """Initialization object"""
         assert isinstance(uid, UserId)
         assert isinstance(country, CountryCode)
@@ -29,11 +26,9 @@ class AccountStorage:
         assert isinstance(expires, (datetime, type(None)))
         assert isinstance(aaPublicKey, AAPublicKey)
         assert isinstance(aaSigAlgo, (SignatureAlgorithm, type(None)))
+        assert isinstance(aaCount, int)
         assert isinstance(dg1, (ef.DG1, type(None)))
         assert isinstance(dg2, (bytes, type(None)))
-        assert isinstance(session, Session)
-
-        assert isinstance(aaCount, int)
 
         if aaSigAlgo is not None:
             aaSigAlgo = aaSigAlgo.dump()
@@ -49,7 +44,6 @@ class AccountStorage:
         self.aaCount     = aaCount
         self.dg1         = dg1
         self.dg2         = dg2
-        self.session     = session.bytes()
 
     def getAAPublicKey(self) -> AAPublicKey:
         return AAPublicKey.load(self.aaPublicKey)
@@ -69,10 +63,3 @@ class AccountStorage:
         if dg1 is not None:
             dg1 = dg1.dump()
         self.dg1 = dg1
-
-    def getSession(self) -> Session:
-        return Session.fromBytes(self.session)
-
-    def setSession(self, s: Session):
-        assert isinstance(s, Session)
-        self.session = s.bytes()

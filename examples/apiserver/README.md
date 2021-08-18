@@ -147,24 +147,27 @@ type: bool
 ```
 ## API Methods
 * **port.ping**
-  Used for testing connection with server.
-  **params:** `int32` [*ping*] number
-  **returns:** `int32` random [*pong*] number
+  Used for testing connection with server.  
+  **params:** `int32` [*ping*] number  
+  **return:** `int32` random [*pong*] number
 
 * **port.getChallenge**
-  Returns new random 32 bytes challenge to be at register or login to establish new session with.
-  **params:** none
-  **returns:** 32-byte [*challenge*]
+  Returns new random 32 bytes challenge to be at register or login to establish new session with.  
+  **params:**
+    * `base64` encoded 20-byte [*uid*] [user id](https://github.com/ZeroPass/port-py-server/blob/a87cb5cc55c160a9ca80583ecb6099d7a6e57660/src/port/proto/user.py#L10-L39)
+
+  **return:** 32-byte [*challenge*]
 
 * **port.cancelChallenge**
-  Cancel requested challenge.
-  **params:** `base64` encoded 32-byte [*challenge*]
-  **returns:** none
+  Cancel requested challenge.  
+  **params:** `base64` encoded 32-byte [*challenge*]  
+  **return:** none
 
 * **port.register**
   Register new user using eMRTD credentials. Account will be valid for 10 minutes (1 minute if `--dev` flag was used) after which it will expire and user will have to register again.
-  By default EF.SOD is always validated into eMRTD trustchain unless `--dev-no-tcv` flag was used.
+  By default EF.SOD is always validated into eMRTD trustchain unless `--dev-no-tcv` flag was used.  
   **params:**
+    * `base64` encoded 20-byte [*uid*] [user id](https://github.com/ZeroPass/port-py-server/blob/a87cb5cc55c160a9ca80583ecb6099d7a6e57660/src/port/proto/user.py#L10-L39)
     * `base64` encoded [[*dg15*]](https://github.com/ZeroPass/port-py-server/blob/a87cb5cc55c160a9ca80583ecb6099d7a6e57660/src/pymrtd/ef/dg.py#L189-L203) file (eMRTD AA Public Key)
     * `base64` encoded [[*SOD*]](https://github.com/ZeroPass/port-py-server/blob/a87cb5cc55c160a9ca80583ecb6099d7a6e57660/src/pymrtd/ef/sod.py#L135-L195) file (eMRTD Data Security Object)
     * `hex` encoded 4-byte [[*cid*]](https://github.com/ZeroPass/port-py-server/blob/master/src/port/proto/challenge.py#L12-L37) (challenge id)
@@ -172,13 +175,10 @@ type: bool
     * (Optional)`base64` encoded [[*dg14*]](https://github.com/ZeroPass/port-py-server/blob/a87cb5cc55c160a9ca80583ecb6099d7a6e57660/src/pymrtd/ef/dg.py#L161-L185) file.
     File is required if elliptic curve cryptography was used to produce signatures. (EF.DG14 contains info about ECC signature algorithm)
 
-  **returns:**
-    * `base64` encoded 20-byte [*uid*] [user id](https://github.com/ZeroPass/port-py-server/blob/a87cb5cc55c160a9ca80583ecb6099d7a6e57660/src/port/proto/user.py#L10-L39)
-    * `base64` encoded 32-byte HMAC [[*session_key*]](https://github.com/ZeroPass/port-py-server/blob/23af931ab1ef8fdc0c2d948c1fd4a14a71d7beba/src/port/proto/session.py#L12-L43)
-    * `int32` unix time when session [*expires*] (not used).
+  **return:** Implementation specific JSON dictionary
 
  * **port.login**
-  Logins existing user using eMRTD credentials.
+  Logins existing user using eMRTD credentials.  
   **params:**
     * `base64` encoded 20-byte [*uid*] [user id](https://github.com/ZeroPass/port-py-server/blob/a87cb5cc55c160a9ca80583ecb6099d7a6e57660/src/port/proto/user.py#L10-L39)
     * `hex` encoded 4-byte [[*cid*]](https://github.com/ZeroPass/port-py-server/blob/master/src/port/proto/challenge.py#L12-L37) (challenge id)
@@ -186,20 +186,7 @@ type: bool
     * (Optional) `base64` encoded [[*dg1*]](https://github.com/ZeroPass/port-py-server/blob/a87cb5cc55c160a9ca80583ecb6099d7a6e57660/src/pymrtd/ef/dg.py#L148-L158) file (eMRTD MRZ).
     By default EF.DG1 is required [second](https://github.com/ZeroPass/port-py-server/blob/66b2ea724ec9a515d07298eed828c6849ec1cbbc/src/APIservice/proto/proto.py#L155-L159) time user logs-in.
 
-   **returns:**
-    * `base64` encoded 32-byte HMAC [[*session_key*]](https://github.com/ZeroPass/port-py-server/blob/23af931ab1ef8fdc0c2d948c1fd4a14a71d7beba/src/APIservice/proto/session.py#L12-L43)
-    * `int32` unix time when session [*expires*] (not used).
-
-* **port.sayHello**
-  Returns greetings from server. Returned greeting is in format: *"Hi, anonymous!"* or
-  *"Hi, <LAST_NAME> <FIRST_NAME>!"* if EF.DG1 was provided at login.
-  (API method is defined only to present validated and parsed personal user data back to client)
-  **params:**
-    * `base64` encoded 20-byte [*uid*] [user id](https://github.com/ZeroPass/port-py-server/blob/a87cb5cc55c160a9ca80583ecb6099d7a6e57660/src/APIservice/proto/user.py#L10-L39)
-    *  `base64` encoded 32-byte [*mac*] digest of [HMAC-SHA256](https://github.com/ZeroPass/port-py-server/blob/66b2ea724ec9a515d07298eed828c6849ec1cbbc/src/APIservice/proto/session.py#L63-L69) calculated over [[api name | uid]](https://github.com/ZeroPass/port-py-server/blob/master/port/proto/proto.py#L206) using session key (generated at register/login).
-
-   **returns:**
-    * `str` greeting
+   **return:** Implementation specific JSON dictionary
 
 ## API Errors
 Server can return these Port errors defined [here](https://github.com/ZeroPass/port-py-server/blob/master/src/port/proto/proto.py#L21-L62).

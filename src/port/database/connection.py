@@ -199,8 +199,7 @@ account: Final = Table('account', metadata,
     Column('aaSigAlgo'  , LargeBinary             , nullable=True                                               ),
     Column('aaCount'    , Integer                 , default=0                                                   ), # Counts number of successful ActiveAuthentications. When greater than 0 account is ActiveAuthenticated.
     Column('dg1'        , LargeBinary             , nullable=True                                               ),
-    Column('dg2'        , LargeBinary             , nullable=True                                               ),
-    Column('session'    , LargeBinary             , nullable=False                                              ), # Note: Should be moved to separate table
+    Column('dg2'        , LargeBinary             , nullable=True                                               )
 )
 
 class PortDbConnectionError(Exception):

@@ -17,11 +17,6 @@ from port.proto.proto import (
     ProtoError
 )
 
-from port.proto.session import (
-    Session,
-    SessionKey
-)
-
 from port.proto.types import (
     CertificateId,
     Challenge,
@@ -54,8 +49,6 @@ __all__ = [
     "ProtoError",
     "SeEntryAlreadyExists",
     "SeEntryNotFound",
-    "Session",
-    "SessionKey",
     "SodId",
     "StorageAPI",
     "StorageAPIError",

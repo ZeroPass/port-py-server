@@ -103,8 +103,7 @@ class PortApiServer:
     @portapi
     def register(self, uid: str, sod: str, dg15: str, cid: str, csigs: List[str], dg14: str = None) -> dict:
         """
-        Register new user. It returns back to the client userId which is publicKey address,
-        session key and session expiration time.
+        Register new user. It returns back empty dict.
 
         :param uid:   base64 encoded UserId
         :param sod:   base64 encoded eMRTD SOD file
@@ -112,10 +111,7 @@ class PortApiServer:
         :param cid:   hex encoded Challenge id
         :param csigs: base64 encoded challenge signatures
         :param dg14:  base64 encoded eMRTD DG14 file (optional)
-        :return:
-                 'uid'         - base64 encoded user id
-                 'session_key' - base64 encoded session key
-                 'expires'     - unix timestamp of time when session will expire
+        :return: Dictionary object, specific to server implementation
         """
         try:
             uid   = try_deser(lambda: proto.UserId.fromBase64(uid))
@@ -125,9 +121,7 @@ class PortApiServer:
             csigs = _b64csigs_to_bcsigs(csigs)
             if dg14 is not None:
                 dg14 = try_deser(lambda: ef.DG14.load(b64decode(dg14)))
-
-            uid, sk, et = self._proto.register(uid, sod, dg15, cid, csigs, dg14)
-            return { "uid": uid.toBase64(), "session_key": sk.toBase64(), "expires": int(et.timestamp()) }
+            return self._proto.register(uid, sod, dg15, cid, csigs, dg14)
         except Exception as e:
             self.__handle_exception(e)
 
@@ -135,14 +129,10 @@ class PortApiServer:
     @portapi
     def login(self, uid: str, cid: str, csigs: List[str], dg1: str = None) -> dict:
         """
-        It returns back session key and session expiration time.
-
         :param uid:   User id
         :param cid:   base64 encoded Challenge id
         :param csigs: base64 encoded challenge signatures
-        :return:
-                 'session_key' - base64 encoded session key
-                 'expires'     - unix timestamp of time when session will expire
+        :return: Dictionary object, specific to server implementation
         """
         try:
             uid = try_deser(lambda: proto.UserId.fromBase64(uid))
@@ -150,28 +140,7 @@ class PortApiServer:
             csigs = _b64csigs_to_bcsigs(csigs)
             if dg1 is not None:
                 dg1 = try_deser(lambda: ef.DG1.load(b64decode(dg1)))
-
-            sk, et = self._proto.login(uid, cid, csigs, dg1)
-            return { "session_key": sk.toBase64(), "expires": int(et.timestamp()) }
-        except Exception as e:
-            self.__handle_exception(e)
-
-    # API: port.sayHello
-    @portapi
-    def sayHello(self, uid: str, mac: str) -> dict:
-        """
-        It returns back greeting message based on whether user is anonymous or not.
-
-        :param uid: User id
-        :param mac: session mac over api name and uid
-        :return:
-                 'msg' - greeting message
-        """
-        try:
-            uid = try_deser(lambda: proto.UserId.fromBase64(uid))
-            mac = try_deser(lambda: b64decode(mac))
-            msg = self._proto.sayHello(uid, mac)
-            return { "msg": msg }
+            return self._proto.login(uid, cid, csigs, dg1)
         except Exception as e:
             self.__handle_exception(e)
 

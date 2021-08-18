@@ -35,7 +35,6 @@ from port.proto.proto import (
     peInvalidDsc,
     peInvalidEfSod,
     PeInvalidOrMissingParam,
-    PeMacVerifyFailed,
     peMatchingEfSod,
     peMissingAAInfoInDg14,
     peMissingParamAASigAlgo,
@@ -116,10 +115,6 @@ def test_proto_errors():
     pesvf = PeSigVerifyFailed()
     assert pesvf.code == 401
     assert issubclass(PeSigVerifyFailed, PeUnauthorized)
-
-    pemvf = PeMacVerifyFailed()
-    assert pemvf.code == 401
-    assert issubclass(PeMacVerifyFailed, PeUnauthorized)
 
     penf = PeNotFound()
     assert penf.code == 404

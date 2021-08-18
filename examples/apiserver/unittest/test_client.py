@@ -3,7 +3,7 @@ import base64, json, os, requests
 from pymrtd.ef.dg import DataGroupNumber
 
 from datetime import datetime
-from port.proto import CID, Challenge, UserId, Session, SessionKey
+from port.proto import CID, Challenge, UserId
 from pymrtd import ef
 from typing import List
 
@@ -70,12 +70,8 @@ def requestRegister(url: str, uid: UserId, sod: ef.SOD, dg15: ef.DG15, cid: CID,
         url, data=json.dumps(payload), headers=headers).json()
     if "error" in response:
         raise Exception(response['error'])
-
     result = response['result']
-    uid = UserId.fromBase64(result['uid'])
-    sk  = SessionKey.fromBase64(result['session_key'])
-    et  = datetime.utcfromtimestamp(result['expires'])
-    return (uid, Session(sk), et)
+    return result
 
 def requestLogin(url: str, uid: UserId, cid: CID, csigs: List[bytes], dg1 = None):
     payload = {
@@ -94,31 +90,8 @@ def requestLogin(url: str, uid: UserId, cid: CID, csigs: List[bytes], dg1 = None
         url, data=json.dumps(payload), headers=headers).json()
     if "error" in response:
         raise Exception(response['error'])
-
     result = response['result']
-    sk  = SessionKey.fromBase64(result['session_key'])
-    et  = datetime.utcfromtimestamp(result['expires'])
-    return (Session(sk), et)
-
-def requestGreeting(url: str, uid: UserId, s: Session):
-    mac = s.getMAC("sayHello".encode('ascii') + uid)
-    payload = {
-        "method": "port.sayHello",
-        "params": {
-            "uid"  : uid.toBase64(),
-            "mac"  : b64encode(mac),
-         },
-        "jsonrpc": "2.0",
-        "id": 2,
-    }
-
-    response = requests.post(
-        url, data=json.dumps(payload), headers=headers).json()
-    if "error" in response:
-        raise Exception(response['error'])
-
-    result = response['result']
-    return result['msg']
+    return result
 
 def alter_sod(sod: ef.SOD):
      # copy doesn't work and set doesn't work so replace raw hash of DG1
@@ -154,7 +127,6 @@ def main():
         bytes.fromhex("0854CF7B69FB54286F97FC8B396722E21156DFEEC38CF5C63035B09A59C4EA7FCA79865D5EE166548AAE5AE1F629A57459B46F5D1D1E4EFE9369C0075903D3CA282D6B2CF5843E62CE53BEA33E3D6AA7A48147CC38C9B534437FD0DCD0F0C787BE74061DFA844435253D651E7986BA47F49FA49D7041BD1FE72B5E5D09221FD1"),
     ]
 
-
     try:
         print("Pinging server ...")
         pong = pingServer(url)
@@ -167,7 +139,7 @@ def main():
 
         try:
             print("Trying to register new user with altered EF.SOD file ...")
-            uid, s, et = requestRegister(url, tvUid, alter_sod(sod), dg15, sigc.id, csigs)
+            requestRegister(url, tvUid, alter_sod(sod), dg15, sigc.id, csigs)
             raise AssertionError("Registration with altered EF.SOD file succeeded!")
         except Exception as e:
             print("Server returned error: {}\n".format(e))
@@ -175,21 +147,15 @@ def main():
 
         try:
             print("Trying to register new user with altered EF.DG15 file ...")
-            uid, s, et = requestRegister(url, tvUid, sod, alter_dg15(dg15), sigc.id, csigs)
+            requestRegister(url, tvUid, sod, alter_dg15(dg15), sigc.id, csigs)
             raise AssertionError("Registration with altered EF.DG15 file succeeded!")
         except Exception as e:
             print("Server returned error: {}\n".format(e))
             assert str(e) == "{'code': 422, 'message': 'Invalid EF.DG15 file'}"
 
         print("Registering new user ...")
-        uid, s, et = requestRegister(url, tvUid, sod, dg15, sigc.id, csigs)
-        assert uid == tvUid
-        print("User was successfully registered!\n  uid={}\n  session_key={}\n  session_expires={}\n".format(uid.hex(), s.key.hex(), et))
-
-        print("Requesting greeting from server ...")
-        msg = requestGreeting(url, uid, s)
-        print("Server says: {}\n".format(msg))
-
+        result = requestRegister(url, tvUid, sod, dg15, sigc.id, csigs)
+        print("User was successfully registered!\n  result={}\n".format(result))
 
         print("Requesting new challenge from server for login ...")
         c, cet = requestChallenge(url, tvUid)
@@ -197,12 +163,8 @@ def main():
         assert c == sigc
 
         print("Logging in ...")
-        s, et = requestLogin(url, uid, c.id, csigs)
-        print("Login succeed!\n  uid={}\n  session_key={}\n  session_expires={}\n".format(uid.hex(), s.key.hex(), et))
-
-        print("Requesting greeting from server ...")
-        msg = requestGreeting(url, uid, s)
-        print("Server says: {}\n".format(msg))
+        result = requestLogin(url, tvUid, c.id, csigs)
+        print("Login succeed!\n  uid={}\n".format(result))
 
     except AssertionError as e:
         print("Assert failed: {}".format(e))

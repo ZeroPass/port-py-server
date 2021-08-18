@@ -19,7 +19,6 @@ from typing import Final, List, Optional, Tuple, Union
 
 from . import utils
 from .db import StorageAPI, StorageAPIError
-from .session import Session, SessionKey
 from .types import Challenge, CID, CountryCode, UserId
 
 class ProtoError(Exception):
@@ -31,9 +30,6 @@ class PeUnauthorized(ProtoError):
 
 class PeSigVerifyFailed(PeUnauthorized):
     """ Challenge signature verification error """
-
-class PeMacVerifyFailed(PeUnauthorized):
-    """ Session mac verification error """
 
 class PeNotFound(ProtoError):
     """ Non existing elements error (e.g.: account doesn't exist, CSCA can't be faound etc...) """
@@ -181,7 +177,7 @@ class PortProto:
         self._log.debug("Challenge canceled cid=%s", cid)
 
     def register(self, uid: UserId, sod: ef.SOD, dg15: ef.DG15, cid: CID, csigs: List[bytes], dg14: ef.DG14 = None, allowSodOverride: bool = False) \
-        -> Tuple[UserId, SessionKey, datetime]:
+        -> dict:
         """
         Register new user account.
 
@@ -198,7 +194,8 @@ class PortProto:
         :param `dg14`: (Optional) eMRTD DataGroup file 14
         :param `allowSodOverride`: If True any existing account under `uid` will have the new `sod` assigned to it.
                                  The previously EF.SOD will stay in DB for the 'sybil' protection and no account will be able to re-register it.
-        :return: Tuple of user id, session key and session expiration time
+
+        :return: Empty dictionary
 
         :raises `peAccountAlreadyRegistered`: When account with `uid` already exist and has not expired yet.
         :raises `peChallengeExpired`: If challenge has expired.
@@ -295,13 +292,9 @@ class PortProto:
         self._db.addSodTrack(st)
         self._db.deleteChallenge(cid) # All checks have succeeded, delete challenge from db
 
-        # 4. Generate session key and session
-        sk = SessionKey.generate()
-        s  = Session(sk)
-
         # 8. Insert account into db
         et = self._get_account_expiration(uid, accnt, st, dsc) #pylint: disable=assignment-from-none
-        accnt = AccountStorage(uid, dsc.country, st.id, et, aaPubKey, aaSigAlgo, aaCount=1, dg1=None, dg2=None, session=s)
+        accnt = AccountStorage(uid, dsc.country, st.id, et, aaPubKey, aaSigAlgo, aaCount=1, dg1=None, dg2=None)
         self._db.updateAccount(accnt)
 
         self._log.debug("New account created: uid=%s", uid.hex())
@@ -310,25 +303,23 @@ class PortProto:
                 utils.code_to_country_name(sod.dscCertificates[0].issuerCountry))
         self._log.verbose("sodId=%s", st.id)
         self._log.verbose("expires=%s", accnt.expires)
-        self._log.verbose("login_count=%s", accnt.aaCount)
+        self._log.verbose("aaCount=%s", accnt.aaCount)
         self._log.verbose("dg1=None")
         self._log.verbose("dg2=None")
         self._log.verbose("pubkey=%s", accnt.aaPublicKey.hex())
         self._log.verbose("sigAlgo=%s", "None" if aaSigAlgo is None else accnt.aaSigAlgo.hex())
-        self._log.verbose("session=%s", s.bytes().hex())
 
-        # 6. Return user id, session key and session expiry date
-        return (uid, sk, et)
+        return {}
 
-    def login(self, uid: UserId, cid: CID, csigs: List[bytes], dg1: ef.DG1 = None) -> Tuple[SessionKey, datetime]:
+    def login(self, uid: UserId, cid: CID, csigs: List[bytes], dg1: ef.DG1 = None) -> dict:
         """
-        Login user and return session key.
+        Login user.
 
         :param uid: User id
         :param cid: Challenge id
         :param csigs: List of signatures made over challenge chunks
         :param dg1: (Optional) eMRTD DataGroup file 1
-        :return: Tuple of session key and session expiration time
+        :return: Empty dictionary
         :raises peAccountNotAttested: If previous account attestation is not valid anymore,
                                       e.g.: accnt.sodId=None, accnt EF.SOD certificate trustchain is not valid anymore.
         :raises peAttestationExpired: If account attestation has expired.
@@ -369,44 +360,15 @@ class PortProto:
 
         self._db.deleteChallenge(cid) # Verifying has succeeded, delete challenge from db
 
-        # 6. Generate session key and session
-        sk = SessionKey.generate()
-        s  = Session(sk)
-        a.setSession(s)
-
-        # 7. Update account
+        # 6. Update account
         a.aaCount += 1
         self._db.updateAccount(a)
         if dg1 is not None:
             self._log.info("File DG1(surname=%s name=%s) issued by %s is now tied to eMRTD pubkey=%s",
                 dg1.mrz.surname, dg1.mrz.name, utils.code_to_country_name(dg1.mrz.country), a.aaPublicKey.hex())
+        self._log.debug("User has been successfully logged-in. uid=%s", uid.hex())
 
-        # 8. Return session key and session expiry date
-        self._log.debug("User has been successfully logged-in. uid=%s session_expires: %s", uid.hex(), a.expires)
-        self._log.verbose("session=%s", s.bytes().hex())
-        return (sk, a.expires)
-
-    def sayHello(self, uid, mac):
-        """
-        Return greeting message based on whether user being anonymous or not.
-
-        :param uid: User id
-        :param mac: session mac over function name and uid
-        :return: Greeting message
-        """
-        # Get account
-        a = self._db.getAccount(uid)
-
-        # 1. verify session mac
-        data = "sayHello".encode('ascii') + uid
-        self.__verify_session_mac(a, data, mac)
-
-        # 2. return greetings
-        msg = "Hi, anonymous!"
-        dg1 = a.getDG1()
-        if dg1 is not None:
-            msg = "Hi, {} {}!".format(dg1.mrz.surname, dg1.mrz.name)
-        return msg
+        return {}
 
     def addCscaCertificate(self, csca: CscaCertificate, allowSelfIssued: bool = False) -> CscaStorage:
         """
@@ -995,29 +957,6 @@ class PortProto:
             not utils.has_expired(account.expires, utils.time_now()):
             return account.expires
         return None
-
-    def __verify_session_mac(self, a: AccountStorage, data: bytes, mac: bytes):
-        """
-        Check if mac is valid
-        :raises:
-            PeMacVerifyFailed: If mac is invalid
-        """
-        self._log.debug("Verifying session MAC ...")
-
-        s = a.getSession()
-        self._log.verbose("nonce: %s", s.nonce)
-        self._log.verbose("data: %s", data.hex())
-        self._log.verbose("mac: %s", mac.hex())
-
-        success = s.verifyMAC(data, mac)
-        self._log.debug("MAC successfully verified!")
-
-        # Update account's session nonce
-        a.setSession(s)
-        self._db.updateAccount(a)
-
-        if not success:
-            raise PeMacVerifyFailed("Invalid session MAC")
 
     def __purgeExpiredChallenges(self):
         try:
