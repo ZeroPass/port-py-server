@@ -192,6 +192,7 @@ sod: Final = Table('sod', metadata,
 # table contains info about attested account
 account: Final = Table('account', metadata,
     Column('uid'        , UserIdSqlType()         , primary_key=True                                            ), # uid = UserId
+    Column('country'    , CountryCodeSqlType()    , nullable=False      , index=True                            ), # The country code of attestation Passport at first registration. Used for pinning account to the country, since sodId can be None.
     Column('sodId'      , SodIdSqlType            , ForeignKey('sod.id'), nullable=True, unique=True, index=True), # If null, the account is not attested
     Column('expires'    , DateTime(timezone=False), nullable=True                                               ), # Usually set to DSC expiration time. If NULL, expires when EF.SOD TC expires
     Column('aaPublicKey', LargeBinary             , nullable=False                                              ),

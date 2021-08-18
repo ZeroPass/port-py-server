@@ -1,4 +1,4 @@
-from port.proto.types import SodId, UserId
+from port.proto.types import CountryCode, SodId, UserId
 from port.proto.session import Session
 
 from pymrtd import ef
@@ -10,6 +10,7 @@ from typing import Optional
 class AccountStorage:
     """Class for interaction between code structure and database"""
     uid: UserId
+    country: CountryCode # The country code of attestation Passport at first registration. Used for pinning account to the country, since sodId can be None.
     sodId: Optional[SodId] # If None, account is not attested by passport
     expires: Optional[datetime] # The date the account attestation expires, usually set to dsc expiration time
     aaPublicKey: bytes
@@ -19,9 +20,11 @@ class AccountStorage:
     session: bytes
     loginCount: int
 
-    def __init__(self, uid: UserId, sodId: Optional[SodId], expires: Optional[datetime], aaPublicKey: AAPublicKey, aaSigAlgo: Optional[SignatureAlgorithm], dg1: Optional[ef.DG1], dg2: Optional[bytes], session: Session, loginCount: int = 0):
+    def __init__(self, uid: UserId, country: CountryCode, sodId: Optional[SodId], expires: Optional[datetime], \
+        aaPublicKey: AAPublicKey, aaSigAlgo: Optional[SignatureAlgorithm], dg1: Optional[ef.DG1], dg2: Optional[bytes], session: Session, loginCount: int = 0):
         """Initialization object"""
         assert isinstance(uid, UserId)
+        assert isinstance(country, CountryCode)
         assert isinstance(sodId, (SodId, type(None)))
         assert isinstance(expires, (datetime, type(None)))
         assert isinstance(aaPublicKey, AAPublicKey)
@@ -38,6 +41,7 @@ class AccountStorage:
             dg1 = dg1.dump()
 
         self.uid         = uid
+        self.country     = country
         self.sodId       = sodId
         self.expires     = expires
         self.aaPublicKey = aaPublicKey.dump()

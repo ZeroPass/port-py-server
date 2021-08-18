@@ -237,7 +237,12 @@ class PortProto:
         dsc: DscStorage = self._verify_sod_is_genuine(sod)
         self._log.success("%s appears to be genuine! issuer dscId=%s", sod, dsc.id)
 
-        # 4 . Verify challenge authentication
+        # 4. Verify the country code matches if account exists already.
+        #    Note, this locks account to the country.
+        if accnt is not None and accnt.country != dsc.country:
+            raise peCountryCodeMismatch
+
+        # 5 . Verify challenge authentication
         aaSigAlgo = None
         aaPubKey = dg15.aaPublicKey
         if aaPubKey.isEcKey():
@@ -248,7 +253,7 @@ class PortProto:
             aaSigAlgo = dg14.aaSignatureAlgo
         self._verify_challenge(cid, aaPubKey, csigs, aaSigAlgo)
 
-        # 5. Check if matching EF.SOD exist in the DB
+        # 6. Check if matching EF.SOD exist in the DB
         self._log.debug("Searching for any EF.SOD track in DB which matches %s", sod)
         st = SodTrack.fromSOD(sod, dscId=dsc.id)
         if self._log.level <= log.DEBUG:
@@ -290,7 +295,7 @@ class PortProto:
 
         # 8. Insert account into db
         et = self._get_account_expiration(uid, st, dsc) #pylint: disable=assignment-from-none
-        accnt = AccountStorage(uid, st.id, et, aaPubKey, aaSigAlgo, dg1=None, dg2=None, session=s)
+        accnt = AccountStorage(uid, dsc.country, st.id, et, aaPubKey, aaSigAlgo, dg1=None, dg2=None, session=s)
         self._db.updateAccount(accnt)
 
         self._log.debug("New account created: uid=%s", uid.hex())
