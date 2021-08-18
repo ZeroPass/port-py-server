@@ -74,6 +74,7 @@ peAccountNotAttested: Final               = PeUnauthorized("Account is not attes
 peAttestationExpired: Final               = PeAttestationExpired("Account attestation has expired")
 peChallengeExpired: Final                 = PeChallengeExpired("Challenge has expired")
 peChallengeVerificationFailed: Final      = PeSigVerifyFailed("Challenge signature verification failed")
+peCountryCodeMismatch: Final              = PeConflict("Country code mismatch")
 peCscaExists: Final                       = PeConflict("CSCA certificate already exists")
 peCscaNotFound: Final                     = PeNotFound("CSCA certificate not found")
 peCscaSelfIssued: Final                   = PeNotFound("No CSCA link was found for self-issued CSCA")

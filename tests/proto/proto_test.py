@@ -15,6 +15,7 @@ from port.proto.proto import (
     PeChallengeExpired,
     peChallengeVerificationFailed,
     PeConflict,
+    peCountryCodeMismatch,
     peCscaExists,
     peCscaNotFound,
     peCscaSelfIssued,
@@ -125,6 +126,9 @@ def test_proto_errors():
 
     assert isinstance(peChallengeVerificationFailed, PeSigVerifyFailed)
     assert str(peChallengeVerificationFailed) == "Challenge signature verification failed"
+
+    assert isinstance(peCountryCodeMismatch, PeConflict)
+    assert str(peCountryCodeMismatch) == "Country code mismatch"
 
     assert isinstance(peCscaExists, PeConflict)
     assert str(peCscaExists) == "CSCA certificate already exists"
@@ -249,7 +253,7 @@ def verify_sod_is_genuine_test(sod: ef.SOD, csca: CscaCertificate, dsc: Document
                 db.unrevokeCertificate(dscCri)
                 raise e
 
-        # Test verification should succeed
+        # Test EF.SOD verification succeeds
         dscStorage = proto._verify_sod_is_genuine(sod)
         assert dscStorage is not None
 
