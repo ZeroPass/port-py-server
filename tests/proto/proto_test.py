@@ -579,6 +579,7 @@ def _test_register_attestation(dg15: ef.DG15, dg14: Optional[ef.DG14], sod: ef.S
         assert accnt.expires is None
         assert accnt.aaPublicKey == dg15.aaPublicKey.dump()
         assert accnt.aaSigAlgo is None if dg14 is None else accnt.aaSigAlgo == dg14.aaSignatureAlgo.dump()
+        assert accnt.aaCount == 1
         assert accnt.dg1 is None
         assert accnt.dg2 is None
 
@@ -675,7 +676,16 @@ def _test_register_attestation(dg15: ef.DG15, dg14: Optional[ef.DG14], sod: ef.S
         db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=60))
         proto.register(uid, sod, dg15, cid, csigs, dg14, allowSodOverride=False)
         accnt = db.getAccount(uid)
+        assert accnt is not None
+        assert accnt.uid     == uid
+        assert accnt.country == ds.country
+        assert accnt.sodId   == sodId
         assert accnt.expires is None
+        assert accnt.aaPublicKey == dg15.aaPublicKey.dump()
+        assert accnt.aaSigAlgo is None if dg14 is None else accnt.aaSigAlgo == dg14.aaSignatureAlgo.dump()
+        assert accnt.aaCount == 1
+        assert accnt.dg1 is None
+        assert accnt.dg2 is None
 
         # Test that re-register with allowSodOverride=True param succeeds
         accnt = db.getAccount(uid)
@@ -684,8 +694,17 @@ def _test_register_attestation(dg15: ef.DG15, dg14: Optional[ef.DG14], sod: ef.S
         db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=60))
         proto.register(uid, sod, dg15, cid, csigs, dg14, allowSodOverride=True)
         accnt = db.getAccount(uid)
+        assert accnt is not None
+        assert accnt.uid     == uid
+        assert accnt.country == ds.country
+        assert accnt.sodId   == sodId
         assert accnt.expires is not None
         assert accnt.expires == dsc.notValidAfter
+        assert accnt.aaPublicKey == dg15.aaPublicKey.dump()
+        assert accnt.aaSigAlgo is None if dg14 is None else accnt.aaSigAlgo == dg14.aaSignatureAlgo.dump()
+        assert accnt.aaCount == 1
+        assert accnt.dg1 is None
+        assert accnt.dg2 is None
 
         # Test re-register fails when expired account tries to register EF.SOD with different country
         accnt = db.getAccount(uid)
@@ -730,6 +749,8 @@ def _test_register_attestation(dg15: ef.DG15, dg14: Optional[ef.DG14], sod: ef.S
         db.updateAccount(accnt)
         with pytest.raises(PeConflict, match="Matching EF.SOD file already registered"):
             proto.register(uid, sod, dg15, cid, csigs, dg14, allowSodOverride=False)
+
+        #TODO: Add tests for DatabaseAPI and DB errors
 
 @pytest.mark.datafiles(
     CERTS_DIR / 'csca_si_448831f1.cer',

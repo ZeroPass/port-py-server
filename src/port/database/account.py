@@ -15,13 +15,13 @@ class AccountStorage:
     expires: Optional[datetime] # The date the account attestation expires, usually set to dsc expiration time
     aaPublicKey: bytes
     aaSigAlgo: Optional[bytes]
+    aaCount: int                # ActiveAuthentication counter, counts how many AAs have been done. When greater than 0, account is ActiveAuthenticated with eMRTD.
     dg1: Optional[bytes]
     dg2: Optional[bytes]
     session: bytes
-    loginCount: int
 
     def __init__(self, uid: UserId, country: CountryCode, sodId: Optional[SodId], expires: Optional[datetime], \
-        aaPublicKey: AAPublicKey, aaSigAlgo: Optional[SignatureAlgorithm], dg1: Optional[ef.DG1], dg2: Optional[bytes], session: Session, loginCount: int = 0):
+        aaPublicKey: AAPublicKey, aaSigAlgo: Optional[SignatureAlgorithm], aaCount: int, dg1: Optional[ef.DG1], dg2: Optional[bytes], session: Session):
         """Initialization object"""
         assert isinstance(uid, UserId)
         assert isinstance(country, CountryCode)
@@ -33,7 +33,7 @@ class AccountStorage:
         assert isinstance(dg2, (bytes, type(None)))
         assert isinstance(session, Session)
 
-        assert isinstance(loginCount, int)
+        assert isinstance(aaCount, int)
 
         if aaSigAlgo is not None:
             aaSigAlgo = aaSigAlgo.dump()
@@ -46,10 +46,10 @@ class AccountStorage:
         self.expires     = expires
         self.aaPublicKey = aaPublicKey.dump()
         self.aaSigAlgo   = aaSigAlgo
+        self.aaCount     = aaCount
         self.dg1         = dg1
         self.dg2         = dg2
         self.session     = session.bytes()
-        self.loginCount  = loginCount
 
     def getAAPublicKey(self) -> AAPublicKey:
         return AAPublicKey.load(self.aaPublicKey)

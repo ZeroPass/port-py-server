@@ -301,7 +301,7 @@ class PortProto:
 
         # 8. Insert account into db
         et = self._get_account_expiration(uid, accnt, st, dsc) #pylint: disable=assignment-from-none
-        accnt = AccountStorage(uid, dsc.country, st.id, et, aaPubKey, aaSigAlgo, dg1=None, dg2=None, session=s)
+        accnt = AccountStorage(uid, dsc.country, st.id, et, aaPubKey, aaSigAlgo, aaCount=1, dg1=None, dg2=None, session=s)
         self._db.updateAccount(accnt)
 
         self._log.debug("New account created: uid=%s", uid.hex())
@@ -310,7 +310,7 @@ class PortProto:
                 utils.code_to_country_name(sod.dscCertificates[0].issuerCountry))
         self._log.verbose("sodId=%s", st.id)
         self._log.verbose("expires=%s", accnt.expires)
-        self._log.verbose("login_count=%s", accnt.loginCount)
+        self._log.verbose("login_count=%s", accnt.aaCount)
         self._log.verbose("dg1=None")
         self._log.verbose("dg2=None")
         self._log.verbose("pubkey=%s", accnt.aaPublicKey.hex())
@@ -337,8 +337,8 @@ class PortProto:
         a = self._db.getAccount(uid)
 
         # 1. Require DG1 if login count is gt 1
-        self._log.debug("Logging-in account with uid=%s login_count=%s", uid.hex(), a.loginCount)
-        if a.loginCount >= 1 and a.dg1 is None and dg1 is None:
+        self._log.debug("Logging-in account with uid=%s login_count=%s", uid.hex(), a.aaCount)
+        if a.aaCount >= 2 and a.dg1 is None and dg1 is None:
             self._log.error("Login cannot continue due to max no. of anonymous logins and no DG1 file was provided!")
             raise peDg1Required
 
@@ -375,7 +375,7 @@ class PortProto:
         a.setSession(s)
 
         # 7. Update account
-        a.loginCount += 1
+        a.aaCount += 1
         self._db.updateAccount(a)
         if dg1 is not None:
             self._log.info("File DG1(surname=%s name=%s) issued by %s is now tied to eMRTD pubkey=%s",
