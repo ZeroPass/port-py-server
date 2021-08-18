@@ -185,28 +185,41 @@ class PortProto:
         """
         Register new user account.
 
-        :param dg15: eMRTD DataGroup file 15
-        :param sod: eMRTD Data Security Object
-        :param cid: Challenge id
-        :param csigs: List of signatures made over challenge chunks
-        :param dg14: (Optional) eMRTD DataGroup file 14
-        :param allowSodOverride: If True any existing account under `uid` will have the new `sod` assigned to it.
+        Any existing account can be re-registered if `allowSodOverride`=True, or account has expired or has invalid attestation.
+        By invalid attestation it means that the attested certificate trustchain is invalid or account doesn't have EF.SOD track assigned or can't be found in the DB.
+
+        Note that account can be re-registered only with EF.SOD which issuing country matches the account's attestation country.
+        The expiration time of existing account will be copied on re-registration in case it has not expired yet.
+
+        :param `dg15`: eMRTD DataGroup file 15
+        :param `sod`: eMRTD Data Security Object
+        :param `cid`: Challenge id
+        :param `csigs`: List of signatures made over challenge chunks
+        :param `dg14`: (Optional) eMRTD DataGroup file 14
+        :param `allowSodOverride`: If True any existing account under `uid` will have the new `sod` assigned to it.
                                  The previously EF.SOD will stay in DB for the 'sybil' protection and no account will be able to re-register it.
         :return: Tuple of user id, session key and session expiration time
 
-        :raises peAccountAlreadyRegistered: When account with `uid` already exist and has not expired yet.
-        :raises peDg14Required: If dg15 is ECC key and `dg14` is None.
-        :raises peEfSodNotGenuine: If `sod` verification with DSC certificate fails i.e. signature verification fails.
+        :raises `peAccountAlreadyRegistered`: When account with `uid` already exist and has not expired yet.
+        :raises `peChallengeExpired`: If challenge has expired.
+        :raises `peChallengeVerificationFailed`: When challenge signature verification fails.
+        :raises `peCountryCodeMismatch`: If an existing account tries to override attestation with EF.SOD issued by different country than
+                                       previously attestated country.
+        :raises `peDg14Required`: If dg15 is ECC key and `dg14` is None.
+        :raises `peDscNotFound`: When no `sod` signing DSC certificate is found.
+        :raises `peEfSodNotGenuine`: If `sod` verification with DSC certificate fails i.e. signature verification fails.
                                    E.g.: when EF.SOD was intentionally altered or is corrupted.
-        :raises peDscNotFound: When no `sod` signing DSC certificate is found.
-        :raises peInvalidDgFile: If `sod` doesn't contain the same hashes of `dg15` and `dg14` (if present)
-        :raises peInvalidEfSod: If no valid signer is found for `sod`, `sod` is not signed or contains invalid signer infos.
-        :raises peMatchingEfSod: If the same or matching EF.SOD already exists in the DB.
-        :raises peMissingAAInfoInDg14: If `dg14` is missing AAInfo data.
-        :raises peTrustchainVerificationFailed: If `sod` certificate trustchain verification fails aka passive authentication.
-        :raises ProtoError: any exception which is risen from addDscCertificate method when new DSC is added or
+        :raises `peInvalidDgFile`: If `sod` doesn't contain the same hashes of `dg15` and `dg14` (if present)
+        :raises `peInvalidEfSod`: If no valid signer is found for `sod`, `sod` is not signed or contains invalid signer infos.
+        :raises `peMatchingEfSod`: If the same or matching EF.SOD already exists in the DB.
+        :raises `peMissingAAInfoInDg14`: If `dg14` is missing AAInfo data.
+        :raises `peTrustchainCheckFailedExpiredCert`: If any of the certificates in the EF.SOD trustchain has expired.
+        :raises `peTrustchainCheckFailedNoCsca`: If root issuing CSCA certificate is not found.
+        :raises `peTrustchainCheckFailedRevokedCert`: If any of the certificates in the EF.SOD trustchain is revoked.
+        :raises `peTrustchainVerificationFailed`: If `sod` certificate trustchain verification fails aka passive authentication.
+        :raises `ProtoError`: any exception which is risen from addDscCertificate method when new DSC is added or
                             risen from _verify_cert_trustchain method.
-        :raises StorageApiError: In any case when there is an error in connection to the DB storage
+        :raises `StorageApiError`: In any case when there is an error in connection to the DB storage
                                  or problem with storing object in storage.
         """
         self._log.debug("register: uid=%s, %s %s %s cid=%s allowSodOverride=%s",
@@ -225,8 +238,9 @@ class PortProto:
             if not allowSodOverride:
                 if self._is_account_attested(accnt): # Allow account re-attestation if not attested anymore.
                     raise peAccountAlreadyRegistered
-            self._log.debug("%s, registering new attestation", "allowSodOverride=True"
-                if allowSodOverride == True else "Account has expired or has invalid attestation") #pylint: disable=singleton-comparison
+                self._log.debug("Account attestation has expired or is invalid, registering new attestation")
+            else:
+                self._log.debug("allowSodOverride=True, registering new attestation")
 
         # Following 2 emrtd checks are done first for the precautionary reasons
         # to prevent potential spoofing attacks if there are any undiscovered bugs.
@@ -267,23 +281,15 @@ class PortProto:
         if sods is not None:
             self._log.debug("Found %s matching track(s) in the DB. Verifying that all have invalid trustchain...", len(sods))
             for s in sods: # Should be only 1
-                try:
-                    # Throw an error by default if IDs match.
-                    # This prevents 2 accounts having same SodId in case the DSC of `s`
-                    # has invalid tc. In this case `s` would have to be then deleted from DB.
-                    # Note, checking for matching sodId will block attesting expired account
-                    # with the same EF.SOD in case the EF.SOD track is still valid (i.e. trustchain is valid).
-                    if s.id == st.id or self._is_sod_track_valid(s):
-                        self._log.error("Found valid matching EF.SOD track with sodId=%s for %s with sodId=%s", s.id, sod, st.id)
-                        raise peMatchingEfSod
-                except type(peMatchingEfSod):
-                    raise
-                except AssertionError:
-                    raise
-                except Exception as e:
-                    self._log.error("An exception was encountered while verifying if matching EF.SOD track with sodId=%s is valid.", s.id)
-                    self._log.error("  e=%s", e)
-                    raise
+                # Allow registering of matching EF.SOD only if `s`
+                # belongs to existing account under `uid`
+                if accnt is not None and s.id == accnt.sodId:
+                    accnt.sodId = None
+                    self._db.updateAccount(accnt)
+                    self._db.deleteSodTrack(s.id)
+                    continue
+                self._log.error("Found valid matching EF.SOD track with sodId=%s for %s with sodId=%s", s.id, sod, st.id)
+                raise peMatchingEfSod
 
         # 7. Save EF.SOD track and delete challenge
         self._db.addSodTrack(st)
@@ -792,6 +798,8 @@ class PortProto:
         """
         assert isinstance(st, SodTrack)
         try:
+            if st.dscId is None:
+                return False
             dsc = self._db.findDsc(st.dscId)
             if dsc is None:
                 return False
