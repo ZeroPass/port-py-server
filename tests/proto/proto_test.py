@@ -742,6 +742,8 @@ def _test_register_attestation(dg15: ef.DG15, dg14: Optional[ef.DG14], sod: ef.S
             proto.register(uid, sod, dg15, cid, csigs, dg14, allowSodOverride=False)
 
         #TODO: Add tests for DatabaseAPI and DB errors
+        #TODO: Add tests for EF.DG1 & EF.DG2 files being transferred to the re-registered account
+        #      when new EF.SOD contains old DG hashes
 
 @pytest.mark.datafiles(
     CERTS_DIR / 'csca_si_448831f1.cer',

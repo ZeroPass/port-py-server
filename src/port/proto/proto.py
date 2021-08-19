@@ -292,20 +292,41 @@ class PortProto:
         self._db.deleteChallenge(cid) # All checks have succeeded, delete challenge from db
 
         # 8. Insert account into db
-        et = self._get_account_expiration(uid, accnt, st, dsc) #pylint: disable=assignment-from-none
-        accnt = AccountStorage(uid, dsc.country, st.id, et, aaPubKey, aaSigAlgo, aaCount=1, dg1=None, dg2=None)
+
+        # Set previous registered EF.DG1 & EF.DG2 files
+        # if hashes match with the hashes stored in the
+        # new EF.SOD ldsSecurityObject
+        dg1 = None
+        dg2 = None
+        if accnt:
+            if accnt.sodId == st.id:
+                # assume that all files are the same in the new EF.SOD
+                dg1 = accnt.dg1
+                dg2 = accnt.dg2
+            else:
+                # Try to find matching hashes of existing EF.DG files
+                if accnt.dg1 and st.contains(ef.DG1.load(accnt.dg1)):
+                    dg1 = accnt.dg1
+                if accnt.dg2:
+                    h = st.getDgHasher()
+                    h.update(accnt.dg2)
+                    if h.finalize() == st.dg2Hash:
+                        dg2 = accnt.dg2
+
+        et = self._get_account_expiration(uid, accnt, st, dsc)
+        accnt = AccountStorage(uid, dsc.country, st.id, et, aaPubKey, aaSigAlgo, aaCount=1, dg1=dg1, dg2=dg2)
         self._db.updateAccount(accnt)
 
         self._log.debug("New account created: uid=%s", uid)
         if len(sod.dscCertificates) > 0:
             self._log.debug("Issuing country of account's eMRTD: %s",
                 utils.code_to_country_name(sod.dscCertificates[0].issuerCountry))
-        self._log.verbose("sodId=%s", st.id)
+        self._log.verbose("sodId=%s"  , accnt.sodId)
         self._log.verbose("expires=%s", accnt.expires)
         self._log.verbose("aaCount=%s", accnt.aaCount)
-        self._log.verbose("dg1=None")
-        self._log.verbose("dg2=None")
-        self._log.verbose("pubkey=%s", accnt.aaPublicKey.hex())
+        self._log.verbose("dg1=%s"    , accnt.dg1.hex() if accnt.dg1 else None)
+        self._log.verbose("dg2=%s"    , accnt.dg2.hex() if accnt.dg2 else None)
+        self._log.verbose("pubkey=%s" , accnt.aaPublicKey.hex())
         self._log.verbose("sigAlgo=%s", "None" if aaSigAlgo is None else accnt.aaSigAlgo.hex())
 
         return {}
