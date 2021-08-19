@@ -125,10 +125,11 @@ class PortApiServer:
         except Exception as e:
             self.__handle_exception(e)
 
-    # API: port.login
+    # API: port.get_assertion
     @portapi
-    def login(self, uid: str, cid: str, csigs: List[str], dg1: str = None) -> dict:
+    def get_assertion(self, uid: str, cid: str, csigs: List[str]) -> dict:
         """
+        Returns authn assertion for eMRTD active authentication.
         :param uid:   User id
         :param cid:   base64 encoded Challenge id
         :param csigs: base64 encoded challenge signatures
@@ -138,9 +139,7 @@ class PortApiServer:
             uid = try_deser(lambda: proto.UserId.fromBase64(uid))
             cid = try_deser(lambda: proto.CID.fromHex(cid))
             csigs = _b64csigs_to_bcsigs(csigs)
-            if dg1 is not None:
-                dg1 = try_deser(lambda: ef.DG1.load(b64decode(dg1)))
-            return self._proto.login(uid, cid, csigs, dg1)
+            return self._proto.getAssertion(uid, cid, csigs)
         except Exception as e:
             self.__handle_exception(e)
 

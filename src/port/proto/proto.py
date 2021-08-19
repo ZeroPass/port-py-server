@@ -53,7 +53,7 @@ class PeInvalidOrMissingParam(ProtoError):
 class PePreconditionRequired(ProtoError):
     """
     Required preconditions that are marked as optional.
-    e.g.: at registration dg14 might be required or at login dg1 could be required
+    e.g.: at registration dg14 might be required
     """
     code = 428
 
@@ -77,7 +77,6 @@ peCscaSelfIssued: Final                   = PeNotFound("No CSCA link was found f
 peCscaTooNewOrExpired: Final              = ProtoError("CSCA certificate is too new or has expired")
 peCrlOld: Final                           = PeInvalidOrMissingParam("Old CRL")
 peCrlTooNew: Final                        = PeInvalidOrMissingParam("Can't add future CRL")
-peDg1Required: Final                      = PePreconditionRequired("EF.DG1 required")
 peDg14Required: Final                     = PePreconditionRequired("EF.DG14 required")
 peDscCantIssuePassport: Final             = PeInvalidOrMissingParam("DSC certificate can't issue biometric passport")
 peDscExists: Final                        = PeConflict("DSC certificate already exists")
@@ -297,7 +296,7 @@ class PortProto:
         accnt = AccountStorage(uid, dsc.country, st.id, et, aaPubKey, aaSigAlgo, aaCount=1, dg1=None, dg2=None)
         self._db.updateAccount(accnt)
 
-        self._log.debug("New account created: uid=%s", uid.hex())
+        self._log.debug("New account created: uid=%s", uid)
         if len(sod.dscCertificates) > 0:
             self._log.debug("Issuing country of account's eMRTD: %s",
                 utils.code_to_country_name(sod.dscCertificates[0].issuerCountry))
@@ -311,27 +310,22 @@ class PortProto:
 
         return {}
 
-    def login(self, uid: UserId, cid: CID, csigs: List[bytes], dg1: ef.DG1 = None) -> dict:
+    def getAssertion(self, uid: UserId, cid: CID, csigs: List[bytes]) -> dict:
         """
-        Login user.
+        Get eMRTD active authentication assertion for existing account with `uid`.
 
-        :param uid: User id
-        :param cid: Challenge id
-        :param csigs: List of signatures made over challenge chunks
-        :param dg1: (Optional) eMRTD DataGroup file 1
+        :param `uid`: User id
+        :param `cid`: Challenge id
+        :param `csigs`: List of signatures made over challenge chunks
         :return: Empty dictionary
         :raises peAccountNotAttested: If previous account attestation is not valid anymore,
                                       e.g.: accnt.sodId=None, accnt EF.SOD certificate trustchain is not valid anymore.
         :raises peAttestationExpired: If account attestation has expired.
         """
-        # Get account
-        a = self._db.getAccount(uid)
+        self._log.debug("getAssertion: uid=%s cid=%s", uid, cid)
 
-        # 1. Require DG1 if login count is gt 1
-        self._log.debug("Logging-in account with uid=%s login_count=%s", uid.hex(), a.aaCount)
-        if a.aaCount >= 2 and a.dg1 is None and dg1 is None:
-            self._log.error("Login cannot continue due to max no. of anonymous logins and no DG1 file was provided!")
-            raise peDg1Required
+        # 1. Get account
+        a = self._db.getAccount(uid)
 
         # 2. Verify account hasn't expired (expired attestation)
         if a.expires is not None \
@@ -346,27 +340,15 @@ class PortProto:
         if a.sodId is None \
             or ((sod := self._db.findSodTrack(a.sodId)) and sod is None) \
             or not self._is_account_attested(a, sod):
-            self._log.error("Invalid account attestation at login, uid=%s", uid)
+            self._log.error("Invalid account attestation at getAssertion, uid=%s", uid)
             raise peAccountNotAttested
-
-        # 5. If we got DG1 verify EF.SOD contains its hash,
-        #    and assign it to the account
-        if dg1 is not None:
-            self._log.debug("Verifying received DG1(surname=%s name=%s) file is valid ...", dg1.mrz.surname, dg1.mrz.name)
-            if not sod.contains(dg1):
-                self._log.error("EF.SOD doesn't contain %s", dg1)
-                raise peInvalidDgFile(dg1.number)
-            a.setDG1(dg1)
 
         self._db.deleteChallenge(cid) # Verifying has succeeded, delete challenge from db
 
         # 6. Update account
         a.aaCount += 1
         self._db.updateAccount(a)
-        if dg1 is not None:
-            self._log.info("File DG1(surname=%s name=%s) issued by %s is now tied to eMRTD pubkey=%s",
-                dg1.mrz.surname, dg1.mrz.name, utils.code_to_country_name(dg1.mrz.country), a.aaPublicKey.hex())
-        self._log.debug("User has been successfully logged-in. uid=%s", uid.hex())
+        self._log.debug("Authentication for gerAssert succeeded. uid=%s aaCount=%s", uid, a.aaCount)
 
         return {}
 

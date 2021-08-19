@@ -2,7 +2,7 @@
 Port API service serves endpoint on JSON-RPC protocol.
 Server has 6 API methods defined.
 All API methods are defined in [api.py](https://github.com/ZeroPass/port-py-server/blob/18e134e9316bf3888ae5e51ce4cf46468e832f44/src/APIservice/api.py#L56-L172) and their logic is defined in class [PortProto](https://github.com/ZeroPass/port-py-server/blob/66b2ea724ec9a515d07298eed828c6849ec1cbbc/src/APIservice/proto/proto.py#L65-L438).
- To demonstrate the eMRTD PoC, API methods `port.register` and `port.login` should be called respectively.
+ To demonstrate the eMRTD PoC, API methods `port.register` and `port.get_assertion` should be called respectively.
 
 ## Table of Contents
 - [Prerequisites](#prerequisites)
@@ -152,7 +152,7 @@ type: bool
   **return:** `int32` random [*pong*] number
 
 * **port.getChallenge**
-  Returns new random 32 bytes challenge to be at register or login to establish new session with.  
+  Returns new random 32 bytes challenge to be used for `register` or `get_assertion` APIs.  
   **params:**
     * `base64` encoded 20-byte [*uid*] [user id](https://github.com/ZeroPass/port-py-server/blob/a87cb5cc55c160a9ca80583ecb6099d7a6e57660/src/port/proto/user.py#L10-L39)
 
@@ -177,14 +177,12 @@ type: bool
 
   **return:** Implementation specific JSON dictionary
 
- * **port.login**
-  Logins existing user using eMRTD credentials.  
+ * **port.get_assertion**
+  Get active authentication assertion for existing user using eMRTD AA signature.  
   **params:**
     * `base64` encoded 20-byte [*uid*] [user id](https://github.com/ZeroPass/port-py-server/blob/a87cb5cc55c160a9ca80583ecb6099d7a6e57660/src/port/proto/user.py#L10-L39)
     * `hex` encoded 4-byte [[*cid*]](https://github.com/ZeroPass/port-py-server/blob/master/src/port/proto/challenge.py#L12-L37) (challenge id)
     * ordered list [*csigs*] of 4 `base64` encoded eMRTD signatures (AA) made over 8-byte long challenge chunks ([see verification process](https://github.com/ZeroPass/port-py-server/blob/5800f368b03de6bf8d2ee9d26ba974ff3284b215/src/APIservice/proto/proto.py#L244-L249))
-    * (Optional) `base64` encoded [[*dg1*]](https://github.com/ZeroPass/port-py-server/blob/a87cb5cc55c160a9ca80583ecb6099d7a6e57660/src/pymrtd/ef/dg.py#L148-L158) file (eMRTD MRZ).
-    By default EF.DG1 is required [second](https://github.com/ZeroPass/port-py-server/blob/66b2ea724ec9a515d07298eed828c6849ec1cbbc/src/APIservice/proto/proto.py#L155-L159) time user logs-in.
 
    **return:** Implementation specific JSON dictionary
 

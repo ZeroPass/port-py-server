@@ -73,14 +73,13 @@ def requestRegister(url: str, uid: UserId, sod: ef.SOD, dg15: ef.DG15, cid: CID,
     result = response['result']
     return result
 
-def requestLogin(url: str, uid: UserId, cid: CID, csigs: List[bytes], dg1 = None):
+def requestAssertion(url: str, uid: UserId, cid: CID, csigs: List[bytes]):
     payload = {
-        "method": "port.login",
+        "method": "port.get_assertion",
         "params": {
             "uid"  : uid.toBase64(),
             "cid"   : cid.hex(),
-            "csigs" : bsigs_to_b64sigs(csigs),
-            "dg1": b64encode(dg1) if dg1 is not None else None
+            "csigs" : bsigs_to_b64sigs(csigs)
          },
         "jsonrpc": "2.0",
         "id": 2,
@@ -157,20 +156,19 @@ def main():
         result = requestRegister(url, tvUid, sod, dg15, sigc.id, csigs)
         print("User was successfully registered!\n  result={}\n".format(result))
 
-        print("Requesting new challenge from server for login ...")
+        print("Requesting new challenge from server for get_assertion ...")
         c, cet = requestChallenge(url, tvUid)
         print("Server returned challenge={} expires={}\n".format(c.hex(), cet))
         assert c == sigc
 
-        print("Logging in ...")
-        result = requestLogin(url, tvUid, c.id, csigs)
-        print("Login succeed!\n  uid={}\n".format(result))
+        print("Sending get_assertion...", end='')
+        result = requestAssertion(url, tvUid, c.id, csigs)
+        print("Success!\n  result={}\n".format(result))
 
     except AssertionError as e:
-        print("Assert failed: {}".format(e))
+        print("assert exception: {}".format(e))
     except Exception as e:
         print("Error: Server returned error: {}".format(str(e)))
-
 
 if __name__ == "__main__":
     main()

@@ -23,7 +23,6 @@ from port.proto.proto import (
     peCscaTooNewOrExpired,
     peCrlOld,
     peCrlTooNew,
-    peDg1Required,
     peDg14Required,
     peDscCantIssuePassport,
     peDscExists,
@@ -180,9 +179,6 @@ def test_proto_errors():
 
     assert isinstance(peCrlTooNew, PeInvalidOrMissingParam)
     assert str(peCrlTooNew) == "Can't add future CRL"
-
-    assert isinstance(peDg1Required, PePreconditionRequired)
-    assert str(peDg1Required) == "EF.DG1 required"
 
     assert isinstance(peDg14Required, PePreconditionRequired)
     assert str(peDg14Required) == "EF.DG14 required"
