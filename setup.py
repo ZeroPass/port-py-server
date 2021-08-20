@@ -28,7 +28,7 @@ setup(
         'ldif3>=3.2.2',
         'pycountry>=20.7.3',
         'sqlalchemy>=1.4.20',
-        'pymrtd>=0.5.0'
+        'pymrtd>=0.6.0'
     ],
     extras_require={
         'examples' : [
