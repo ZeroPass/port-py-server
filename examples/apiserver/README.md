@@ -151,14 +151,14 @@ type: bool
   **params:** `int32` [*ping*] number  
   **return:** `int32` random [*pong*] number
 
-* **port.getChallenge**
+* **port.get_challenge**
   Returns new random 32 bytes challenge to be used for `register` or `get_assertion` APIs.  
   **params:**
     * `base64` encoded 20-byte [*uid*] [user id](https://github.com/ZeroPass/port-py-server/blob/a87cb5cc55c160a9ca80583ecb6099d7a6e57660/src/port/proto/user.py#L10-L39)
 
-  **return:** 32-byte [*challenge*]
+  **return:** 32-byte [*challenge*] and `int32` [*expires*] - challenge expiration timestamp 
 
-* **port.cancelChallenge**
+* **port.cancel_challenge**
   Cancel requested challenge.  
   **params:** `base64` encoded 32-byte [*challenge*]  
   **return:** none

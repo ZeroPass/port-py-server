@@ -36,7 +36,7 @@ def pingServer(url: str) -> Challenge:
 
 def requestChallenge(url: str, uid: UserId) -> Challenge:
     payload = {
-        "method": "port.getChallenge",
+        "method": "port.get_challenge",
         "params": {
             "uid"   : uid.toBase64(),
         },

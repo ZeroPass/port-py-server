@@ -65,16 +65,16 @@ class PortApiServer:
         except Exception as e:
             self.__handle_exception(e)
 
-    # API: port.getChallenge
+    # API: port.get_challenge
     @portapi
-    def getChallenge(self, uid: str) -> dict:
+    def get_challenge(self, uid: str) -> dict:
         """
         Function returns challenge that passport needs to sign.
         Challenge is base64 encoded.
-        :param uid: base64 encoded UserId to generate the challenge for
+        :param `uid`: Base64 encoded UserId to generate the challenge for
         :return:
-                'challenge' - base64 encoded challenge
-                'expires'   - unix timestamp of time when challenge will expire
+                `challenge` - base64 encoded challenge.
+                `expires`   - unix timestamp of time when challenge will expire.
         """
         try:
             uid = try_deser(lambda: proto.UserId.fromBase64(uid))
@@ -83,12 +83,12 @@ class PortApiServer:
         except Exception as e:
             self.__handle_exception(e)
 
-    # API: port.cancelChallenge
+    # API: port.cancel_challenge
     @portapi
-    def cancelChallenge(self, challenge: str) -> None:
+    def cancel_challenge(self, challenge: str) -> None:
         """
         Function erases challenge from server.
-        :param challenge: base64 encoded string
+        :param `challenge`: base64 encoded string
         :return:
                  Nothing if success, else error
         """
