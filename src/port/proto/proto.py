@@ -173,7 +173,7 @@ class PortProto:
 
     def cancelChallenge(self, cid: CID) -> Union[None, dict]:
         self._db.deleteChallenge(cid)
-        self._log.debug("Challenge canceled cid=%s", cid)
+        self._log.debug("Challenge canceled, cid=%s", cid)
 
     def register(self, uid: UserId, sod: ef.SOD, dg15: ef.DG15, cid: CID, csigs: List[bytes], dg14: ef.DG14 = None, allowSodOverride: bool = False) \
         -> dict:
@@ -191,8 +191,8 @@ class PortProto:
         :param `cid`: Challenge id
         :param `csigs`: List of signatures made over challenge chunks
         :param `dg14`: (Optional) eMRTD DataGroup file 14
-        :param `allowSodOverride`: If True any existing account under `uid` will have the new `sod` assigned to it.
-                                 The previously EF.SOD will stay in DB for the 'sybil' protection and no account will be able to re-register it.
+        :param `allowSodOverride`: If True, override any existing attestation for account under `uid`.
+                                   Previously EF.SOD will stay in DB for the 'sybil' protection and no account will be able to re-register it.
 
         :return: Empty dictionary
 

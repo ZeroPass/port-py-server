@@ -56,8 +56,9 @@ class PortApiServer:
     @portapi
     def ping(self, ping: int) -> dict:
         """
-        Function returns challenge that passport needs to sign.
-        Challenge is base64 encoded.
+        Play ping-pong with server.
+        :`ping`: Client ping number.
+        :return: `pong` number.
         """
         try:
             pong = (proto.utils.bytes_to_int(os.urandom(4)) + ping) % 0xFFFFFFFF
@@ -101,19 +102,22 @@ class PortApiServer:
 
     # API: port.register
     @portapi
-    def register(self, uid: str, sod: str, dg15: str, cid: str, csigs: List[str], dg14: str = None) -> dict:
+    def register(self, uid: str, sod: str, dg15: str, cid: str, csigs: List[str], dg14: str = None, override: bool = None) -> dict:
         """
         Register new user. It returns back empty dict.
 
-        :param uid:   base64 encoded UserId
-        :param sod:   base64 encoded eMRTD SOD file
-        :param dg15:  base64 encoded eMRTD DG15 file
-        :param cid:   hex encoded Challenge id
-        :param csigs: base64 encoded challenge signatures
-        :param dg14:  base64 encoded eMRTD DG14 file (optional)
-        :return: Dictionary object, specific to server implementation
+        :param `uid`:   Base64 encoded UserId.
+        :param `sod`:   Base64 encoded eMRTD SOD file.
+        :param `dg15`:  Base64 encoded eMRTD DG15 file.
+        :param `cid`:   Hex encoded Challenge id.
+        :param `csigs`: Base64 encoded challenge signatures.
+        :param `dg14`:  Base64 encoded eMRTD DG14 file (optional).
+        :param `override`: If True, override the existing attestation for `uid`.
+        :return: Dictionary object, specific to server implementation.
         """
         try:
+            if override:
+                proto.ProtoError("Registration override not supported")
             uid   = try_deser(lambda: proto.UserId.fromBase64(uid))
             sod   = try_deser(lambda: ef.SOD.load(b64decode(sod)))
             dg15  = try_deser(lambda: ef.DG15.load(b64decode(dg15)))
@@ -130,9 +134,9 @@ class PortApiServer:
     def get_assertion(self, uid: str, cid: str, csigs: List[str]) -> dict:
         """
         Returns authn assertion for eMRTD active authentication.
-        :param uid:   User id
-        :param cid:   base64 encoded Challenge id
-        :param csigs: base64 encoded challenge signatures
+        :param `uid`:   User id
+        :param `cid`:   Base64 encoded Challenge id.
+        :param `csigs`: Base64 encoded challenge signatures.
         :return: Dictionary object, specific to server implementation
         """
         try:
