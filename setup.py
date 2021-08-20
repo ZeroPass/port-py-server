@@ -3,7 +3,7 @@ import os
 import sys
 from setuptools import setup, find_packages
 __package_name__ = "port-py-server"
-__version__      = 0.6
+__version__      = '0.7.1'
 __summery__      = 'Python implementation of Port server SDK'
 
 base_dir = os.path.dirname(__file__)
@@ -34,7 +34,7 @@ setup(
         'examples' : [
             'Werkzeug>=2.0.1'
         ],
-        'test': [
+        'tests': [
             'pytest>=6.2.4',
             'pytest-depends>=1.0.1',
             'pytest-datafiles>=2.0.0'
