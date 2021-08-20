@@ -1,74 +1,24 @@
-# Port Python Server
-This repository contains server source code for Port python Server. The server consists of two services:
-* [API service](https://github.com/ZeroPass/port-py-server/tree/master/src/APIservice) which serves JSON-RPC Port API endpoint
-* [web app](https://github.com/ZeroPass/port-py-server/tree/master/src/WebApp) platform for users to upload eMRTD trustchain certificates (CSCA/DSC) and revocation list (CRL) to server
+# Port Python Server SDK
+[![tests](https://github.com/ZeroPass/port-py-server/actions/workflows/tests.yml/badge.svg?branch=master)](https://github.com/ZeroPass/port-py-server/actions/workflows/tests.yml)
 
-Part of source code is also [pymrtd](https://github.com/ZeroPass/port-py-server/tree/master/src/pymrtd) library which is used to parse eMRTD file structure, verify integrity of eMRTD files and validate trustchain.
+This repository contains server source code for the Port python server.
 
-## Table of Contents
-- [Dependencies](#dependencies)
-- [Configure PostgreSQL database](#configure-postgresql-database)
-- [Usage](#usage)
-  + [Instructions for running server services](#instructions-for-running-server-services)
-- [Server module structure](#server-module-structure)
+Part of source code is also [pymrtd](https://github.com/ZeroPass/port-py-server/tree/master/src/pymrtd) library which is used to parse eMRTD file structure, verify integrity of eMRTD files.
 
-## Dependencies
-* [Python 3.7 or higher](https://www.python.org/downloads/).<br>
-  Check this [website](https://wiki.python.org/moin/BeginnersGuide/Download) for installation guidelines.
-* PIP3 (sudo apt-get install python3-pip)
+## Requirements
+Python >= 3.9  
+PIP
 
-* [asn1crypto](https://github.com/wbond/asn1crypto)
+## Install
+Following command installs `port` and `pymrtd` libraries with all required dependency.
 ```
- pip3 install (or python3.8 -m pip install) asn1crypto
+python -m pip install -r requirements.txt
 ```
 
-* [cryptography](https://github.com/pyca/cryptography)
+Development:  
 ```
-  pip3 install (or python3.8 -m pip install)cryptography
+python -m pip install -r dev-requirements.txt
 ```
-
-* [Python LDIF parser](https://ldif3.readthedocs.io/en/latest/)
-```
-  pip3 install (or python3.8 -m pip install) ldif3
-```
-
-* [Paramiko](https://pypi.org/project/paramiko/)
-```
-  pip3 install (or python3.8 -m pip install) paramiko
-```
-
-* [SQLAlchemy](https://www.sqlalchemy.org/)
-```
-  pip3 install (or python3.8 -m pip install) sqlalchemy
-```
-
-* [JSON-RPC](https://github.com/pavlov99/json-rpc)
-```
-  pip3 install (or python3.8 -m pip install) json-rpc
-```
-
-* [werkzeug](https://palletsprojects.com/p/werkzeug/)
-```
-  pip3 install (or python3.8 -m pip install) werkzeug
-```
-
-* [ColoredLogs](https://coloredlogs.readthedocs.io/en/latest/)
-```
-  pip3 install (or python3.8 -m pip install) coloredlogs
-```
-
-* [pycountry](https://github.com/flyingcircusio/pycountry)
-```
-  pip3 install (or python3.8 -m pip install) pycountry
-```
-
-* [PostgreSQL adapter - psycopg2](http://initd.org/psycopg/)
-```
-  pip3 install (or python3.8 -m pip install) psycopg2
-
-  On Unubuntu you need to run this to work: sudo apt install libpq-dev python3-dev
-```
-
 ### Configure PostgreSQL database
 
 * Install PostgreSQL
@@ -103,11 +53,9 @@ Part of source code is also [pymrtd](https://github.com/ZeroPass/port-py-server/
 To extract eMRTD trustchain certificates (CSCA/DSC) from master list files (`*.ml`) and PKD LDAP files (`*.ldif`) use python tool [pkdext](https://github.com/ZeroPass/PassID-documntation-and-tools/tree/master/tools/pkdext).
 (Optional) If using SQL database you can use class [Builder](https://github.com/ZeroPass/port-py-server/blob/a87cb5cc55c160a9ca80583ecb6099d7a6e57660/src/management/builder.py#L54) to load trustchain certificates into database via custom script.
 
-#### Instructions for running server services:
+#### Instructions for running example server:
 * Example API service [README](examples/apiserver/README.md)
-* Web app [README](src/WebApp#webapp-data)
 
-## Server module structure
-* [APIService](https://github.com/ZeroPass/port-py-server/tree/master/src/APIservice)
+## Server modules structure
+* [Port](src/port)
 * [pymrtd](src/pymrtd)
-* [WebApp](https://github.com/ZeroPass/port-py-server/tree/master/src/WebApp)
