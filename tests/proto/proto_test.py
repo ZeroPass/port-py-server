@@ -1,4 +1,4 @@
-#pylint: disable=line-too-long,protected-access
+#pylint: disable=line-too-long,protected-access,too-many-locals,too-many-statements
 import copy
 import json
 import os
