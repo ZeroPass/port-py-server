@@ -6,7 +6,7 @@ import py
 import pytest
 import random
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 from port.proto.proto import (
     peAccountAlreadyRegistered,
     peAccountNotAttested,
@@ -50,7 +50,7 @@ from port.proto.proto import (
     ProtoError
 )
 from port.proto import CertificateId, Challenge, CountryCode, MemoryDB, SodId, UserId, utils
-from port.database import CertificateRevocationInfo, DscStorage, SodTrack
+from port.database import CertificateRevocationInfo, DscStorage
 from pymrtd import ef
 from pymrtd.pki.x509 import CscaCertificate, DocumentSignerCertificate
 from pymrtd.ef.dg import DataGroupNumber
@@ -754,9 +754,9 @@ def _test_register_attestation(dg15: ef.DG15, dg14: Optional[ef.DG14], sod: ef.S
     TV_DIR / 'aa_sigs.json'
 
 )
-# @pytest.mark.depends(on=[
-#     'test_verify_sod_is_genuine',
-# ])
+@pytest.mark.depends(on=[
+    'test_verify_sod_is_genuine',
+])
 def test_register(datafiles):
     # Test vector taken from Slovenian passport
     with open(datafiles / 'aa_sigs.json', "rb") as aa_sigs:
