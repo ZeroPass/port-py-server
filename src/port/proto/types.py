@@ -150,13 +150,21 @@ class UserIdError(Exception):
     pass
 
 class UserId(bytes):
-    """ Represents account userId"""
+    """
+    Represents account user ID.
+    User ID can be UTF-8 string or `bytes`.
+    Internally UserId is represented as `bytes`.
+    Max user ID size is 20 bytes.
+    """
 
     max_size: int = 20
 
-    def __new__(cls, userId: bytes) -> "UserId":
-        if not isinstance(userId, bytes) or \
-            len(userId) > UserId.max_size:
+    def __new__(cls, userId: Union[bytes, str]) -> "UserId":
+        if isinstance(userId, str):
+            userId = userId.encode("utf-8")
+        if not isinstance(userId, bytes) \
+            or len(userId) < 1 \
+            or len(userId) > UserId.max_size:
             raise UserIdError("Invalid userId data")
         return cast(UserId, super().__new__(cls, userId))  # type: ignore  # https://github.com/python/typeshed/issues/2630  # noqa: E501
 
@@ -172,7 +180,7 @@ class UserId(bytes):
         try:
             return self.decode("utf-8")
         except: #pylint: disable=bare-except
-            return self.hex()
+            return self.hex().upper().rjust(2, '0')
 
     def __repr__ (self) -> str:
         return "UserId({!s})".format(self)
