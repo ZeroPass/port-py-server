@@ -51,7 +51,7 @@ class CertificateId(IIntegerId):
     """
     Represents x509.Certificate ID as uint64
     CertificateId is calculated by taking the first 8 bytes of SHA-512/256 hash
-    over x509.Certificate ASN.1 DER encoded bytes
+    over ASN.1 DER encoded bytes of x509.Certificate.tbs_certificate fields
     """
 
     min = -9223372036854775808 # min 64 bit int
@@ -59,8 +59,15 @@ class CertificateId(IIntegerId):
 
     @classmethod
     def fromCertificate(cls, crt: x509.Certificate) -> "CertificateId":
+        """
+        Returns `CertificateId` generated from SHA512-256(`crt`.tbs_certificate).
+        Note, the reason for calculating ID from TBS certificate is to get the same ID
+        when certificate signature is different but TBS certificates are the same.
+        :param `crt`: X509 certificate to generate the `CertificateId` from.
+        :return: New `CertificateId` object from `crt`.
+        """
         assert isinstance(crt, x509.Certificate)
-        return cls(sha512_256(crt.dump()))
+        return cls(sha512_256(crt['tbs_certificate'].dump())[0:8])
 
 class CrlId(IIntegerId):
     """
