@@ -17,35 +17,64 @@ class CountryCode(str):
         return super().__new__(cls, format_alpha2(content) if content is not None else None)
 
 class IIntegerId(int):
+    """
+    Class represents fixed size integer ID.
+    """
+
     min:int
     max:int
 
+    _byteSize:int = None
+
     def __new__(cls, idValue: Union[int, bytes, str], *args, **kwargs): #pylint: disable=unused-argument
+        """
+        Bytes and hex string representation of ID has to be padded to the required `byteSize` size.
+        """
         if isinstance(idValue, int):
             if not (cls.min <= idValue <= cls.max): #pylint: disable=superfluous-parens
                 raise ValueError("integer out of range to construct {}. id_value={}".format(cls.__name__, idValue))
         elif isinstance(idValue, bytes):
-            # check if we have required number of bytes
-            mn = max(abs(cls.min), abs(cls.max))
-            nb = int_count_bytes(mn)
-            if len(idValue) < nb:
-                raise ValueError("not enough bytes to construct {}".format(cls.__name__))
-            idValue = bytes_to_int(idValue[0:nb], signed=True)
+            if len(idValue) != cls.byteSize():
+                raise ValueError("invalid byte array size to construct {}".format(cls.__name__))
+            idValue = bytes_to_int(idValue, signed=True)
+            return cls(idValue)
         elif isinstance(idValue, str):
+            if len(args) > 0 and args[0] == 16:
+                return cls.fromHex(idValue)
             idValue = int(idValue, *args)
-            if not (cls.min <= idValue <= cls.max): #pylint: disable=superfluous-parens
-                raise ValueError("out of range to construct {}".format(cls.__name__))
+            return cls(idValue)
         else:
             raise ValueError("invalid type to construct {}. id_type={}".format(cls.__name__, type(idValue)))
         return cast(cls, super().__new__(cls, idValue))
 
     @classmethod
+    def byteSize(cls) -> int:
+        """
+        Returns the size of ID integer when encoded to bytes.
+        """
+        if cls._byteSize is None:
+            mn = max(abs(cls.min), abs(cls.max))
+            nb = int_count_bytes(mn)
+            cls._byteSize = nb
+        return cls._byteSize
+
+    def toBytes(self):
+        """
+        Returns big-endian encoded bytes of self.
+        """
+        return int_to_bytes(self, signed=True, encodeLength=self.byteSize())
+
+    @classmethod
     def fromHex(cls, hexstr: str):
         assert isinstance(hexstr, str)
-        return cls(hexstr, 16)
+        if len(hexstr) != (cls.byteSize() * 2):
+            raise ValueError("invalid hex string size to construct {}".format(cls.__name__))
+        return cls(bytes.fromhex(hexstr))
 
     def hex(self):
-        return hex(self)
+        mn = max(abs(self.min), abs(self.max))
+        nb = int_count_bytes(mn)
+        return self.toBytes().hex().upper().rjust(nb * 2, '0')
 
 class CertificateId(IIntegerId):
     """
@@ -82,7 +111,7 @@ class CrlId(IIntegerId):
         assert isinstance(country, CountryCode)
         assert isinstance(issuer, str)
         h = sha512_256((country + issuer).encode('utf-8'))
-        return cls(h)
+        return cls(h[0:8])
 
     @classmethod
     def fromCrlIssuer(cls, issuer: Name) -> "CrlId":
@@ -115,7 +144,7 @@ class SodId(IIntegerId):
         :return: SodId of `sod`.
         """
         assert isinstance(sod, ef.SOD)
-        return cls(sha512_256(sod.ldsSecurityObject.dump()))
+        return cls(sha512_256(sod.ldsSecurityObject.dump())[0:8])
 
 class UserIdError(Exception):
     pass
@@ -172,7 +201,7 @@ class Challenge(bytes):
     @property
     def id(self) -> CID:
         if not hasattr(self, "_id"):
-            self._id = CID(self) #pylint: disable=attribute-defined-outside-init
+            self._id = CID(self[0:4]) #pylint: disable=attribute-defined-outside-init
         return self._id
 
     @staticmethod
