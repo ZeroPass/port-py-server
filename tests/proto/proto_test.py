@@ -44,7 +44,6 @@ from port.proto.proto import (
     peTrustchainCheckFailedExpiredCert,
     peTrustchainCheckFailedNoCsca,
     peTrustchainCheckFailedRevokedCert,
-    peTrustchainVerificationFailed,
     PeUnauthorized,
     PortProto,
     ProtoError
@@ -227,9 +226,6 @@ def test_proto_errors():
 
     assert isinstance(peTrustchainCheckFailedRevokedCert, PePreconditionFailed)
     assert str(peTrustchainCheckFailedRevokedCert) == "Revoked certificate in the trustchain"
-
-    assert isinstance(peTrustchainVerificationFailed, PePreconditionFailed)
-    assert str(peTrustchainVerificationFailed) == "Trustchain verification failed"
 
 def verify_sod_is_genuine_test(sod: ef.SOD, csca: CscaCertificate, dsc: DocumentSignerCertificate):
     """

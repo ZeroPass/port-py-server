@@ -93,7 +93,6 @@ peMissingParamAASigAlgo: Final            = PeInvalidOrMissingParam("Missing par
 peTrustchainCheckFailedExpiredCert: Final = PePreconditionFailed("Expired certificate in the trustchain")
 peTrustchainCheckFailedNoCsca: Final      = PePreconditionFailed("Missing issuer CSCA certificate in the trustchain")
 peTrustchainCheckFailedRevokedCert: Final = PePreconditionFailed("Revoked certificate in the trustchain")
-peTrustchainVerificationFailed: Final     = PePreconditionFailed("Trustchain verification failed")
 
 def peInvalidDgFile(dgNumber: ef.dg.DataGroupNumber) -> PeInvalidOrMissingParam:
     return PeInvalidOrMissingParam("Invalid {} file".format(dgNumber.native))
@@ -816,37 +815,6 @@ class PortProto:
         except StorageAPIError as e:
             self._log.error("A DB error was encountered while trying to checking if account is attested.")
             self._log.error("  e=%s", e)
-            raise
-
-    def __verify_emrtd_trustchain(self, sod: ef.SOD, dg14: Union[ef.DG14, None], dg15: ef.DG15) -> None:
-        """"
-        Verify eMRTD trust chain from eMRTD EF.SOD to issuing CSCA
-        :raises: An exception is risen if any part of trust chain verification fails
-        """
-        assert isinstance(sod, ef.SOD)
-        assert isinstance(dg14, (ef.DG14, type(None)))
-        assert isinstance(dg15, ef.DG15)
-
-        try:
-            self._log.info("Verifying eMRTD trust chain for %s %s %s", sod, dg14 if dg14 is not None else "", dg15)
-            if dg14 is not None:
-                self._verify_sod_contains_hash_of(sod, dg14)
-
-            self._verify_sod_contains_hash_of(sod, dg15)
-            self._verify_sod_is_genuine(sod)
-            self._log.success("eMRTD trust chain was successfully verified!")
-        except CertificateVerificationError as e:
-            self._log.error("Failed to verify eMRTD certificate trust chain: %s", e)
-            raise peTrustchainVerificationFailed from e
-        except ef.SODError as e:
-            self._log.error("Failed to verify eMRTD EF.SOD file: %s", e)
-            raise peInvalidEfSod from e
-        except ProtoError as e:
-            self._log.error("Failed to verify eMRTD certificate trust chain: %s", e)
-            raise
-        except Exception as e:
-            self._log.error("Failed to verify eMRTD certificate trust chain! e=%s", e)
-            self._log.exception(e)
             raise
 
     def _verify_challenge(self, cid: CID, aaPubKey: AAPublicKey, csigs: List[bytes], aaSigAlgo: SignatureAlgorithm = None ) -> None:
