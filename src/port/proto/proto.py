@@ -47,13 +47,13 @@ class PePreconditionFailed(ProtoError):
     code = 412
 
 class PeInvalidOrMissingParam(ProtoError):
-    """ Invalid or missing required protocol parameter """
+    """ Invalid or missing required protocol parameter. """
     code = 422
 
 class PePreconditionRequired(ProtoError):
     """
-    Required preconditions that are marked as optional.
-    e.g.: at registration dg14 might be required
+    Required preconditions.
+    e.g.: EF.DG15 file has ECC public key and EF.DG14 is missing AAInfo
     """
     code = 428
 
@@ -74,21 +74,21 @@ peCountryCodeMismatch: Final              = PeConflict("Country code mismatch")
 peCscaExists: Final                       = PeConflict("CSCA certificate already exists")
 peCscaNotFound: Final                     = PeNotFound("CSCA certificate not found")
 peCscaSelfIssued: Final                   = PeNotFound("No CSCA link was found for self-issued CSCA")
-peCscaTooNewOrExpired: Final              = ProtoError("CSCA certificate is too new or has expired")
+peCscaTooNewOrExpired: Final              = PeInvalidOrMissingParam("CSCA certificate is too new or has expired")
 peCrlOld: Final                           = PeInvalidOrMissingParam("Old CRL")
 peCrlTooNew: Final                        = PeInvalidOrMissingParam("Can't add future CRL")
-peDg14Required: Final                     = PePreconditionRequired("EF.DG14 required")
 peDscCantIssuePassport: Final             = PeInvalidOrMissingParam("DSC certificate can't issue biometric passport")
 peDscExists: Final                        = PeConflict("DSC certificate already exists")
 peDscNotFound: Final                      = PeNotFound("DSC certificate not found")
-peDscTooNewOrExpired: Final               = ProtoError("DSC certificate is too new or has expired")
+peDscTooNewOrExpired: Final               = PeInvalidOrMissingParam("DSC certificate is too new or has expired")
+peEfDg14MissingAAInfo: Final              = PePreconditionRequired("EF.DG14 file is missing ActiveAuthenticationInfo")
+peEfDg14Required: Final                   = PeInvalidOrMissingParam("EF.DG14 file required")
+peEfSodMatch: Final                       = PeConflict("Matching EF.SOD file already registered")
 peEfSodNotGenuine: Final                  = PeUnauthorized("EF.SOD file not genuine")
 peInvalidCsca: Final                      = PeInvalidOrMissingParam("Invalid CSCA certificate")
 peInvalidCrl: Final                       = PeInvalidOrMissingParam("Invalid CRL file")
 peInvalidDsc: Final                       = PeInvalidOrMissingParam("Invalid DSC certificate")
 peInvalidEfSod: Final                     = PeInvalidOrMissingParam("Invalid EF.SOD file")
-peMatchingEfSod: Final                    = PeConflict("Matching EF.SOD file already registered")
-peMissingAAInfoInDg14: Final              = PePreconditionRequired("Missing ActiveAuthenticationInfo in DG14 file")
 peMissingParamAASigAlgo: Final            = PeInvalidOrMissingParam("Missing param aaSigAlgo")
 peTrustchainCheckFailedExpiredCert: Final = PePreconditionFailed("Expired certificate in the trustchain")
 peTrustchainCheckFailedNoCsca: Final      = PePreconditionFailed("Missing issuer CSCA certificate in the trustchain")
@@ -199,15 +199,15 @@ class PortProto:
         :raises `peChallengeExpired`: If challenge has expired.
         :raises `peChallengeVerificationFailed`: When challenge signature verification fails.
         :raises `peCountryCodeMismatch`: If an existing account tries to override attestation with EF.SOD issued by different country than
-                                       previously attestated country.
-        :raises `peDg14Required`: If dg15 is ECC key and `dg14` is None.
+                                       previous attestation country country.
         :raises `peDscNotFound`: When no `sod` signing DSC certificate is found.
+        :raises `peEfDg14MissingAAInfo`: If `dg14` is missing AAInfo data.
+        :raises `peEfDg14Required`: If EF.DG15 contains ECC public key and `dg14` is None.
+        :raises `peEfSodMatch`: If the same or matching EF.SOD already exists in the DB.
         :raises `peEfSodNotGenuine`: If `sod` verification with DSC certificate fails i.e. signature verification fails.
                                    E.g.: when EF.SOD was intentionally altered or is corrupted.
         :raises `peInvalidDgFile`: If `sod` doesn't contain the same hashes of `dg15` and `dg14` (if present)
         :raises `peInvalidEfSod`: If no valid signer is found for `sod`, `sod` is not signed or contains invalid signer infos.
-        :raises `peMatchingEfSod`: If the same or matching EF.SOD already exists in the DB.
-        :raises `peMissingAAInfoInDg14`: If `dg14` is missing AAInfo data.
         :raises `peTrustchainCheckFailedExpiredCert`: If any of the certificates in the EF.SOD trustchain has expired.
         :raises `peTrustchainCheckFailedNoCsca`: If root issuing CSCA certificate is not found.
         :raises `peTrustchainCheckFailedRevokedCert`: If any of the certificates in the EF.SOD trustchain is revoked.
@@ -255,9 +255,9 @@ class PortProto:
         aaPubKey = dg15.aaPublicKey
         if aaPubKey.isEcKey():
             if dg14 is None:
-                raise peDg14Required
+                raise peEfDg14Required
             elif dg14.aaSignatureAlgo is None:
-                raise peMissingAAInfoInDg14
+                raise peEfDg14MissingAAInfo
             aaSigAlgo = dg14.aaSignatureAlgo
         self._verify_challenge(cid, aaPubKey, csigs, aaSigAlgo)
 
@@ -283,7 +283,7 @@ class PortProto:
                     self._db.deleteSodTrack(s.id)
                     continue
                 self._log.error("Found valid matching EF.SOD track with sodId=%s for %s with sodId=%s", s.id, sod, st.id)
-                raise peMatchingEfSod
+                raise peEfSodMatch
 
         # 7. Save EF.SOD track and delete challenge
         self._db.addSodTrack(st)

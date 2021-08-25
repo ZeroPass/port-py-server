@@ -44,9 +44,9 @@ seAccountNotFound: Final       = SeEntryNotFound("Account not found")
 seChallengeExists: Final       = SeEntryAlreadyExists("Challenge already exists")
 seChallengeNotFound: Final     = SeEntryNotFound("Challenge not found")
 seCrlUpdateInfoNotFound: Final = SeEntryNotFound("CRL Update Info not found")
-seCscaExists: Final            = SeEntryAlreadyExists("CSCA already exists")
-seDscExists: Final             = SeEntryAlreadyExists("DSC already exists")
-seEfSodExists: Final           = SeEntryAlreadyExists("EF.SOD already exists")
+seCscaExists: Final            = SeEntryAlreadyExists("CSCA certificate already exists")
+seDscExists: Final             = SeEntryAlreadyExists("DSC certificate already exists")
+seEfSodExists: Final           = SeEntryAlreadyExists("EF.SOD file already exists")
 
 #pylint: disable=too-many-public-methods
 

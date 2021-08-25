@@ -23,7 +23,7 @@ from port.proto.proto import (
     peCscaTooNewOrExpired,
     peCrlOld,
     peCrlTooNew,
-    peDg14Required,
+    peEfDg14Required,
     peDscCantIssuePassport,
     peDscExists,
     peDscNotFound,
@@ -34,8 +34,8 @@ from port.proto.proto import (
     peInvalidDsc,
     peInvalidEfSod,
     PeInvalidOrMissingParam,
-    peMatchingEfSod,
-    peMissingAAInfoInDg14,
+    peEfSodMatch,
+    peEfDg14MissingAAInfo,
     peMissingParamAASigAlgo,
     PeNotFound,
     PePreconditionFailed,
@@ -179,8 +179,8 @@ def test_proto_errors():
     assert isinstance(peCrlTooNew, PeInvalidOrMissingParam)
     assert str(peCrlTooNew) == "Can't add future CRL"
 
-    assert isinstance(peDg14Required, PePreconditionRequired)
-    assert str(peDg14Required) == "EF.DG14 required"
+    assert isinstance(peEfDg14Required, PeInvalidOrMissingParam)
+    assert str(peEfDg14Required) == "EF.DG14 file required"
 
     assert isinstance(peDscCantIssuePassport, PeInvalidOrMissingParam)
     assert str(peDscCantIssuePassport) == "DSC certificate can't issue biometric passport"
@@ -209,11 +209,11 @@ def test_proto_errors():
     assert isinstance(peInvalidEfSod, PeInvalidOrMissingParam)
     assert str(peInvalidEfSod) == "Invalid EF.SOD file"
 
-    assert isinstance(peMatchingEfSod, PeConflict)
-    assert str(peMatchingEfSod) == "Matching EF.SOD file already registered"
+    assert isinstance(peEfSodMatch, PeConflict)
+    assert str(peEfSodMatch) == "Matching EF.SOD file already registered"
 
-    assert isinstance(peMissingAAInfoInDg14, PePreconditionRequired)
-    assert str(peMissingAAInfoInDg14) == "Missing ActiveAuthenticationInfo in DG14 file"
+    assert isinstance(peEfDg14MissingAAInfo, PePreconditionRequired)
+    assert str(peEfDg14MissingAAInfo) == "EF.DG14 file is missing ActiveAuthenticationInfo"
 
     assert isinstance(peMissingParamAASigAlgo, PeInvalidOrMissingParam)
     assert str(peMissingParamAASigAlgo) == "Missing param aaSigAlgo"
