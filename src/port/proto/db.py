@@ -62,8 +62,7 @@ class StorageAPI(ABC):
 
         :param cid: Challenge id
         :return: Tuple[Challenge, datetime]
-        :raises:
-            DatabaseAPIError: If challenge is not found
+        :raises seChallengeNotFound: If challenge is not found
         """
 
     @abstractmethod
@@ -417,7 +416,7 @@ class DatabaseAPI(StorageAPI):
         :param username: The database username.
         :param password: The database password.
         :param dbLog (Optional): If set to True the underling DB implementation will debug log all DB actions and SQL statements.
-        :raises: PortDbConnectionError on error.
+        :raises PortDbConnectionError: On DB connection errors.
         '''
         self._log = logging.getLogger('proto.db.api')
         self._dbc = PortDatabaseConnection(dialect, host, db, username, password, debugLogging = dbLog)
@@ -447,7 +446,8 @@ class DatabaseAPI(StorageAPI):
 
         :param cid: Challenge id
         :return: Tuple[Challenge, datetime]
-        :raises: DatabaseAPIError if challenge is not found, or DB connection error.
+        :raises seChallengeNotFound: If challenge is not found.
+        :raises DatabaseAPIError: On DB connection errors.
         """
         assert isinstance(cid, CID)
         try:
@@ -471,7 +471,7 @@ class DatabaseAPI(StorageAPI):
 
         :param uid: User ID to searche the challenge for
         :return: Optional[Tuple[Challenge, datetime]]
-        :raises: DatabaseAPIError on DB connection errors.
+        :raises DatabaseAPIError: On DB connection errors.
         """
         assert isinstance(uid, UserId)
         try:
@@ -494,9 +494,8 @@ class DatabaseAPI(StorageAPI):
         :param uid: User ID for which the challenge was created
         :param challenge:
         :param expires: The challenge expiration datetime.
-        :raises:
-            SeEntryAlreadyExists if challenge already exists for user
-            DatabaseAPIError on DB connection errors.
+        :raises SeEntryAlreadyExists: If challenge already exists for user.
+        :raises DatabaseAPIError: On DB connection errors.
         """
         assert isinstance(challenge, Challenge)
         assert isinstance(expires, datetime)
@@ -514,7 +513,7 @@ class DatabaseAPI(StorageAPI):
 
     def deleteChallenge(self, cid: CID) -> None:
         """
-        :raises: DatabaseAPIError on DB connection errors.
+        :raises DatabaseAPIError: On DB connection errors.
         """
         assert isinstance(cid, CID)
         try:
@@ -528,7 +527,7 @@ class DatabaseAPI(StorageAPI):
 
     def deleteExpiredChallenges(self, time: datetime) -> None:
         """
-        :raises: DatabaseAPIError on DB connection errors.
+        :raises DatabaseAPIError: On DB connection errors.
         """
         assert isinstance(time, datetime)
         try:
@@ -544,7 +543,7 @@ class DatabaseAPI(StorageAPI):
         """
         Adds new accout to storage or updates existing.
         :param account: Account storage to add.
-        :raises: DatabaseAPIError on DB connection errors.
+        :raises DatabaseAPIError: On DB connection errors.
         """
         assert isinstance(account, AccountStorage)
         self._log.debug("Inserting or updating account, uid=%s", account.uid)
@@ -558,7 +557,7 @@ class DatabaseAPI(StorageAPI):
         """
         Deletes the account under `uid` from DB.
         :param `uid: The user ID of the account.
-        :raises: DatabaseAPIError on DB connection errors.
+        :raises DatabaseAPIError: On DB connection errors.
         """
         assert isinstance(uid, UserId)
         self._log.debug("Deleting account from DB, uid=%s", uid)
@@ -576,7 +575,7 @@ class DatabaseAPI(StorageAPI):
         Checks if the account with `uid` exists in DB.
         :param `uid`: The user ID of the account.
         :return: True if account exists, otherwise False.
-        :raises: DatabaseAPIError on DB connection errors.
+        :raises DatabaseAPIError: On DB connection errors.
         """
         assert isinstance(uid, UserId)
         try:
@@ -591,7 +590,7 @@ class DatabaseAPI(StorageAPI):
         Returns account under `uid` from DB if exists in the DB.
         :param `uid`: The account user ID.
         :return: AccountStorage if account exitsts, otherwise None.
-        :raises: DatabaseAPIError on DB connection errors.
+        :raises DatabaseAPIError: On DB connection errors.
         """
         assert isinstance(uid, UserId)
         try:
@@ -608,7 +607,7 @@ class DatabaseAPI(StorageAPI):
         :param `uid`: The account user ID.
         :return: AccountStorage
         :raises seAccountNotFound: If account is not found.
-        :raises: DatabaseAPIError on DB connection errors.
+        :raises DatabaseAPIError: On DB connection errors.
         """
         assert isinstance(uid, UserId)
         a = self.findAccount(uid)
@@ -621,7 +620,7 @@ class DatabaseAPI(StorageAPI):
         Returns account attestation expiration.
         :param `uid`: The account user ID.
         :raises seAccountNotFound: If account is not found in the DB.
-        :raises: DatabaseAPIError on DB connection errors.
+        :raises DatabaseAPIError: On DB connection errors.
         """
         assert isinstance(uid, UserId)
         try:
@@ -639,8 +638,8 @@ class DatabaseAPI(StorageAPI):
         """
         Insert EF.SOD track into database.
         :param sod: EF.SOD track to add.
-        :raises DatabaseAPIError: On DB connection errors.
         :raises seEfSodExists: if there is EF.SOD track that has the same sodId or hashAlgo and any of the dgHashes match.
+        :raises DatabaseAPIError: On DB connection errors.
         """
         assert isinstance(sod, SodTrack)
         self._log.debug("Inserting new EF.SOD track into DB, sodId=%s", sod.id)
@@ -776,8 +775,8 @@ class DatabaseAPI(StorageAPI):
         :param csca: CSCA certificate to insert into database.
         :param issuerId: The CSCA issuerId in case the CSCA is linked (Optional).
         :return: The csca CertificateId
+        :raises SeEntryAlreadyExists: If the same CSCA storage already exists.
         :raises DatabaseAPIError: On DB connection errors.
-        :raises SeEntryAlreadyExists: if the same CSCA storage already exists.
         """
         assert isinstance(csca, CscaCertificate)
         assert issuerId is None or isinstance(issuerId, CertificateId)
@@ -805,8 +804,8 @@ class DatabaseAPI(StorageAPI):
         """
         Inserts new CSCA certificate storage into database
         :param csca: CscaStorage to insert into database.
+        :raises SeEntryAlreadyExists: If the same CSCA storage already exists.
         :raises DatabaseAPIError: On DB connection errors.
-        :raises SeEntryAlreadyExists: if the same CSCA storage already exists.
         """
         assert isinstance(csca, CscaStorage)
         self._log.debug("Inserting new CSCA into DB, C=%s serial=%s", csca.country, csca.serial.hex())
@@ -823,7 +822,7 @@ class DatabaseAPI(StorageAPI):
         Returns CSCA certificate storage objects that match the id.
         :param certId: The certificate certId to search for.
         :return: list of CscaStorage, or None if no CSCA certificate was found.
-        :raises: DatabaseAPIError on DB connection errors.
+        :raises DatabaseAPIError: On DB connection errors.
         """
         assert isinstance(certId, CertificateId)
         try:
@@ -840,7 +839,7 @@ class DatabaseAPI(StorageAPI):
         :param issuer: CSCA issuer name.
         :param serial: CSCA serial number to search for.
         :return: CscaStorage, or None if no CSCA certificate was found.
-        :raises: DatabaseAPIError on DB connection errors.
+        :raises DatabaseAPIError: On DB connection errors.
         """
         assert isinstance(issuer, x509.Name)
         assert isinstance(serial, int) or isinstance(serial, bytes)
@@ -865,7 +864,7 @@ class DatabaseAPI(StorageAPI):
         :param subject: Certificate subject name to search for.
         :param subjectKey: Certificate subject key to search for.
         :return: list of CscaStorage, or None if no CSCA certificate was found.
-        :raises: DatabaseAPIError on DB connection errors.
+        :raises DatabaseAPIError: On DB connection errors.
         """
         assert isinstance(subject, x509.Name)
         try:
@@ -891,7 +890,7 @@ class DatabaseAPI(StorageAPI):
         Returns list of CSCA certificate storage objects that match the subject param.
         :param subject: Certificate subject name to search for.
         :return: list of CscaStorage, or None if no CSCA certificate was found.
-        :raises: DatabaseAPIError on DB connection errors.
+        :raises DatabaseAPIError: On DB connection errors.
         """
         assert isinstance(subject, x509.Name)
         try:
@@ -910,7 +909,7 @@ class DatabaseAPI(StorageAPI):
         :param country: iso alpha-2 country code of the country that issued the CSCA.
         :param subjectKey: Certificate subject key to search for.
         :return: list of CscaStorage, or None if no CSCA certificate was found.
-        :raises: DatabaseAPIError on DB connection errors.
+        :raises DatabaseAPIError: On DB connection errors.
         """
         assert isinstance(subjectKey, bytes)
         assert isinstance(country, CountryCode)
@@ -930,8 +929,8 @@ class DatabaseAPI(StorageAPI):
         :param dsc: DSC certificate to insert into database.
         :param issuerId: The CertificateId of CSCA which issued this DSC certificate.
         :return: The dsc CertificateId
+        :raises seDscExists: If the same DSC certificate storage already exists.
         :raises DatabaseAPIError: On DB connection errors.
-        :raises SeEntryAlreadyExists: If DSC certificate already exists.
         """
         assert isinstance(dsc, DocumentSignerCertificate)
         assert isinstance(issuerId, CertificateId)
@@ -943,8 +942,8 @@ class DatabaseAPI(StorageAPI):
         """
         Inserts new DSC certificate storage into database
         :param dsc: DscStorage to insert into database.
-        :raises DatabaseAPIError: On DB connection errors.
         :raises seDscExists: If the same DSC certificate storage already exists.
+        :raises DatabaseAPIError: On DB connection errors.
         """
         assert isinstance(dsc, DscStorage)
         self._log.debug("Inserting new DSC certificate into DB, C=%s serial=%s", dsc.country, dsc.serial.hex())
@@ -977,7 +976,7 @@ class DatabaseAPI(StorageAPI):
         Returns DSC certificate storage that matches the certificate id.
         :param certId: The DSC certificate id.
         :return: DscStorage
-        :raises: DatabaseAPIError on DB connection errors.
+        :raises DatabaseAPIError: On DB connection errors.
         """
         assert isinstance(certId, CertificateId)
         try:
@@ -994,7 +993,7 @@ class DatabaseAPI(StorageAPI):
         :param issuer: The DSC certificate issuer.
         :param serial: The DSC certificate serial number.
         :return: DscStorage
-        :raises: DatabaseAPIError on DB connection errors.
+        :raises DatabaseAPIError: On DB connection errors.
         """
         assert isinstance(issuer, x509.Name)
         assert isinstance(serial, int) or isinstance(serial, bytes)
@@ -1014,7 +1013,7 @@ class DatabaseAPI(StorageAPI):
         Returns DSC certificate storage that matches the subjectKey.
         :param subjectKey: The DSC certificate subject key.
         :return: DscStorage
-        :raises: DatabaseAPIError on DB connection errors.
+        :raises DatabaseAPIError: On DB connection errors.
         """
         assert isinstance(subjectKey, bytes)
         try:
@@ -1030,7 +1029,7 @@ class DatabaseAPI(StorageAPI):
         Updates CRL for country.
         Before the new certificate revocation info entries are added, any existing entry is removed first.
         :param crl: The certificate revocation list.
-        :raises: DatabaseAPIError on DB connection errors.
+        :raises DatabaseAPIError: On DB connection errors.
         """
         assert isinstance(crl, CertificateRevocationList)
         self._log.debug("Updating CRL: '%s' crlNumber=%s", crl.issuer.human_friendly, crl.crlNumber)
@@ -1071,8 +1070,8 @@ class DatabaseAPI(StorageAPI):
         Returns list of CRL update infos for the country.
         :param crlId: ID of the CRL update info.
         :return: CrlUpdateInfo
+        :raises seCrlUpdateInfoNotFound: If CRL Update inf ois not found.
         :raises DatabaseAPIError: On DB connection errors.
-        :raises SeEntryNotFound: If CRL Update inf ois not found.
         """
         assert isinstance(crlId, CrlId)
         try:
@@ -1126,7 +1125,7 @@ class DatabaseAPI(StorageAPI):
         Returns list of infos about revoked certificates for country.
         :param country: The iso alpha-2 country code to get the list of certificate revocation infos for.
         :return: List of countries revoked certificate infos or None
-        :raises: DatabaseAPIError on DB connection errors.
+        :raises DatabaseAPIError: On DB connection errors.
         """
         assert isinstance(country, CountryCode)
         try:
@@ -1156,6 +1155,7 @@ class DatabaseAPI(StorageAPI):
         """
         Deletes certificate revocation information in the DB.
         :param cri: The certificate revocation information.
+        :raises DatabaseAPIError: On DB connection errors.
         """
         assert isinstance(cri, CertificateRevocationInfo)
         self._log.debug("Unrevoking certificate criId=%s C=%s serial=%s certId=%s crlId=%s",
@@ -1176,7 +1176,7 @@ class DatabaseAPI(StorageAPI):
         Verifies in the DB if certificate is revoked.
         :param crt: The certificate or CertificateStorage to verify.
         :return: Returns True if certificate is revoked, otherwise False.
-        :raises: DatabaseAPIError on DB connection errors.
+        :raises DatabaseAPIError: On DB connection errors.
         """
         assert isinstance(crt, Certificate) or isinstance(crt, CertificateStorage)
         try:
@@ -1202,7 +1202,7 @@ class DatabaseAPI(StorageAPI):
         """
         Adds eMRTD PKI distribution point URL address if it doesn't exist yet.
         :param pkidUrl: PkiDistributionUrl
-        :raises: DatabaseAPIError on DB connection errors.
+        :raises DatabaseAPIError: On DB connection errors.
         """
         assert isinstance(pkidUrl, PkiDistributionUrl)
         self._log.debug("Adding PKI distribution URL. C=%s id=%s type=%s", pkidUrl.country, pkidUrl.id, pkidUrl.type.name)
@@ -1217,6 +1217,7 @@ class DatabaseAPI(StorageAPI):
         Returns list of emRTD PKI distribution urls for country.
         :param country: The ios alpha-2 country code to retrieve the list of.
         :return: Optional[List[PkiDistributionUrl]]
+        :raises DatabaseAPIError: On DB connection errors.
         """
         assert isinstance(country, CountryCode)
         try:
@@ -1232,6 +1233,7 @@ class DatabaseAPI(StorageAPI):
         """
         Deletes eMRTD PKI distribution url from DB.
         :param pkidId: The PkiDistributionUrl ID.
+        :raises DatabaseAPIError: On DB connection errors.
         """
         assert isinstance(pkidId, int)
         self._log.debug("Deleting PKI distribution URL from DB. id=%s", pkidId)
@@ -1279,7 +1281,7 @@ class MemoryDB(StorageAPI):
 
         :param cid: Challenge id
         :return: Tuple[Challenge, datetime]
-        :raises: SeEntryAlreadyExists if challenge is not found
+        :raises seChallengeNotFound: If challenge is not found
         """
         assert isinstance(cid, CID)
         try:

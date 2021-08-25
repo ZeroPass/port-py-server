@@ -211,7 +211,6 @@ class PortProto:
         :raises `peTrustchainCheckFailedExpiredCert`: If any of the certificates in the EF.SOD trustchain has expired.
         :raises `peTrustchainCheckFailedNoCsca`: If root issuing CSCA certificate is not found.
         :raises `peTrustchainCheckFailedRevokedCert`: If any of the certificates in the EF.SOD trustchain is revoked.
-        :raises `peTrustchainVerificationFailed`: If `sod` certificate trustchain verification fails aka passive authentication.
         :raises `ProtoError`: any exception which is risen from addDscCertificate method when new DSC is added or
                             risen from _verify_cert_trustchain method.
         :raises `StorageApiError`: In any case when there is an error in connection to the DB storage
@@ -487,7 +486,8 @@ class PortProto:
         :param dsc: The DSC certificate to add.
         :return DscStorage:
         :raises peDscTooNewOrExpired: If DSC is too new (nvb > now) or has expired.
-        :raises peInvalidDsc: When DSC doesn't conform to the ICAO 9303 standard.
+        :raises peInvalidDsc: When DSC doesn't conform to the ICAO 9303 standard or
+                              or verification of the signature with the issuing CSCA certificate fails.
         :raises peDscCantIssuePassport: If DSC can't issue passport document.
         :raises peCscaNotFound: If the issuing CSCA certificate can't be found in the DB.
         """
@@ -556,7 +556,8 @@ class PortProto:
 
         :param dsc: The DSC certificate to add.
         :raises peCrlTooNew: If DSC is too new (i.e.: crl.thisUpdate > timeNow).
-        :raises peInvalidCrl: When DSC doesn't conform to the ICAO 9303 standard.
+        :raises peInvalidCrl: When CRL doesn't conform to the ICAO 9303 standard or
+                              verification of the signature with the issuing CSCA certificate fails.
         :raises peCrlOld: When newer version of CRL for the country already exists.
         :raises peCscaNotFound: If the issuing CSCA certificate can't be found in the DB.
         """
@@ -688,15 +689,18 @@ class PortProto:
         3.) Verify DSC issuer EF.SOD.
         4.) If there was no error in the above steps return from function
 
-        :param sod: EF.SOD file to verify.
-        :return: DscStorage of the first valid DSC certificate which signed EF.SOD.
-        :raises peInvalidEfSod: If no valid signer is found, EF.SOD is not signed, contains invalid signer infos.
-        :raises peTrustchainVerificationFailed: If certificate trustchain verification fails.
-        :raises peEfSodNotGenuine: If Ef.SOD verification with DSC certificate fails i.e. signature verification fails.
+        :param `sod`: EF.SOD file to verify.
+        :return: `DscStorage` of the first valid DSC certificate which signed EF.SOD.
+
+        :raises `peInvalidEfSod`: If no valid signer is found, EF.SOD is not signed, contains invalid signer infos.
+        :raises `peTrustchainCheckFailedExpiredCert`: If any of the certificates in the EF.SOD trustchain has expired.
+        :raises `peTrustchainCheckFailedNoCsca`: If root issuing CSCA certificate is not found.
+        :raises `peTrustchainCheckFailedRevokedCert`: If any of the certificates in the EF.SOD trustchain is revoked.
+        :raises `peEfSodNotGenuine`: If Ef.SOD verification with DSC certificate fails i.e. signature verification fails.
                                    E.g.: when EF.SOD was intentionally altered or is corrupted.
-        :raises peDscNotFound: When no signing DSC certificate is found.
-        :raises ProtoError: any exception which is risen from addDscCertificate method when new DSC is added or
-                            risen from _verify_cert_trustchain method.
+        :raises `peDscNotFound`: When no signing DSC certificate is found.
+        :raises `ProtoError`: any exception which is risen from `addDscCertificate` method when new DSC is added or
+                              risen from _verify_cert_trustchain method.
         """
         self._log.debug("_verify_sod_is_genuine: %s", sod)
         lastException = None
@@ -820,10 +824,11 @@ class PortProto:
     def _verify_challenge(self, cid: CID, aaPubKey: AAPublicKey, csigs: List[bytes], aaSigAlgo: SignatureAlgorithm = None ) -> None:
         """
         Check if signature is correct and the time frame is OK
-        :raises:
-            PeChallengeExpired: If challenge stored in db by cid has already expired
-            PeMissingParam: If aaPubKey is ec public key and no sigAlgo is provided
-            PeSigVerifyFailed: If verifying signatures over chunks of challenge fails
+        :raises `peChallengeExpired`: If challenge stored in db by cid has already expired
+        :raises `peChallengeVerificationFailed`: If verification of challenge signature fails.
+        :raises `peMissingParamAASigAlgo`: If aaPubKey is ec public key and no sigAlgo is provided
+        :raises `seChallengeNotFound`: If challenge is not found.
+        :raises `StorageAPIError`: On any storage related errors.
         """
         try:
             self._log.debug("Verifying challenge cid=%s", cid)
