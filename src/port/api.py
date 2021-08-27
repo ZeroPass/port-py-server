@@ -1,5 +1,6 @@
 import os
 import port.log as log
+import werkzeug
 
 from base64 import b64decode
 from jsonrpc import Dispatcher, JSONRPCResponseManager as JRPCRespMgr
@@ -7,9 +8,11 @@ from jsonrpc.exceptions import JSONRPCDispatchException
 from port import proto
 from port.settings import Config
 from pymrtd import ef
-from werkzeug.wrappers import Request, Response
-from werkzeug.serving import run_simple
-from typing import Callable, List, NoReturn
+from starlette.applications import Starlette
+from starlette.responses import JSONResponse, Response
+from starlette.requests import Request
+from starlette.routing import Route
+from typing import Callable, List, NoReturn, Optional
 
 def try_deser(f):
     try:
@@ -24,11 +27,12 @@ def _b64csigs_to_bcsigs(str_csigs: List[str]) -> List[bytes]:
         csigs.append(try_deser(lambda sig=scsig: b64decode(sig)))
     return csigs
 
-class PortApiServer:
+class PortApiServer(Starlette):
     """ Port Api server """
     api_method_prefix = "port"
 
     def __init__(self, db: proto.StorageAPI, config: Config):
+
         self._conf  = config.api_server
         self._proto = proto.PortProto(db, config.challenge_ttl)
         self._log   = log.getLogger("port.api")
@@ -36,9 +40,16 @@ class PortApiServer:
         # Register rpc api methods
         self.__init_api()
 
+        # init Starlette
+        routes = [
+            Route("/", endpoint=self._handle_request, methods=["POST"])
+        ]
+        super().__init__(debug=True, routes=routes)
+
+
     def start(self):
         self._proto.start()
-        run_simple(self._conf.host, self._conf.port, self.__handle_request, use_reloader=False, ssl_context=self._conf.ssl_ctx, threaded=True)
+        werkzeug.serving.run_simple(self._conf.host, self._conf.port, self.__handle_request, use_reloader=False, ssl_context=self._conf.ssl_ctx, threaded=True)
 
     def stop(self):
         self._proto.stop()
@@ -164,15 +175,28 @@ class PortApiServer:
         raise JSONRPCDispatchException(500, "Internal Server Error") from e
 
 # Request handler
-    @Request.application
-    def __handle_request(self, request) -> Response:
+    @werkzeug.wrappers.Request.application
+    def __handle_request(self, request) -> werkzeug.wrappers.Response:
         response = JRPCRespMgr.handle(
             request.data,
             self._req_disp
         )
         if response is not None:
-            return Response(response.json, mimetype='application/json')
-        return Response()
+            return werkzeug.wrappers.Response(response.json, mimetype='application/json')
+        return werkzeug.wrappers.Response()
+
+    async def _handle_request(self, request: Request) -> Response:
+        if request.headers['content-type'] != 'application/json':
+            return Response('Invalid content type. API only supports application/json.',
+                status_code=415, media_type='text/plain')
+
+        response = JRPCRespMgr.handle(
+            await request.body(),
+            self._req_disp
+        )
+        if response is not None:
+            return JSONResponse(response.data, media_type='application/json')
+        return JSONResponse()
 
     def __init_api(self):
         self._req_disp = Dispatcher()
