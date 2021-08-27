@@ -27,8 +27,10 @@ setup(
         'json-rpc>=1.13.0',
         'ldif3>=3.2.2',
         'pycountry>=20.7.3',
+        'pymrtd>=0.6.0',
         'sqlalchemy>=1.4.20',
-        'pymrtd>=0.6.0'
+        'starlette>=0.16.0',
+        'uvicorn[standard]>=0.15.0'
     ],
     extras_require={
         'examples' : [
