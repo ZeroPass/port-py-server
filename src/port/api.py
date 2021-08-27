@@ -18,7 +18,7 @@ def try_deser(f):
     try:
         return f()
     except:
-        raise proto.ProtoError("Bad parameter") from None
+        raise proto.PeInvalidOrMissingParam("Bad parameter") from None
 
 def _b64csigs_to_bcsigs(str_csigs: List[str]) -> List[bytes]:
     """ Convert list of base64 encoded signatures to list of byte signatures """
@@ -113,7 +113,7 @@ class PortApiServer(Starlette):
 
     # API: port.register
     @portapi
-    def register(self, uid: str, sod: str, dg15: str, cid: str, csigs: List[str], dg14: str = None, override: bool = None) -> dict:
+    def register(self, uid: str, sod: str, dg15: str, cid: str, csigs: List[str], dg14: Optional[str] = None, override: Optional[bool] = None) -> dict:
         """
         Register new user. It returns back empty dict.
 
