@@ -326,7 +326,17 @@ def main():
         print('Stopping server... SUCCESS')
         sys.exit(0)
     signal.signal(signal.SIGINT, signal_handler)
-    api.start()
+    #api.start()
+
+    import uvicorn
+    sslKeyfile = None
+    sslCertfile = None
+    if not args['no_tls']:
+        sslKeyfile = args['key']
+        sslCertfile = args['cert']
+    api._proto.start()
+    uvicorn.run(api, host=config.api_server.host, port=config.api_server.port,
+        ssl_ciphers='TLSv1', ssl_keyfile=sslKeyfile, ssl_certfile=sslCertfile, log_level="debug")
 
 if __name__ == "__main__":
     main()
