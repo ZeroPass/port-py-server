@@ -336,7 +336,7 @@ def main():
         sslCertfile = args['cert']
     api._proto.start()
     uvicorn.run(api, host=config.api_server.host, port=config.api_server.port,
-        ssl_ciphers='TLSv1', ssl_keyfile=sslKeyfile, ssl_certfile=sslCertfile, log_level="debug")
+        ssl_ciphers='TLSv1.2', ssl_keyfile=sslKeyfile, ssl_certfile=sslCertfile, log_level="debug")
 
 if __name__ == "__main__":
     main()
