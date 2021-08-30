@@ -1,6 +1,5 @@
 import os
 import port.log as log
-import werkzeug
 
 from base64 import b64decode
 from jsonrpc import Dispatcher, JSONRPCResponseManager as JRPCRespMgr
@@ -49,7 +48,6 @@ class PortApiServer(Starlette):
 
     def start(self):
         self._proto.start()
-        werkzeug.serving.run_simple(self._conf.host, self._conf.port, self.__handle_request, use_reloader=False, ssl_context=self._conf.ssl_ctx, threaded=True)
 
     def stop(self):
         self._proto.stop()
@@ -173,17 +171,6 @@ class PortApiServer(Starlette):
 
         self._log.error("Unhandled exception encountered, e=%s", e)
         raise JSONRPCDispatchException(500, "Internal Server Error") from e
-
-# Request handler
-    @werkzeug.wrappers.Request.application
-    def __handle_request(self, request) -> werkzeug.wrappers.Response:
-        response = JRPCRespMgr.handle(
-            request.data,
-            self._req_disp
-        )
-        if response is not None:
-            return werkzeug.wrappers.Response(response.json, mimetype='application/json')
-        return werkzeug.wrappers.Response()
 
     async def _handle_request(self, request: Request) -> Response:
         if request.headers['content-type'] != 'application/json':

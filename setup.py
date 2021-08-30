@@ -34,8 +34,7 @@ setup(
     ],
     extras_require={
         'examples' : [
-            'requests>=2.26.0',
-            'Werkzeug>=2.0.1'
+            'requests>=2.26.0'
         ],
         'tests': [
             'pytest>=6.2.4',
