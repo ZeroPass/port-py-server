@@ -96,7 +96,9 @@ class IApi:
 
 class JsonRpcApi(IApi, Starlette):
     """
-    Class implements `Starlette` application based JSON-RPC API interface from IApi.
+    Class implements JSON-RPC API interface from IApi as `Starlette` application.
+    It acts as intermedian layer between IApi and API implementation for JSON RPC based API.
+    API Methods of subclass are automatically registered through `@portapi` function decorator.
     """
 
     _api_method_prefix = "port"
@@ -117,6 +119,10 @@ class JsonRpcApi(IApi, Starlette):
             Route("/", endpoint=self._handle_request, methods=["POST"])
         ]
         Starlette.__init__(self, debug=debug, routes=routes)
+
+    def unregisterApiMethod(self, name: str):
+        if name in self._req_dispatcher:
+            del self._req_dispatcher[name]
 
     def _init_api(self):
         def register_api_method(name, api_f):
