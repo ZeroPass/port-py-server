@@ -15,7 +15,7 @@ _script_path = Path(os.path.dirname(sys.argv[0]))
 #sys.path.append(str(_script_path / Path("../../")))
 
 from port import log
-from port.api import PortApiServer
+from port.api import PortApi
 from port.database import AccountStorage, CertificateRevocationInfo, CertificateStorage, DscStorage, SodTrack
 from port.proto import (
     Challenge,
@@ -65,12 +65,6 @@ class DevProto(PortProto):
             super()._verify_cert_trustchain(crt)
         else:
             self._log.warning("Skipping verification of certificate trustchain")
-
-
-class DevApiServer(PortApiServer):
-    def __init__(self, db: StorageAPI, config: Config, fc=False, no_tcv=False):
-        super().__init__(db, config)
-        self._proto = DevProto(db, config.challenge_ttl, fc, no_tcv)
 
 
 def parse_args():
@@ -312,21 +306,32 @@ def main():
 
     # Setup and run server
     if args["dev"]:
-        api = DevApiServer(db, config, args['dev_fc'], args['dev_no_tcv'])
+        proto = DevProto(db, config.challenge_ttl, args['dev_fc'],  args['dev_no_tcv'])
     else:
-        api = PortApiServer(db, config)
+        proto = PortProto(db, config.challenge_ttl)
 
     if args['mrtd_pkd'] and not args['dev_no_tcv']:
         allowSelfIssuedCSCA = args['mrtd_pkd_allow_self_issued_csca']
-        load_pkd_to_db(api._proto, args['mrtd_pkd'], allowSelfIssuedCSCA)
+        load_pkd_to_db(proto, args['mrtd_pkd'], allowSelfIssuedCSCA)
 
     def signal_handler(sig, frame): #pylint: disable=unused-argument
         print('Stopping server...')
-        api.stop()
+        proto.stop()
         print('Stopping server... SUCCESS')
         sys.exit(0)
     signal.signal(signal.SIGINT, signal_handler)
-    api.start()
+
+    import uvicorn
+    sslKeyfile = None
+    sslCertfile = None
+    if not args['no_tls']:
+        sslKeyfile = args['key']
+        sslCertfile = args['cert']
+
+    api = PortApi(proto, debug=True)
+    proto.start()
+    uvicorn.run(api, host=config.api_server.host, port=config.api_server.port,
+        ssl_ciphers='TLSv1.2', ssl_keyfile=sslKeyfile, ssl_certfile=sslCertfile, log_level="debug")
 
 if __name__ == "__main__":
     main()

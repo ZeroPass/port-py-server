@@ -9,12 +9,17 @@ from port.proto.db import (
 )
 
 from port.proto.proto import (
-    PortProto,
-    PeConflict,
+    PeAttestationExpired,
     PeChallengeExpired,
+    PeConflict,
     PeInvalidOrMissingParam,
+    PeNotFound,
+    PePreconditionFailed,
+    PePreconditionRequired,
     PeSigVerifyFailed,
-    ProtoError
+    PeUnauthorized,
+    ProtoError,
+    PortProto,
 )
 
 from port.proto.types import (
@@ -41,10 +46,15 @@ __all__ = [
     "DatabaseAPI",
     "DatabaseAPIError",
     "MemoryDB",
-    "PeConflict",
+    "PeAttestationExpired",
     "PeChallengeExpired",
+    "PeConflict",
     "PeInvalidOrMissingParam",
+    "PeNotFound",
+    "PePreconditionFailed",
+    "PePreconditionRequired",
     "PeSigVerifyFailed",
+    "PeUnauthorized",
     "PortProto",
     "ProtoError",
     "SeEntryAlreadyExists",
