@@ -28,10 +28,13 @@ def portapi(api_f: Callable): #pylint: disable=no-self-argument
     def _wrapped_api_f(*args, **kwargs):
         assert len(args) > 0 and isinstance(args[0], IApi)
         self = args[0]
-        self._log_api_call(api_f, **kwargs) #pylint: disable=protected-access
-        ret  = api_f(*args, **kwargs) #pylint: disable=not-callable
-        self._log_api_response(api_f, ret) #pylint: disable=protected-access
-        return ret
+        try:
+            self._log_api_call(api_f, **kwargs) #pylint: disable=protected-access
+            ret  = api_f(*args, **kwargs) #pylint: disable=not-callable
+            self._log_api_response(api_f, ret) #pylint: disable=protected-access
+            return ret
+        except Exception as e:
+            self._handle_exception(e) # pylint: disable=protected-access
     return _wrapped_api_f
 
 class IApi:
