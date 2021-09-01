@@ -661,7 +661,7 @@ class DatabaseAPI(StorageAPI):
         self._log.debug("Deleting EF.SOD track from DB, sodId=%s", sodId)
         try:
             self.__db \
-                .query(SodTrack.id) \
+                .query(SodTrack) \
                 .filter(SodTrack.id == sodId) \
                 .delete()
         except Exception as e:
