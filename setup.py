@@ -27,8 +27,8 @@ setup(
         'json-rpc>=1.13.0',
         'ldif3>=3.2.2',
         'pycountry>=20.7.3',
-        'pymrtd>=0.6.0',
-        'sqlalchemy>=1.4.20',
+        'pymrtd>=0.6.2',
+        'sqlalchemy>=1.4.23',
         'starlette>=0.16.0',
         'uvicorn[standard]>=0.15.0'
     ],
@@ -36,6 +36,9 @@ setup(
         'examples' : [
             'requests>=2.26.0'
         ],
+        'mysql' : ['mysqlclient>=2.0.3'], # for using MySQL DB
+        'postgresql' : ['psycopg2>=2.9.1'], # for using PostgreSQL DB
+        'sqlite' : ['sqlcipher3>=0.4.5'], # for using SQLite
         'tests': [
             'pytest>=6.2.4',
             'pytest-depends>=1.0.1',
