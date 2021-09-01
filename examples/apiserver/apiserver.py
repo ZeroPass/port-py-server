@@ -79,16 +79,16 @@ def parse_args():
     ap.add_argument("--db-dialect",
         type=str, help="database dialect e.g.: postgresql, mysql etc...\nOverrides --mdb")
 
-    ap.add_argument("--db-url", default="localhost:5432",
+    ap.add_argument("--db-url", default="",
         type=str, help="database URL")
 
-    ap.add_argument("--db-user",
+    ap.add_argument("--db-user", default="",
         type=str, help="database user name")
 
     ap.add_argument("--db-pwd", default="",
         type=str, help="database password")
 
-    ap.add_argument("--db-name",
+    ap.add_argument("--db-name", default="",
         type=str, help="database name")
 
     ap.add_argument("--mdb", default=False,

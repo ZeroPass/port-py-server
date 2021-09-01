@@ -294,11 +294,15 @@ class PortDatabaseConnection:
     @staticmethod
     def __buildUrl(dialect:str, host:str, db: str, username: str, password: str):
         url = '{}://'.format(dialect)
-        if len(username) != 0:
-            url += '{}:{}'.format(username, password)
-        if len(host) != 0:
-            url += '@{}'.format(host)
-        url += '/{}'.format(db)
+        if 'sqlite' not in  dialect:
+            if len(username) != 0:
+                url += '{}:{}'.format(username, password)
+            if len(host) != 0:
+                url += '@{}'.format(host)
+        elif len(password) != 0: # sqlite
+            url += ':{}@/'.format(password)
+        if len(db):
+            url += '/{}'.format(db)
         return url
 
 def truncateAll(connection: PortDatabaseConnection):
