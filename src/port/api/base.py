@@ -1,10 +1,18 @@
 import inspect
-import port.log as log
+import orjson
 
 from abc import abstractmethod
-from jsonrpc import Dispatcher, JSONRPCResponseManager as JRPCRespMgr
-from jsonrpc.exceptions import JSONRPCDispatchException
 
+from jsonrpc import Dispatcher, JSONRPCResponseManager
+from jsonrpc.exceptions import (
+    JSONRPCDispatchException,
+    JSONRPCInvalidRequest,
+    JSONRPCInvalidRequestException,
+    JSONRPCParseError
+)
+from jsonrpc.jsonrpc2 import JSONRPC20Request, JSONRPC20Response
+
+from port import log
 from port.proto import (
     PeConflict,
     PeNotFound,
@@ -19,7 +27,7 @@ from starlette.responses import JSONResponse, Response
 from starlette.requests import Request
 from starlette.routing import Route
 
-from typing import Callable, NoReturn, Optional
+from typing import Any, Callable, NoReturn, Optional
 
 class PortApiError(Exception):
     pass
@@ -94,6 +102,12 @@ class IApi:
                 for a, v in resp.items():
                     self._log.verbose(" %s: %s", a, v)
 
+class ORJSONResponse(JSONResponse):
+    media_type = "application/json"
+
+    def render(self, content: Any) -> bytes:
+        return orjson.dumps(content)
+
 class JsonRpcApi(IApi, Starlette):
     """
     Class implements JSON-RPC API interface from IApi as `Starlette` application.
@@ -138,14 +152,23 @@ class JsonRpcApi(IApi, Starlette):
         if request.headers['content-type'] != 'application/json':
             return Response('Invalid content type. API only supports application/json.',
                 status_code=415, media_type='text/plain')
+        return await self._dispatch_request(request)
 
-        response = JRPCRespMgr.handle(
-            await request.body(),
-            self._req_dispatcher
-        )
+    async def _dispatch_request(self, request: Request) -> ORJSONResponse:
+        try:
+            data = orjson.loads(await request.body())
+        except (orjson.JSONDecodeError, ValueError):
+            return JSONRPC20Response(error=JSONRPCParseError()._data) # pylint: disable=protected-access
+        try:
+            request = JSONRPC20Request.from_data(data)
+        except JSONRPCInvalidRequestException:
+            return JSONRPC20Response(error=JSONRPCInvalidRequest()._data) # pylint: disable=protected-access
+
+        response = JSONRPCResponseManager \
+            .handle_request(request, self._req_dispatcher)
         if response is not None:
-            return JSONResponse(response.data, media_type='application/json')
-        return JSONResponse()
+            return ORJSONResponse(response.data, media_type='application/json')
+        return ORJSONResponse()
 
     def _raise_api_exception(self, code: int, msg: str, e: Optional[Exception]) -> NoReturn:
         raise JSONRPCDispatchException(code, msg) from e
