@@ -433,6 +433,7 @@ class DatabaseAPI(StorageAPI):
             .scalar()
 
     def __handle_exception(self, e) -> NoReturn:
+        self.__db.rollback()
         if isinstance(e, StorageAPIError):
             raise e from e
         self._log.error('An exception was encountered while trying to transact with DB!')
