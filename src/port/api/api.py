@@ -64,7 +64,7 @@ class PortApi(JsonRpcApi):
     @portapi
     def register(self, uid: str, sod: str, dg15: str, cid: str, csigs: List[str], dg14: Optional[str] = None, override: Optional[bool] = None) -> dict:
         """
-        Register new user. It returns back empty dict.
+        Register new user account with eMRTD attestation.
 
         :param `uid`:   Base64 encoded UserId.
         :param `sod`:   Base64 encoded eMRTD SOD file.
@@ -73,7 +73,7 @@ class PortApi(JsonRpcApi):
         :param `csigs`: Base64 encoded challenge signatures.
         :param `dg14`:  Base64 encoded eMRTD DG14 file (optional).
         :param `override`: If True, override the existing attestation for `uid`.
-        :return: Dictionary object, specific to server implementation.
+        :return: Dictionary object, specific to the server implementation.
         """
         if override:
             ProtoError("Registration override not supported")
@@ -94,7 +94,7 @@ class PortApi(JsonRpcApi):
         :param `uid`:   User id
         :param `cid`:   Base64 encoded Challenge id.
         :param `csigs`: Base64 encoded challenge signatures.
-        :return: Dictionary object, specific to server implementation
+        :return: Dictionary object, specific to the server implementation
         """
         uid = try_deserialize(lambda: UserId.fromBase64(uid))
         cid = try_deserialize(lambda: CID.fromHex(cid))

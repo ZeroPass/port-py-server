@@ -177,7 +177,7 @@ class PortProto:
     def register(self, uid: UserId, sod: ef.SOD, dg15: ef.DG15, cid: CID, csigs: List[bytes], dg14: ef.DG14 = None, allowSodOverride: bool = False) \
         -> dict:
         """
-        Register new user account.
+        Register new user account with eMRTD attestation.
 
         Any existing account can be re-registered if `allowSodOverride`=True, or account has expired or has invalid attestation.
         By invalid attestation it means that the attested certificate trustchain is invalid or account doesn't have EF.SOD track assigned or can't be found in the DB.
@@ -273,7 +273,7 @@ class PortProto:
 
         sods = self._db.findMatchingSodTracks(st)
         if sods is not None:
-            self._log.debug("Found %s matching track(s) in the DB. Verifying that all have invalid trustchain...", len(sods))
+            self._log.debug("Found %s matching track(s) in the DB.", len(sods))
             for s in sods: # Should be only 1
                 # Allow registering of matching EF.SOD only if `s`
                 # belongs to existing account under `uid`
@@ -282,7 +282,7 @@ class PortProto:
                     self._db.updateAccount(accnt)
                     self._db.deleteSodTrack(s.id)
                     continue
-                self._log.error("Found valid matching EF.SOD track with sodId=%s for %s with sodId=%s", s.id, sod, st.id)
+                self._log.error("Found a valid matching EF.SOD track with sodId=%s for %s with sodId=%s", s.id, sod, st.id)
                 raise peEfSodMatch
 
         # 7. Save EF.SOD track and delete challenge
@@ -337,9 +337,15 @@ class PortProto:
         :param `cid`: Challenge id
         :param `csigs`: List of signatures made over challenge chunks
         :return: Empty dictionary
-        :raises peAccountNotAttested: If previous account attestation is not valid anymore,
-                                      e.g.: accnt.sodId=None, accnt EF.SOD certificate trustchain is not valid anymore.
-        :raises peAttestationExpired: If account attestation has expired.
+        :raises `peChallengeExpired`: If challenge stored in db by cid has already expired
+        :raises `peChallengeVerificationFailed`: If verification of challenge signature fails.
+        :raises `peMissingParamAASigAlgo`: If aaPubKey is ec public key and no sigAlgo is provided
+        :raises `peAccountNotAttested`: If previous account attestation is not valid anymore,
+                                        e.g.: accnt.sodId=None, accnt EF.SOD certificate trustchain is not valid anymore.
+        :raises `peAttestationExpired`: If account attestation has expired.
+        :raises `seAccountNotFound`: If no account exists under provided `uid`.
+        :raises `seChallengeNotFound`: If challenge is not found.
+        :raises `StorageAPIError`: On storage related errors.
         """
         self._log.debug("getAssertion: uid=%s cid=%s", uid, cid)
 
