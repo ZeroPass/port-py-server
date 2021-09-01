@@ -1,7 +1,7 @@
+from port import log
 import sqlalchemy
 from sqlalchemy import (
     BigInteger,
-    Boolean,
     Column,
     DateTime,
     Enum,
@@ -237,7 +237,15 @@ class PortDatabaseConnection:
         :raises: PortDbConnectionError on error.
         '''
         try:
-            # The return value of create_engine() is our connection object
+            self._log = log.getLogger("port.db.sql")
+            self._log.debug('Creating SQL engine with config:')
+            self._log.debug("  dialect='%s'", dialect)
+            self._log.debug("  host='%s'", host)
+            self._log.debug("  db='%s'", db)
+            self._log.debug("  username='%s'", username)
+            self._log.verbose("  password='%s'", password) # Maybe should not log password?
+            self._log.debug("  connectionRecycle'=%s'", connectionRecycle)
+
             url = PortDatabaseConnection.__buildUrl(dialect, host, db, username, password)
             self._engine = sqlalchemy.create_engine(url,
                 encoding     = 'utf-8',
@@ -248,6 +256,7 @@ class PortDatabaseConnection:
             )
 
             # we create session object to use it later
+            self._log.debug("Initializing SQL session from created engine.")
             self._base = declarative_base()
             S = sessionmaker(bind=self._engine, expire_on_commit=True, future=True) # future=True -> support sqlalchemy v 2.0
             self._session = scoped_session(S) #Session()
@@ -255,6 +264,8 @@ class PortDatabaseConnection:
             self.initTables()
 
         except Exception as e:
+            self._log.error("An error has occurred while establishing connection to SQL DB. url='%s'", url)
+            self._log.error(  "e='%s'", e)
             raise PortDbConnectionError(e) from e
 
     def getEngine(self):
@@ -266,7 +277,7 @@ class PortDatabaseConnection:
         return self._session
 
     def initTables(self):
-        """Initialize tables for usage in database"""
+        self._log.debug("Initializing Port DB tables.")
 
         #CertificateRevocationList
         mapper(CrlUpdateInfo, crlUpdateInfo)
@@ -289,7 +300,16 @@ class PortDatabaseConnection:
         mapper(AccountStorage, account)
 
         #creating tables
-        self._base.metadata.create_all(self._engine, tables=[crlUpdateInfo, crt, pkiDistributionInfo, dsc, csca, protoChallenge, sod, account])
+        self._base.metadata.create_all(self._engine, tables=[
+            crlUpdateInfo,
+            crt,
+            pkiDistributionInfo,
+            dsc,
+            csca,
+            protoChallenge,
+            sod,
+            account
+        ])
 
     @staticmethod
     def __buildUrl(dialect:str, host:str, db: str, username: str, password: str):
