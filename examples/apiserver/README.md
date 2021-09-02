@@ -81,8 +81,6 @@ default: empty string
 type: str
 ```
 
-
-
 * --challenge-ttl : number of seconds before requested challenge expires
 ```
 default: 300
