@@ -112,19 +112,21 @@ crlUpdateInfo: Final = Table('crl_update_info', metadata,
     Column('thisUpdate', DateTime(timezone=False), nullable=False            ),
     Column('nextUpdate', DateTime(timezone=False), nullable=False            )
 )
+mapper(CrlUpdateInfo, crlUpdateInfo)
 
 # certificate revocation table contains list of infos about revoked certificates
 crt: Final = Table('crt', metadata,
     Column('id'            , BigInteger              , primary_key=True, autoincrement=True),
-    Column('serial'        , VARBINARY(20)           , nullable=False  , unique=False      ), # revoked certificate serial number
-    Column('country'       , CountryCodeSqlType()    , nullable=False  , unique=False      ),
+    Column('serial'        , VARBINARY(20)           , nullable=False, unique=False      ), # revoked certificate serial number
+    Column('country'       , CountryCodeSqlType()    , nullable=False, unique=False      ),
     Column('crlId'         , CrlIdSqlType(),
-        ForeignKey('crl_update_info.id')             , nullable=True   , unique=False      ), # Note: if NULL it means the revocation was manually added and is not part of any CRL.
-    Column('certId'        , CertIdSqlType           , nullable=True   , unique=True       ), # revoked certificate id i.e. foreign key in csca or dsc table.
-                                                                                              # The column could be NULL if cert is not found in the coresponding tables when inserting.
-    Column('revocationDate', DateTime(timezone=False), nullable=False                      ),
+        ForeignKey('crl_update_info.id')             , nullable=True , unique=False      ), # Note: if NULL it means the revocation was manually added and is not part of any CRL.
+    Column('certId'        , CertIdSqlType           , nullable=True , unique=True       ), # revoked certificate id i.e. foreign key in csca or dsc table.
+                                                                                            # The column could be NULL if cert is not found in the coresponding tables when inserting.
+    Column('revocationDate', DateTime(timezone=False), nullable=False                    ),
     UniqueConstraint('serial', 'country', name='ser_cc_idx')
 )
+mapper(CertificateRevocationInfo, crt)
 
 # table contains eMRTD distribution URLs for country. i.e.: distribution URLs fo countries CSCA, DSC and CRL
 pkiDistributionInfo: Final = Table('pki_distribution_info', metadata,
@@ -133,6 +135,7 @@ pkiDistributionInfo: Final = Table('pki_distribution_info', metadata,
     Column('type'   , Enum(PkiDistributionUrl.Type) , unique=False    , nullable=False                 ),
     Column('url'    , Text                          , unique=False    , nullable=False                 ), # distribution URL.
 )
+mapper(PkiDistributionUrl, pkiDistributionInfo)
 
 # x.509 certificate table scheme
 def certColumns(issuerCertTable: Optional[str] = None):
@@ -157,6 +160,8 @@ def certColumns(issuerCertTable: Optional[str] = None):
 # tables of country CSCA and DSC certificates
 csca: Final = Table('csca', metadata, *certColumns())
 dsc: Final  = Table('dsc' , metadata, *certColumns(issuerCertTable='csca'))
+mapper(DscStorage, dsc)
+mapper(CscaStorage, csca)
 
 # table for storing Port protocol challenges used for passport active authentication
 protoChallenge: Final = Table('proto_challenge', metadata,
@@ -165,6 +170,7 @@ protoChallenge: Final = Table('proto_challenge', metadata,
     Column('challenge', ChallengeSqlType()      , nullable=False                                   ),
     Column("expires"  , DateTime(timezone=False), nullable=False                                   )
 )
+mapper(ChallengeStorage, protoChallenge)
 
 # table contais info about MRTD EF.SOD files which were used to attest accounts
 sod: Final = Table('sod', metadata,
@@ -188,6 +194,7 @@ sod: Final = Table('sod', metadata,
     Column('dg15Hash'  , VARBINARY(256) , nullable=True , unique=True, index=True                        ),
     Column('dg16Hash'  , VARBINARY(256) , nullable=True , unique=True, index=True                        ),
 )
+mapper(SodTrack, sod)
 
 # table contains info about attested account
 account: Final = Table('account', metadata,
@@ -201,6 +208,7 @@ account: Final = Table('account', metadata,
     Column('dg1'        , LargeBinary             , nullable=True                                               ),
     Column('dg2'        , LargeBinary             , nullable=True                                               )
 )
+mapper(AccountStorage, account)
 
 class PortDbConnectionError(Exception):
     pass
@@ -259,8 +267,7 @@ class PortDatabaseConnection:
             self._log.debug("Initializing SQL session from created engine.")
             self._base = declarative_base()
             S = sessionmaker(bind=self._engine, expire_on_commit=True, future=True) # future=True -> support sqlalchemy v 2.0
-            self._session = scoped_session(S) #Session()
-
+            self._session = scoped_session(S)
             self.initTables()
 
         except Exception as e:
@@ -278,28 +285,6 @@ class PortDatabaseConnection:
 
     def initTables(self):
         self._log.debug("Initializing Port DB tables.")
-
-        #CertificateRevocationList
-        mapper(CrlUpdateInfo, crlUpdateInfo)
-        mapper(CertificateRevocationInfo, crt)
-        mapper(PkiDistributionUrl, pkiDistributionInfo)
-
-        #DocumentSignerCertificate
-        mapper(DscStorage, dsc)
-
-        # CSCAStorage
-        mapper(CscaStorage, csca)
-
-        # challenge
-        mapper(ChallengeStorage, protoChallenge)
-
-        # sod
-        mapper(SodTrack, sod)
-
-        # account
-        mapper(AccountStorage, account)
-
-        #creating tables
         self._base.metadata.create_all(self._engine, tables=[
             crlUpdateInfo,
             crt,
