@@ -116,7 +116,7 @@ mapper(CrlUpdateInfo, crlUpdateInfo)
 
 # certificate revocation table contains list of infos about revoked certificates
 crt: Final = Table('crt', metadata,
-    Column('id'            , BigInteger              , primary_key=True, autoincrement=True),
+    Column('id'            , BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True), # SQLite requires 'INTEGER' for autoincrement primary key column.
     Column('serial'        , VARBINARY(20)           , nullable=False, unique=False      ), # revoked certificate serial number
     Column('country'       , CountryCodeSqlType()    , nullable=False, unique=False      ),
     Column('crlId'         , CrlIdSqlType(),
