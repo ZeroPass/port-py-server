@@ -48,7 +48,7 @@ from port.proto.proto import (
     PortProto,
     ProtoError
 )
-from port.proto import CertificateId, Challenge, CountryCode, SodId, UserId, utils
+from port.proto import CertificateId, Challenge, CountryCode, SeEntryAlreadyExists, SodId, UserId, utils
 from port.database import CertificateRevocationInfo, DscStorage
 from pymrtd import ef
 from pymrtd.pki.x509 import CscaCertificate, DocumentSignerCertificate
@@ -657,11 +657,13 @@ def _test_register_attestation(dg15: ef.DG15, dg14: Optional[ef.DG14], sod: ef.S
         with pytest.raises(PeConflict, match="Account already registered"):
             proto.register(uid, sod, dg15, cid, csigs, dg14, allowSodOverride=False)
 
-        # Expire account and test that re-register with new EF.SOD succeeds
+        # Expire account and test that re-register with the same EF.SOD succeeds
         accnt = db.getAccount(uid)
         accnt.expires = utils.time_now() - timedelta(seconds=1)
         db.updateAccount(accnt)
+
         db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=60))
+
         proto.register(uid, sod, dg15, cid, csigs, dg14, allowSodOverride=False)
         accnt = db.getAccount(uid)
         assert accnt             is not None
@@ -675,11 +677,51 @@ def _test_register_attestation(dg15: ef.DG15, dg14: Optional[ef.DG14], sod: ef.S
         assert accnt.dg1         is None
         assert accnt.dg2         is None
 
+        # Expire account and test that re-register with new EF.SOD with different sodId succeeds
+        accnt = db.getAccount(uid)
+        accnt.expires = utils.time_now() - timedelta(seconds=1)
+        accnt.sodId = SodId(-1)
+        db.updateAccount(accnt)
+
+        db.deleteSodTrack(sodId)
+        assert db.findSodTrack(sodId)    is None
+        testutils.saMakeTransient(st)
+        assert db.findSodTrack(sodId)    is None
+        assert db.findAccount(accnt.uid) is not None
+        st.id = accnt.sodId
+        db.addSodTrack(st)
+        # Sanity check
+        with pytest.raises(SeEntryAlreadyExists, match="EF.SOD file already exists"):
+            db.addSodTrack(st)
+
+        db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=60))
+
+        proto.register(uid, sod, dg15, cid, csigs, dg14, allowSodOverride=False)
+        accnt = db.getAccount(uid)
+        assert accnt             is not None
+        assert accnt.uid         == uid
+        assert accnt.country     == ds.country
+        assert accnt.sodId       == sodId
+        assert accnt.expires     is None
+        assert accnt.aaPublicKey == dg15.aaPublicKey.dump()
+        assert accnt.aaSigAlgo   is None if dg14 is None else accnt.aaSigAlgo == dg14.aaSignatureAlgo.dump()
+        assert accnt.aaCount     == 1
+        assert accnt.dg1         is None
+        assert accnt.dg2         is None
+
+        st = db.findSodTrack(sodId)
+        assert st                         is not None
+        assert st.id                      != SodId(-1)
+        assert st.id                      == sodId
+        assert db.findSodTrack(SodId(-1)) is None # previous entry must not exists
+
         # Test that re-register with allowSodOverride=True param succeeds
         accnt = db.getAccount(uid)
         accnt.expires = dsc.notValidAfter
         db.updateAccount(accnt)
+
         db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=60))
+
         proto.register(uid, sod, dg15, cid, csigs, dg14, allowSodOverride=True)
         accnt = db.getAccount(uid)
         assert accnt             is not None
@@ -694,12 +736,84 @@ def _test_register_attestation(dg15: ef.DG15, dg14: Optional[ef.DG14], sod: ef.S
         assert accnt.dg1         is None
         assert accnt.dg2         is None
 
+        # Test that re-register with allowSodOverride=True param succeeds and new EF.SOD with different sodId succeeds
+        accnt = db.getAccount(uid)
+        accnt.expires = dsc.notValidAfter
+        accnt.sodId = SodId(-1)
+        db.updateAccount(accnt)
+
+        db.deleteSodTrack(sodId)
+        assert db.findSodTrack(sodId)    is None
+        testutils.saMakeTransient(st)
+        assert db.findSodTrack(sodId)    is None
+        assert db.findAccount(accnt.uid) is not None
+        st.id = accnt.sodId
+        db.addSodTrack(st)
+        # Sanity check
+        with pytest.raises(SeEntryAlreadyExists, match="EF.SOD file already exists"):
+            db.addSodTrack(st)
+
+        db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=60))
+
+        proto.register(uid, sod, dg15, cid, csigs, dg14, allowSodOverride=True)
+        accnt = db.getAccount(uid)
+        assert accnt             is not None
+        assert accnt.uid         == uid
+        assert accnt.country     == ds.country
+        assert accnt.sodId       == sodId
+        assert accnt.expires     is not None
+        assert accnt.expires     == dsc.notValidAfter
+        assert accnt.aaPublicKey == dg15.aaPublicKey.dump()
+        assert accnt.aaSigAlgo   is None if dg14 is None else accnt.aaSigAlgo == dg14.aaSignatureAlgo.dump()
+        assert accnt.aaCount     == 1
+        assert accnt.dg1         is None
+        assert accnt.dg2         is None
+
+        st = db.findSodTrack(sodId)
+        assert st                         is not None
+        assert st.id                      != SodId(-1)
+        assert st.id                      == sodId
+        assert db.findSodTrack(SodId(-1)) is None # previous entry must not exists
+
+        # Invalidate account attestation and check registering the new attestation succeeds
+        db.deleteSodTrack(sodId) # This should invalidate account attestation
+        assert db.findSodTrack(sodId) is None
+        testutils.saMakeTransient(st)
+        assert db.findSodTrack(sodId) is None
+
+        accnt = db.findAccount(accnt.uid)
+        assert accnt                             is not None
+        assert proto._is_account_attested(accnt) == False
+
+        db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=60))
+
+        proto.register(uid, sod, dg15, cid, csigs, dg14, allowSodOverride=False)
+        accnt = db.getAccount(uid)
+        assert accnt             is not None
+        assert accnt.uid         == uid
+        assert accnt.country     == ds.country
+        assert accnt.sodId       == sodId
+        assert accnt.expires     is not None
+        assert accnt.expires     == dsc.notValidAfter
+        assert accnt.aaPublicKey == dg15.aaPublicKey.dump()
+        assert accnt.aaSigAlgo   is None if dg14 is None else accnt.aaSigAlgo == dg14.aaSignatureAlgo.dump()
+        assert accnt.aaCount     == 1
+        assert accnt.dg1         is None
+        assert accnt.dg2         is None
+
+        st = db.findSodTrack(sodId)
+        assert st                         is not None
+        assert st.id                      != SodId(-1)
+        assert st.id                      == sodId
+        assert db.findSodTrack(SodId(-1)) is None # previous entry must not exists
+
         # Test re-register fails when expired account tries to register EF.SOD with different country
         accnt = db.getAccount(uid)
         accnt.country = CountryCode('YZ') # unassigned alpha-2 cc
         accnt.expires = utils.time_now() - timedelta(seconds=1)
         db.updateAccount(accnt)
         db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=60))
+
         with pytest.raises(PeConflict, match="Country code mismatch"):
             proto.register(uid, sod, dg15, cid, csigs, dg14, allowSodOverride=False)
 
@@ -708,6 +822,7 @@ def _test_register_attestation(dg15: ef.DG15, dg14: Optional[ef.DG14], sod: ef.S
         accnt.country = CountryCode('YZ') # unassigned alpha-2 cc
         accnt.expires = dsc.notValidAfter
         db.updateAccount(accnt)
+
         with pytest.raises(PeConflict, match="Country code mismatch"):
             proto.register(uid, sod, dg15, cid, csigs, dg14, allowSodOverride=True)
 
@@ -722,6 +837,7 @@ def _test_register_attestation(dg15: ef.DG15, dg14: Optional[ef.DG14], sod: ef.S
         testutils.saMakeTransient(st)
         st.id = SodId(-1)
         db.addSodTrack(st)
+
         with pytest.raises(PeConflict, match="Matching EF.SOD file already registered"):
             proto.register(uid, sod, dg15, cid, csigs, dg14, allowSodOverride=True)
 
@@ -733,6 +849,7 @@ def _test_register_attestation(dg15: ef.DG15, dg14: Optional[ef.DG14], sod: ef.S
 
         accnt.sodId = None
         db.updateAccount(accnt)
+
         with pytest.raises(PeConflict, match="Matching EF.SOD file already registered"):
             proto.register(uid, sod, dg15, cid, csigs, dg14, allowSodOverride=False)
 
@@ -741,6 +858,7 @@ def _test_register_attestation(dg15: ef.DG15, dg14: Optional[ef.DG14], sod: ef.S
         testutils.saMakeTransient(st)
         st.id = SodId(-1)
         db.addSodTrack(st)
+
         with pytest.raises(PeConflict, match="Matching EF.SOD file already registered"):
             proto.register(uid, sod, dg15, cid, csigs, dg14, allowSodOverride=False)
 
