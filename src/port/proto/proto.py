@@ -278,8 +278,6 @@ class PortProto:
                 # Allow registering of matching EF.SOD only if `s`
                 # belongs to existing account under `uid`
                 if accnt is not None and s.id == accnt.sodId:
-                    accnt.sodId = None
-                    self._db.updateAccount(accnt)
                     self._db.deleteSodTrack(s.id)
                     continue
                 self._log.error("Found a valid matching EF.SOD track with sodId=%s for %s with sodId=%s", s.id, sod, st.id)
