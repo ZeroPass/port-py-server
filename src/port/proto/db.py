@@ -665,6 +665,7 @@ class DatabaseAPI(StorageAPI):
                 .query(SodTrack) \
                 .filter(SodTrack.id == sodId) \
                 .delete()
+            self.__db.commit()
         except Exception as e:
             self.__handle_exception(e)
 
@@ -798,6 +799,7 @@ class DatabaseAPI(StorageAPI):
                 .query(CscaStorage) \
                 .filter(CscaStorage.id == cscaId) \
                 .delete()
+            self.__db.commit()
         except Exception as e:
             self.__handle_exception(e)
 
@@ -969,6 +971,7 @@ class DatabaseAPI(StorageAPI):
                 .query(DscStorage) \
                 .filter(DscStorage.id == dscId) \
                 .delete()
+            self.__db.commit()
         except Exception as e:
             self.__handle_exception(e)
 
@@ -1169,6 +1172,7 @@ class DatabaseAPI(StorageAPI):
                             CertificateRevocationInfo.serial == cri.serial,
                             CertificateRevocationInfo.crlId == cri.crlId))) \
                 .delete()
+            self.__db.commit()
         except Exception as e:
             self.__handle_exception(e)
 
@@ -1243,6 +1247,7 @@ class DatabaseAPI(StorageAPI):
                 .query(PkiDistributionUrl) \
                 .filter(PkiDistributionUrl.id == pkidId) \
                 .delete()
+            self.__db.commit()
         except Exception as e:
             self.__handle_exception(e)
 
