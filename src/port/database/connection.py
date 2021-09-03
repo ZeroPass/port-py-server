@@ -19,7 +19,7 @@ from sqlalchemy import (
 from sqlalchemy.future import Engine
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import mapper, sessionmaker, scoped_session
+from sqlalchemy.orm import mapper, sessionmaker, scoped_session, relationship
 from sqlalchemy.orm.session import Session
 
 from .account import AccountStorage
@@ -193,20 +193,24 @@ sod: Final = Table('sod', metadata,
     Column('dg14Hash'  , VARBINARY(256) , nullable=True , unique=True, index=True                        ),
     Column('dg15Hash'  , VARBINARY(256) , nullable=True , unique=True, index=True                        ),
     Column('dg16Hash'  , VARBINARY(256) , nullable=True , unique=True, index=True                        ),
+
 )
-mapper(SodTrack, sod)
+mapper(SodTrack, sod, properties={
+    'account' : relationship(AccountStorage, cascade = "all,delete", passive_deletes=True)
+})
 
 # table contains info about attested account
 account: Final = Table('account', metadata,
-    Column('uid'        , UserIdSqlType()         , primary_key=True                                            ), # uid = UserId
-    Column('country'    , CountryCodeSqlType()    , nullable=False      , index=True                            ), # The country code of attestation Passport at first registration. Used for pinning account to the country, since sodId can be None.
-    Column('sodId'      , SodIdSqlType            , ForeignKey('sod.id'), nullable=True, unique=True, index=True), # If null, the account is not attested
-    Column('expires'    , DateTime(timezone=False), nullable=True                                               ), # Usually set to DSC expiration time. If NULL, expires when EF.SOD TC expires
-    Column('aaPublicKey', LargeBinary             , nullable=False                                              ),
-    Column('aaSigAlgo'  , LargeBinary             , nullable=True                                               ),
-    Column('aaCount'    , Integer                 , default=0                                                   ), # Counts number of successful ActiveAuthentications. When greater than 0 account is ActiveAuthenticated.
-    Column('dg1'        , LargeBinary             , nullable=True                                               ),
-    Column('dg2'        , LargeBinary             , nullable=True                                               )
+    Column('uid'        , UserIdSqlType()         , primary_key=True                      ), # uid = UserId
+    Column('country'    , CountryCodeSqlType()    , nullable=False, index=True            ), # The country code of attestation Passport at first registration. Used for pinning account to the country, since sodId can be None.
+    Column('sodId'      , SodIdSqlType            ,
+        ForeignKey('sod.id', ondelete='SET NULL'), nullable=True, unique=True, index=True ), # If null, the account is not attested
+    Column('expires'    , DateTime(timezone=False), nullable=True                         ), # Usually set to DSC expiration time. If NULL, expires when EF.SOD TC expires
+    Column('aaPublicKey', LargeBinary             , nullable=False                        ),
+    Column('aaSigAlgo'  , LargeBinary             , nullable=True                         ),
+    Column('aaCount'    , Integer                 , default=0                             ), # Counts number of successful ActiveAuthentications. When greater than 0 account is ActiveAuthenticated.
+    Column('dg1'        , LargeBinary             , nullable=True                         ),
+    Column('dg2'        , LargeBinary             , nullable=True                         )
 )
 mapper(AccountStorage, account)
 
