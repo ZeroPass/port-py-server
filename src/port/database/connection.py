@@ -195,9 +195,7 @@ sod: Final = Table('sod', metadata,
     Column('dg16Hash'  , VARBINARY(256) , nullable=True , unique=True, index=True                        ),
 
 )
-mapper(SodTrack, sod, properties={
-    'account' : relationship(AccountStorage, cascade = "all,delete", passive_deletes=True)
-})
+mapper(SodTrack, sod)
 
 # table contains info about attested account
 account: Final = Table('account', metadata,
