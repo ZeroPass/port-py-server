@@ -23,6 +23,7 @@ from port.proto import (
 )
 
 from starlette.applications import Starlette
+from starlette.concurrency import run_in_threadpool
 from starlette.responses import JSONResponse, Response
 from starlette.requests import Request
 from starlette.routing import Route
@@ -164,8 +165,9 @@ class JsonRpcApi(IApi, Starlette):
         except JSONRPCInvalidRequestException:
             return JSONRPC20Response(error=JSONRPCInvalidRequest()._data) # pylint: disable=protected-access
 
-        response = JSONRPCResponseManager \
-            .handle_request(request, self._req_dispatcher)
+        response = await run_in_threadpool(
+            JSONRPCResponseManager.handle_request, request, self._req_dispatcher
+        )
         if response is not None:
             return ORJSONResponse(response.data, media_type='application/json')
         return ORJSONResponse()
