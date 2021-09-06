@@ -747,12 +747,12 @@ class PortProto:
                 lastException = e
 
         if isinstance(lastException, ef.SODError):
-            self._log.error("Failed to validate authenticity of %s file: %s", sod, lastException)
+            self._log.error("Failed to validate authenticity of file %s: %s", sod, lastException)
             raise peEfSodNotGenuine from lastException
         if isinstance(lastException, ProtoError):
-            self._log.error("Failed to verify certificate trust chain for %s file: %s", sod, lastException)
+            self._log.error("Failed to verify certificate trust chain for file %s: %s", sod, lastException)
             raise lastException
-        self._log.error("Failed to validate authenticity of %s file! e=%s", sod, lastException)
+        self._log.error("Failed to validate authenticity of file %s! e=%s", sod, lastException)
         if lastException is not None:
             self._log.exception(lastException)
             raise lastException
