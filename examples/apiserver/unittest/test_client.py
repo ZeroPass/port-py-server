@@ -127,48 +127,48 @@ def main():
     ]
 
     try:
-        print("Pinging server ...")
+        print('Pinging server ...')
         pong = pingServer(url)
-        print("Pong: {}\n".format(pong))
+        print(f'Pong: {pong}\n')
 
-        print("Requesting challenge from server ...")
+        print('Requesting challenge from server ...')
         c, cet = requestChallenge(url, tvUid)
-        print("Server returned challenge={} expires={}\n".format(c.hex(), cet))
+        print(f'Server returned challenge={c.hex()} expires={cet}\n')
         assert c == sigc
 
         try:
-            print("Trying to register new user with altered EF.SOD file ...")
+            print('Trying to register new user with altered EF.SOD file ...')
             requestRegister(url, tvUid, alter_sod(sod), dg15, sigc.id, csigs)
-            raise AssertionError("Registration with altered EF.SOD file succeeded!")
+            raise AssertionError('Registration with altered EF.SOD file succeeded!')
         except Exception as e:
-            print("Server returned error: {}\n".format(e))
+            print(f'Server returned error: {e}\n')
             assert str(e) == "{'code': 401, 'message': 'EF.SOD file not genuine'}"
 
         try:
-            print("Trying to register new user with altered EF.DG15 file ...")
+            print('Trying to register new user with altered EF.DG15 file ...')
             requestRegister(url, tvUid, sod, alter_dg15(dg15), sigc.id, csigs)
-            raise AssertionError("Registration with altered EF.DG15 file succeeded!")
+            raise AssertionError('Registration with altered EF.DG15 file succeeded!')
         except Exception as e:
-            print("Server returned error: {}\n".format(e))
+            print(f'Server returned error: {e}\n')
             assert str(e) == "{'code': 422, 'message': 'Invalid EF.DG15 file'}"
 
-        print("Registering new user ...")
+        print('Registering new user ...')
         result = requestRegister(url, tvUid, sod, dg15, sigc.id, csigs)
-        print("User was successfully registered!\n  result={}\n".format(result))
+        print('User was successfully registered!\n  result={result}\n')
 
-        print("Requesting new challenge from server for get_assertion ...")
+        print('Requesting new challenge from server for get_assertion ...')
         c, cet = requestChallenge(url, tvUid)
-        print("Server returned challenge={} expires={}\n".format(c.hex(), cet))
+        print(f'Server returned challenge={c.hex()} expires={cet}\n')
         assert c == sigc
 
-        print("Sending get_assertion...", end='')
+        print('Sending get_assertion...', end='')
         result = requestAssertion(url, tvUid, c.id, csigs)
-        print("Success!\n  result={}\n".format(result))
+        print(f'Success!\n  result={result}\n')
 
     except AssertionError as e:
-        print("assert exception: {}".format(e))
+        print(f'assert exception: {e}')
     except Exception as e:
-        print("Error: Server returned error: {}".format(str(e)))
+        print(f'Error: Server returned error: {e}')
 
 if __name__ == "__main__":
     main()

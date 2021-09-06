@@ -12,7 +12,7 @@ def has_expired(t1: datetime, t2: datetime):
     return t1 < t2
 
 def format_cert_et(cert: Certificate, current_time: datetime = time_now()):
-    return "nvb=[{}] nva=[{}] now=[{}]".format(cert.notValidBefore, cert.notValidAfter, current_time)
+    return f'nvb=[{cert.notValidBefore}] nva=[{cert.notValidAfter}] now=[{current_time}]'
 
 def code_to_country_name(code: str):
     assert isinstance(code, str)

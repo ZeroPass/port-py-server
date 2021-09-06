@@ -101,7 +101,7 @@ class SodTrack:
             elif dg.number == DataGroupNumber(16):
                 self.dg16Hash = dg.hash
             else:
-                raise ValueError("The list of EF.DG hashes contains unknown EF.DG number '{}'".format(dg.number.native))
+                raise ValueError(f"The list of EF.DG hashes contains unknown EF.DG number '{dg.number.native}'")
 
     @classmethod
     def fromSOD(cls, sod: ef.SOD, dscId: CertificateId) -> "SodTrack":

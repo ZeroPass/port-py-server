@@ -32,10 +32,10 @@ class IIntegerId(int):
         """
         if isinstance(idValue, int):
             if not (cls.min <= idValue <= cls.max): #pylint: disable=superfluous-parens
-                raise ValueError("integer out of range to construct {}. id_value={}".format(cls.__name__, idValue))
+                raise ValueError(f'integer out of range to construct {cls.__name__}. id_value={idValue}')
         elif isinstance(idValue, bytes):
             if len(idValue) != cls.byteSize():
-                raise ValueError("invalid byte array size to construct {}".format(cls.__name__))
+                raise ValueError(f'invalid byte array size to construct {cls.__name__}')
             idValue = bytes_to_int(idValue, signed=True)
             return cls(idValue)
         elif isinstance(idValue, str):
@@ -44,7 +44,7 @@ class IIntegerId(int):
             idValue = int(idValue, *args)
             return cls(idValue)
         else:
-            raise ValueError("invalid type to construct {}. id_type={}".format(cls.__name__, type(idValue)))
+            raise ValueError(f'invalid type to construct {cls.__name__}. id_type={type(idValue)}')
         return cast(cls, super().__new__(cls, idValue))
 
     @classmethod
@@ -68,7 +68,7 @@ class IIntegerId(int):
     def fromHex(cls, hexstr: str):
         assert isinstance(hexstr, str)
         if len(hexstr) != (cls.byteSize() * 2):
-            raise ValueError("invalid hex string size to construct {}".format(cls.__name__))
+            raise ValueError(f'invalid hex string size to construct {cls.__name__}')
         return cls(bytes.fromhex(hexstr))
 
     def hex(self):
@@ -183,7 +183,7 @@ class UserId(bytes):
             return self.hex().upper().rjust(2, '0')
 
     def __repr__ (self) -> str:
-        return "UserId({!s})".format(self)
+        return f'UserId({self!s})'
 
 class CID(IIntegerId):
     """ Represents challenge id """

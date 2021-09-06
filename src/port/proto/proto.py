@@ -95,7 +95,7 @@ peTrustchainCheckFailedNoCsca: Final      = PePreconditionFailed("Missing issuer
 peTrustchainCheckFailedRevokedCert: Final = PePreconditionFailed("Revoked certificate in the trustchain")
 
 def peInvalidDgFile(dgNumber: ef.dg.DataGroupNumber) -> PeInvalidOrMissingParam:
-    return PeInvalidOrMissingParam("Invalid {} file".format(dgNumber.native))
+    return PeInvalidOrMissingParam(f'Invalid {dgNumber.native} file')
 
 
 class PortProto:

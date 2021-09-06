@@ -143,9 +143,9 @@ class JsonRpcApi(IApi, Starlette):
         def register_api_method(name, api_f):
             if name in self._req_dispatcher:
                 self._log.error("Can't register existing API method: '%s'", name)
-                PortApiError("Can't register existing API method: '{}'".format(name))
+                PortApiError(f"Can't register existing API method: '{name}'")
             self._req_dispatcher.add_method(api_f, \
-                "{}.{}".format(self._api_method_prefix, name))
+                f'{self._api_method_prefix}.{name}')
         self._build_api(register_api_method)
         self._log.debug("%s API methods registered.", len(self._req_dispatcher))
 
