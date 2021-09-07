@@ -909,16 +909,16 @@ class PortProto:
             self._log.verbose("EF.SOD contains hash of %s file: %s", dg.number.native, (sod_dghv is not None))
             if sod_dghv is not None:
                 hash_algo = sod.ldsSecurityObject.dgHashAlgo['algorithm'].native
-                self._log.verbose("%s hash value of %s file in EF.SOD: %s", hash_algo, dg.number.native, sod_dghv.hash.hex())
+                self._log.verbose("%s hash value of file %s in EF.SOD: %s", hash_algo, dg.number.native, sod_dghv.hash.hex())
                 h = sod.ldsSecurityObject.getDgHasher()
                 h.update(dg.dump())
-                self._log.verbose("Actual %s hash value of %s file: %s", hash_algo, dg.number.native, h.finalize().hex())
+                self._log.verbose("Actual %s hash value of file %s: %s", hash_algo, dg.number.native, h.finalize().hex())
 
         # Validation of dg hash value in EF.SOD
         if not sod.ldsSecurityObject.contains(dg):
-            self._log.error("EF.SOD doesn't contain %s", dg)
+            self._log.error("EF.SOD doesn't contain hash of file %s", dg)
             raise peInvalidDgFile(dg.number)
-        self._log.debug("%s file is valid!", dg)
+        self._log.debug("File %s is valid!", dg)
 
     def _get_account_expiration(self, uid: UserId, account: Optional[AccountStorage], sod: SodTrack, dsc: DscStorage) -> Optional[datetime]: #pylint: disable=no-self-use,unused-argument,useless-return
         """
