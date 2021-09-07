@@ -1,5 +1,6 @@
-from port import log
+import enum
 import sqlalchemy
+
 from sqlalchemy import (
     BigInteger,
     Column,
@@ -16,10 +17,11 @@ from sqlalchemy import (
     VARBINARY,
     UniqueConstraint
 )
+
 from sqlalchemy.future import Engine
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import mapper, sessionmaker, scoped_session, relationship
+from sqlalchemy.orm import mapper, sessionmaker, scoped_session
 from sqlalchemy.orm.session import Session
 
 from .account import AccountStorage
@@ -33,6 +35,7 @@ from .x509 import (
     PkiDistributionUrl
 )
 
+from port import log
 from port.proto.types import (
     CertificateId,
     Challenge,
@@ -211,6 +214,15 @@ account: Final = Table('account', metadata,
     Column('dg2'        , LargeBinary             , nullable=True                         )
 )
 mapper(AccountStorage, account)
+
+class DatabaseDialect(enum.Enum):
+    """ Dialects supported by SQLAlchemy """
+    MariaDB    = 'mariadb'
+    MsSQL      = 'mssql'
+    MySql      = 'mysql'
+    Oracle     = 'oracle'
+    PostgreSQL = 'postgresql'
+    SQLite     = 'sqlite'
 
 class PortDbConnectionError(Exception):
     pass
