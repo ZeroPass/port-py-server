@@ -14,19 +14,21 @@ from logging import ( #pylint: disable=wrong-import-position
     DEBUG,
     INFO,
     SUCCESS,
-    WARN,
+    WARNING,
     ERROR,
     FATAL,
     CRITICAL
 )
 
 __all__ = [
+    "FileHandler",
+    "Formatter",
     "getLevelName",
     "VERBOSE",
     "DEBUG",
     "INFO",
     "SUCCESS",
-    "WARN",
+    "WARNING",
     "ERROR",
     "FATAL",
     "CRITICAL"

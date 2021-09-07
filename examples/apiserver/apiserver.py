@@ -134,7 +134,7 @@ def parse_args():
     elif args["log_level"] == 2:
         args["log_level"] = log.INFO
     elif args["log_level"] == 3:
-        args["log_level"] = log.WARN
+        args["log_level"] = log.WARNING
     elif args["log_level"] >= 4:
         args["log_level"] = log.ERROR
 
