@@ -154,7 +154,8 @@ class JsonRpcApi(IApi, Starlette):
         self._log.debug("%s API methods registered.", len(self._req_dispatcher))
 
     async def _handle_request(self, request: Request) -> Response:
-        if request.headers['content-type'] != 'application/json':
+        ct = request.headers['content-type'].split(';')
+        if len(ct) == 0 or ct[0].strip() != 'application/json':
             return Response('Invalid content type. API only supports application/json.',
                 status_code=415, media_type='text/plain')
         return await self._dispatch_request(request)
