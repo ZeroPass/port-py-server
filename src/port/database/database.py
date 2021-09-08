@@ -1,3 +1,4 @@
+from __future__ import annotations
 import logging
 
 from abc import ABC, abstractmethod
@@ -5,11 +6,11 @@ from asn1crypto import x509
 from collections import defaultdict
 from datetime import datetime
 
-from port.database.account import AccountStorage
-from port.database.challenge import ChallengeStorage
-from port.database.connection import PortDatabaseConnection
-from port.database.sod import SodTrack
-from port.database.x509 import (
+from .account import AccountStorage
+from .challenge import ChallengeStorage
+from .connection import PortDatabaseConnection
+from .sod import SodTrack
+from .x509 import (
     CertificateRevocationInfo,
     CertificateStorage,
     PkiDistributionUrl,
@@ -29,7 +30,7 @@ from sqlalchemy.orm.query import Query
 from sqlalchemy.sql.functions import func
 
 from typing import Final, List, NoReturn, Optional, Tuple, TypeVar, Union
-from .types import CertificateId, Challenge, CID, CountryCode, CrlId, SodId, UserId
+from port.proto.types import CertificateId, Challenge, CID, CountryCode, CrlId, SodId, UserId
 
 class StorageAPIError(Exception):
     pass

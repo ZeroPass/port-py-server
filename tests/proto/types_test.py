@@ -1,10 +1,10 @@
 # pylint: disable=too-many-statements
-from datetime import datetime
 import os
 import py
 import pytest
 import string
 from cryptography.hazmat.primitives.hashes import SHA512_256
+from datetime import datetime
 from port.proto.types import CID, CertificateId, Challenge, ChallengeError, CountryCode, CrlId, IIntegerId, SodId, UserId, UserIdError
 from port.proto.utils import int_to_bytes
 from pymrtd import ef

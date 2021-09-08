@@ -1,4 +1,4 @@
-from port.proto import DatabaseAPI
+from port.database import DatabaseAPI
 from sqlalchemy.orm import make_transient
 
 def getSQLiteDB(dbName= '', dbLog = False):

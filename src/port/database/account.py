@@ -1,8 +1,7 @@
+from datetime import datetime
 from port.proto.types import CountryCode, SodId, UserId
 from pymrtd import ef
 from pymrtd.pki.keys import AAPublicKey, SignatureAlgorithm
-
-from datetime import datetime
 from typing import Optional
 
 class AccountStorage:

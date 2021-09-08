@@ -7,6 +7,7 @@ import pytest
 import random
 
 from datetime import timedelta
+
 from port.proto.proto import (
     peAccountAlreadyRegistered,
     peAccountNotAttested,
@@ -48,13 +49,15 @@ from port.proto.proto import (
     PortProto,
     ProtoError
 )
-from port.proto import CertificateId, Challenge, CountryCode, SeEntryAlreadyExists, SodId, UserId, utils
-from port.database import CertificateRevocationInfo, DscStorage
+from port.proto import CertificateId, Challenge, CountryCode, SodId, UserId, utils
+from port.database import CertificateRevocationInfo, DscStorage, SeEntryAlreadyExists
+
 from pymrtd import ef
 from pymrtd.pki.x509 import CscaCertificate, DocumentSignerCertificate
 from pymrtd.ef.dg import DataGroupNumber
-from unittest import mock
+
 from tests import testutils
+from unittest import mock
 from typing import List, Optional
 
 _dir = os.path.dirname(os.path.realpath(__file__))

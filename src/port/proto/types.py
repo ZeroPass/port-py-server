@@ -7,6 +7,7 @@ from datetime import datetime
 from pymrtd import ef
 from pymrtd.pki import x509
 from typing import cast, Union
+
 from .utils import bytes_to_int, format_alpha2, int_count_bytes, int_to_bytes, sha512_256
 
 class CountryCode(str):

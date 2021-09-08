@@ -2,10 +2,7 @@ import port.log as log
 
 from asn1crypto.cms import IssuerAndSerialNumber
 from datetime import datetime, timedelta
-
-from port.database import CertificateStorage, CscaStorage, DscStorage, PkiDistributionUrl
-from port.database.account import AccountStorage
-from port.database.sod import SodTrack
+from port import database
 
 from pymrtd import ef
 from pymrtd.ef.sod import DataGroupHash
@@ -18,7 +15,6 @@ from threading import Timer
 from typing import Final, List, Optional, Tuple, Union
 
 from . import utils
-from .db import StorageAPI, StorageAPIError
 from .types import Challenge, CID, CountryCode, UserId
 
 class ProtoError(Exception):
@@ -97,10 +93,9 @@ peTrustchainCheckFailedRevokedCert: Final = PePreconditionFailed("Revoked certif
 def peInvalidDgFile(dgNumber: ef.dg.DataGroupNumber) -> PeInvalidOrMissingParam:
     return PeInvalidOrMissingParam(f'Invalid {dgNumber.native} file')
 
-
 class PortProto:
 
-    def __init__(self, storage: StorageAPI, cttl: int, maintenanceInterval: int = 36):
+    def __init__(self, storage: database.StorageAPI, cttl: int, maintenanceInterval: int = 36):
         """
         Initializes new PortProto.
         :param storage: database storage to use
@@ -242,7 +237,7 @@ class PortProto:
         # 3. Verify EF.SOD is genuine aka passive authn
         #    Before any other operation with sod,
         #    verify that an actual country issued the mrtd.
-        dsc: DscStorage = self._verify_sod_is_genuine(sod)
+        dsc: database.DscStorage = self._verify_sod_is_genuine(sod)
         self._log.success("%s appears to be genuine! issuer dscId=%s", sod, dsc.id)
 
         # 4. Verify the country code matches if account exists already.
@@ -263,7 +258,7 @@ class PortProto:
 
         # 6. Check if matching EF.SOD exist in the DB
         self._log.debug("Searching for any EF.SOD track in DB which matches %s", sod)
-        st = SodTrack.fromSOD(sod, dscId=dsc.id)
+        st = database.SodTrack.fromSOD(sod, dscId=dsc.id)
         if self._log.level <= log.DEBUG:
             self._log.debug("  sodId=%s", st.id)
             self._log.debug("  hashAlgo=%s", sod.ldsSecurityObject.dgHashAlgo['algorithm'].native)
@@ -310,7 +305,7 @@ class PortProto:
                         dg2 = accnt.dg2
 
         et = self._get_account_expiration(uid, accnt, st, dsc)
-        accnt = AccountStorage(uid, dsc.country, st.id, et, aaPubKey, aaSigAlgo, aaCount=1, dg1=dg1, dg2=dg2)
+        accnt = database.AccountStorage(uid, dsc.country, st.id, et, aaPubKey, aaSigAlgo, aaCount=1, dg1=dg1, dg2=dg2)
         self._db.updateAccount(accnt)
 
         self._log.debug("New account created: uid=%s", uid)
@@ -375,7 +370,7 @@ class PortProto:
 
         return {}
 
-    def addCscaCertificate(self, csca: CscaCertificate, allowSelfIssued: bool = False) -> CscaStorage:
+    def addCscaCertificate(self, csca: CscaCertificate, allowSelfIssued: bool = False) -> database.CscaStorage:
         """
         Adds new CSCA certificate into database.
         Before CSCA is added to the DB, the certificate is verified that it conforms to the ICAO 9303 standard.
@@ -389,7 +384,7 @@ class PortProto:
                                 Warning: self-issued CSCA should only be allowed from privileged and verified sources
                                          e.g. fully verified CSCA master list, server admin).
                                          Self-issued CSCA should be PROHIBITED, for example, through public api.
-        :return CscaStorage:
+        :return database.CscaStorage:
         :raises peCscaTooNewOrExpired: If CSCA is too new (nvb > now) or has expired.
         :raises peInvalidCsca: When CSCA doesn't conform to the ICAO 9303 standard.
         """
@@ -398,7 +393,7 @@ class PortProto:
             raise peInvalidCsca
         try:
             self._log.debug("addCscaCertificate: C=%s serial=%s allowSelfIssued=%s",
-                CountryCode(csca.issuerCountry), CscaStorage.makeSerial(csca.serial_number).hex(), str(allowSelfIssued))
+                CountryCode(csca.issuerCountry), database.CscaStorage.makeSerial(csca.serial_number).hex(), str(allowSelfIssued))
 
             # 1.) Check if CSCA is valid at current time.
             # Although this check is also performed by the _verify_cert_trustchain
@@ -407,7 +402,7 @@ class PortProto:
             timeNow = utils.time_now()
             if not csca.isValidOn(timeNow):
                 self._log.error("Trying to add CSCA certificate which is too new or has expired! C=%s serial=%s %s",
-                    csca.issuerCountry, CscaStorage.makeSerial(csca.serial_number).hex(), utils.format_cert_et(csca, timeNow))
+                    csca.issuerCountry, database.CscaStorage.makeSerial(csca.serial_number).hex(), utils.format_cert_et(csca, timeNow))
                 raise peCscaTooNewOrExpired
 
             # 2.) Verify we have conformant CSCA certificate
@@ -419,13 +414,13 @@ class PortProto:
             csca.checkConformance()
 
             # 3.) Find the issuer if csca is LCSCA or coresponding LCSCA.
-            issuerCert: Optional[CscaStorage] = None # None for allowed self-issued
+            issuerCert: Optional[database.CscaStorage] = None # None for allowed self-issued
             selfIssued = csca.self_signed == 'maybe'
             if selfIssued:
                 if not allowSelfIssued:
                     # Find matching LCSCA or fail
                     self._log.debug("Looking for matching LCSCA...")
-                    cscas: List[CscaStorage] = self._db.findCscaCertificates(csca.subject, csca.subjectKey)
+                    cscas: List[database.CscaStorage] = self._db.findCscaCertificates(csca.subject, csca.subjectKey)
                     for c in (cscas or []):
                         crt: CscaCertificate = c.getCertificate()
                         if csca.fingerprint == crt.fingerprint:
@@ -442,7 +437,7 @@ class PortProto:
                             CountryCode(csca.issuerCountry), csca.serial_number, str(allowSelfIssued))
                         raise peCscaSelfIssued
             else: #LCSCA
-                cscas: List[CscaStorage] = self._db.findCscaCertificates(csca.issuer, csca.authorityKey)
+                cscas: List[database.CscaStorage] = self._db.findCscaCertificates(csca.issuer, csca.authorityKey)
                 for c in (cscas or []):
                     if c.isSelfIssued and c.isValidOn(timeNow):
                         issuerCert = c
@@ -454,7 +449,7 @@ class PortProto:
             csca.verify(issuerCert=(csca if selfIssued else issuerCert.getCertificate()), checkConformance = False)
 
             # 5.) Verify certificate trustchain validity and store CSCA in DB
-            cs = CscaStorage(csca, None if selfIssued else issuerCert.id)
+            cs = database.CscaStorage(csca, None if selfIssued else issuerCert.id)
             self._verify_cert_trustchain(cs)
             self._db.addCscaStorage(cs)
 
@@ -466,16 +461,16 @@ class PortProto:
             raise
         except CertificateVerificationError as e: # Conformance check failed or signature verification failed
             self._log.error("Certificate conformance check or signature verification has failed for the CSCA to be added! C=%s serial=%s",
-                csca.issuerCountry, CscaStorage.makeSerial(csca.serial_number).hex())
+                csca.issuerCountry, database.CscaStorage.makeSerial(csca.serial_number).hex())
             self._log.error("  e=%s", e)
             raise peInvalidCsca from None
         except Exception as e:
             self._log.error("An exception was encountered while trying to add new CSCA certificate! C=%s serial=%s",
-                csca.issuerCountry, CscaStorage.makeSerial(csca.serial_number).hex())
+                csca.issuerCountry, database.CscaStorage.makeSerial(csca.serial_number).hex())
             self._log.error("  e=%s", e)
             raise
 
-    def addDscCertificate(self, dsc: DocumentSignerCertificate) -> DscStorage:
+    def addDscCertificate(self, dsc: DocumentSignerCertificate) -> database.DscStorage:
         """
         Adds new DSC certificate into database.
         Before DSC is added to the DB, the certificate is checked:
@@ -488,7 +483,7 @@ class PortProto:
             - that the same DSC doesn't exist yet.
 
         :param dsc: The DSC certificate to add.
-        :return DscStorage:
+        :return database.DscStorage:
         :raises peDscTooNewOrExpired: If DSC is too new (nvb > now) or has expired.
         :raises peInvalidDsc: When DSC doesn't conform to the ICAO 9303 standard or
                               or verification of the signature with the issuing CSCA certificate fails.
@@ -500,7 +495,7 @@ class PortProto:
             raise peInvalidDsc
         try:
             self._log.debug("addDscCertificate: C=%s serial=%s",
-                CountryCode(dsc.issuerCountry), DscStorage.makeSerial(dsc.serial_number).hex())
+                CountryCode(dsc.issuerCountry), database.DscStorage.makeSerial(dsc.serial_number).hex())
 
             # 1.) Check if DSC is valid at current time.
             # Although this check is also performed by the _verify_cert_trustchain
@@ -509,7 +504,7 @@ class PortProto:
             timeNow = utils.time_now()
             if not dsc.isValidOn(timeNow):
                 self._log.error("Trying to add DSC certificate which is too new or expired! C=%s serial=%s %s",
-                    dsc.issuerCountry, DscStorage.makeSerial(dsc.serial_number).hex(), utils.format_cert_et(dsc, timeNow))
+                    dsc.issuerCountry, database.DscStorage.makeSerial(dsc.serial_number).hex(), utils.format_cert_et(dsc, timeNow))
                 raise peDscTooNewOrExpired
 
             # 2.) Verify we have conformant DSC certificate
@@ -529,7 +524,7 @@ class PortProto:
             dsc.verify(issuerCert=issuerCert.getCertificate(), checkConformance = False)
 
             # 6.) Verify certificate trustchain validity and store DSC in DB
-            cs = DscStorage(dsc, issuerCert.id)
+            cs = database.DscStorage(dsc, issuerCert.id)
             self._verify_cert_trustchain(cs)
             self._db.addDscStorage(cs)
 
@@ -541,12 +536,12 @@ class PortProto:
             raise
         except CertificateVerificationError as e: # Conformance check failed or signature verification failed
             self._log.error("Certificate conformance check or signature verification has failed for the DSC to be added! C=%s serial=%s",
-                dsc.issuerCountry, DscStorage.makeSerial(dsc.serial_number).hex())
+                dsc.issuerCountry, database.DscStorage.makeSerial(dsc.serial_number).hex())
             self._log.error("  e=%s", e)
             raise peInvalidDsc from None
         except Exception as e:
             self._log.error("An exception was encountered while trying to add new DSC certificate! C=%s serial=%s",
-                dsc.issuerCountry, DscStorage.makeSerial(dsc.serial_number).hex())
+                dsc.issuerCountry, database.DscStorage.makeSerial(dsc.serial_number).hex())
             self._log.error("  e=%s", e)
             raise
 
@@ -594,8 +589,8 @@ class PortProto:
             crl.checkConformance()
 
             # 4.) Find the CSCA certificate that issued CRL.
-            issuerCert: Optional[CscaStorage] = None
-            cscas: List[CscaStorage] = self._db.findCscaCertificates(crl.issuer, crl.authorityKey)
+            issuerCert: Optional[database.CscaStorage] = None
+            cscas: List[database.CscaStorage] = self._db.findCscaCertificates(crl.issuer, crl.authorityKey)
             for c in (cscas or []):
                 if c.isValidOn(timeNow): # Skip any LCSCA that have expired
                     issuerCert = c
@@ -626,13 +621,13 @@ class PortProto:
             self._log.error("  e=%s", e)
             raise
 
-    def _find_first_csca_for_dsc(self, dsc: DocumentSignerCertificate) -> Optional[CscaStorage]:
+    def _find_first_csca_for_dsc(self, dsc: DocumentSignerCertificate) -> Optional[database.CscaStorage]:
         """
         Returns first issuing CSCA certificate of DSC certificate which is not LCSCA.
         :param dsc: DSC certificate to retrieve the issuing CSCA certificate for
-        :return Optional[CscaStorage]:
+        :return Optional[database.CscaStorage]:
         """
-        cscas: List[CscaStorage] = self._db.findCscaCertificates(dsc.issuer, dsc.authorityKey)
+        cscas: List[database.CscaStorage] = self._db.findCscaCertificates(dsc.issuer, dsc.authorityKey)
         for c in (cscas or []):
             # This check ensures to not take any LCSCA certificate as the issuer cert
             # since they can have shorter expiration time
@@ -640,7 +635,7 @@ class PortProto:
                 return c
         return None
 
-    def _verify_cert_trustchain(self, crt: CertificateStorage) -> None:
+    def _verify_cert_trustchain(self, crt: database.CertificateStorage) -> None:
         """
         Verifies certificate trustchain and if fails ProtoError exception is risen.
         The check is done from certificate in question to the root issuer certificate:
@@ -652,7 +647,7 @@ class PortProto:
                  Invalid certificate is either not valid at present time, is missing issuer certificate or issuer certificate is invalid.
         :raises StorageAPIError: If there is an DB storage error when trying to retrieve issuer CSCA certificate of `crt`.
         """
-        assert isinstance(crt, CertificateStorage)
+        assert isinstance(crt, database.CertificateStorage)
         self._log.debug("Verifying certificate trustchain id=%s C=%s serial=%s issuer_id=%s",
             crt.id, crt.country, crt.serial.hex(), crt.issuerId)
 
@@ -674,7 +669,7 @@ class PortProto:
                 raise peTrustchainCheckFailedNoCsca
             self._verify_cert_trustchain(issuer)
 
-    def _verify_sod_is_genuine(self, sod: ef.SOD) -> DscStorage:
+    def _verify_sod_is_genuine(self, sod: ef.SOD) -> database.DscStorage:
         """
         Verifies EF.SOD file was issued by at least 1 valid country DSC certificate
         aka passive authentication as specivied in ICAO9303 part 11 5.1 Passive Authentication.
@@ -694,7 +689,7 @@ class PortProto:
         4.) If there was no error in the above steps return from function
 
         :param `sod`: EF.SOD file to verify.
-        :return: `DscStorage` of the first valid DSC certificate which signed EF.SOD.
+        :return: `database.DscStorage` of the first valid DSC certificate which signed EF.SOD.
 
         :raises `peInvalidEfSod`: If no valid signer is found, EF.SOD is not signed, contains invalid signer infos.
         :raises `peTrustchainCheckFailedExpiredCert`: If any of the certificates in the EF.SOD trustchain has expired.
@@ -758,7 +753,7 @@ class PortProto:
             raise lastException
         raise peInvalidEfSod
 
-    def _is_sod_track_valid(self, st: SodTrack) -> bool:
+    def _is_sod_track_valid(self, st: database.SodTrack) -> bool:
         """
         Checks if EF.SOD track is still, verifies `st` has valid certificate trustchain.
         i.e. CSCA -> DSC -> EF.SOD track
@@ -768,7 +763,7 @@ class PortProto:
         :raises Exception*: Any other exception that is risen in the verification process, and is not `PePreconditionFailed`.
                             i.e not trustchain verification error.
         """
-        assert isinstance(st, SodTrack)
+        assert isinstance(st, database.SodTrack)
         try:
             if st.dscId is None:
                 return False
@@ -778,35 +773,35 @@ class PortProto:
             self._verify_cert_trustchain(dsc)
             return True
         except PePreconditionFailed as e:
-            self._log.debug("Looks like SodTrack doesn't have valid certificate trustchain.")
+            self._log.debug("Looks like database.SodTrack doesn't have valid certificate trustchain.")
             self._log.debug("  tc_error=%s", e)
             return False
         except AssertionError:
             raise
-        except StorageAPIError as e:
-            self._log.error("A DB error was encountered while trying to checking if SodTrack is valid.")
+        except database.StorageAPIError as e:
+            self._log.error("A DB error was encountered while trying to checking if database.SodTrack is valid.")
             self._log.error("  e=%s", e)
             raise
         except Exception as e:
-            self._log.error("An exception was encountered while trying to checking if SodTrack is valid.")
+            self._log.error("An exception was encountered while trying to checking if database.SodTrack is valid.")
             self._log.error("  e=%s", e)
             raise
 
-    def _is_account_attested(self, accnt: AccountStorage, st: Optional[SodTrack] = None) -> bool:
+    def _is_account_attested(self, accnt: database.AccountStorage, st: Optional[database.SodTrack] = None) -> bool:
         """
         Checks if account is attested with valid eMRTD biometric passport.
         In short, verifies that account attestation has not expired and
         has assigned valid EF.SOD track with valid certificates trustchain.
         i.e. CSCA -> DSC -> EF.SOD track -> account
         :param `accnt`: The account to verify.
-        :param `st` (Optional): The SodTrack of `accnt` to verify the certificate trustchain of.
+        :param `st` (Optional): The database.SodTrack of `accnt` to verify the certificate trustchain of.
         :return: True if `accnt` has valid eMRTD attestation, otherwise False.
         :raises StorageAPIError: On DB errors.
         :raises Exception*: Any other exception that is risen in the verification process, and is not `PePreconditionFailed`.
                             i.e not trustchain verification error.
         """
-        assert isinstance(accnt, AccountStorage)
-        assert isinstance(st, (SodTrack, type(None)))
+        assert isinstance(accnt, database.AccountStorage)
+        assert isinstance(st, (database.SodTrack, type(None)))
         try:
             if accnt.sodId is None \
                 or (st is not None and accnt.sodId != st.id):
@@ -820,7 +815,7 @@ class PortProto:
             if st is None:
                 return False
             return self._is_sod_track_valid(st)
-        except StorageAPIError as e:
+        except database.StorageAPIError as e:
             self._log.error("A DB error was encountered while trying to checking if account is attested.")
             self._log.error("  e=%s", e)
             raise
@@ -872,7 +867,7 @@ class PortProto:
         for crlDistribution in cert.crl_distribution_points:
             for crlUrl in crlDistribution['distribution_point'].native:
                 self._db.addPkiDistributionUrl(
-                    PkiDistributionUrl(country, PkiDistributionUrl.Type.CRL, crlUrl))
+                    database.PkiDistributionUrl(country, database.PkiDistributionUrl.Type.CRL, crlUrl))
 
     def _get_challenge_expiration(self, createTime: datetime) -> datetime:
         """
@@ -920,7 +915,7 @@ class PortProto:
             raise peInvalidDgFile(dg.number)
         self._log.debug("File %s is valid!", dg)
 
-    def _get_account_expiration(self, uid: UserId, account: Optional[AccountStorage], sod: SodTrack, dsc: DscStorage) -> Optional[datetime]: #pylint: disable=no-self-use,unused-argument,useless-return
+    def _get_account_expiration(self, uid: UserId, account: Optional[database.AccountStorage], sod: database.SodTrack, dsc: database.DscStorage) -> Optional[datetime]: #pylint: disable=no-self-use,unused-argument,useless-return
         """
         Returns datetime till account attestation can be valid. Should be less or equal to `dsc.notValidAfter`.
         `None` is returned by default aka attestation valid until atestation has valid passive auth trustchain
@@ -929,9 +924,9 @@ class PortProto:
         :param `dsc`: The account attested DSC certificate storage.
         """
         assert isinstance(uid, UserId)
-        assert isinstance(account, (AccountStorage, type(None)))
-        assert isinstance(sod, SodTrack)
-        assert isinstance(dsc, DscStorage)
+        assert isinstance(account, (database.AccountStorage, type(None)))
+        assert isinstance(sod, database.SodTrack)
+        assert isinstance(dsc, database.DscStorage)
         assert sod.dscId == dsc.id
         if account is not None and account.expires is not None and \
             not utils.has_expired(account.expires, utils.time_now()):

@@ -13,13 +13,12 @@ from jsonrpc.exceptions import (
 from jsonrpc.jsonrpc2 import JSONRPC20Request, JSONRPC20Response
 
 from port import log
+from port.database import SeEntryAlreadyExists, SeEntryNotFound
 from port.proto import (
     PeConflict,
     PeNotFound,
     PortProto,
-    ProtoError,
-    SeEntryAlreadyExists,
-    SeEntryNotFound
+    ProtoError
 )
 
 from starlette.applications import Starlette
