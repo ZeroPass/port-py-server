@@ -1,3 +1,4 @@
+from __future__ import annotations
 import port.log as log
 
 from asn1crypto.cms import IssuerAndSerialNumber
