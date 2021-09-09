@@ -3,6 +3,7 @@ import collections
 import inspect
 from dataclasses import asdict, dataclass, fields, is_dataclass, MISSING
 from pathlib import Path
+from port.database import DatabaseDialect
 from typing import Any, Final, get_type_hints, Optional
 
 def _issubclass_safe(cls, cls_type):
@@ -109,12 +110,41 @@ class IConfig:
 
         return cls(**initKwargs)
 
+class DbDialectValidator:
+    __name__ = getattr(str, '__name__') # Fake the name, so ArgumentParser shows error msg: '.. invalid str value..'
+
+    def __call__(self, dialect: str) -> str:
+        '''
+        Validates `dialect` begins with valid database dialect value.
+        i.e.: 'mdb' or any of the enumerator values of `DatabaseDialect`.
+
+        Expected `dialect` string is in format that is specified by SQLAlchemy.
+        i.e.: '<dialect_name>[+optional_db_api_driver]'
+
+        Function doesn't validate DB API driver(e.g. +pymysql, +psycopg2)
+
+        :param `dialect` : Database dialect.
+        :return: `dialect`
+        :raises `ValueError`: If `dialect` is not valid.
+        '''
+        for e in ['mdb', *DatabaseDialect]: # pylint: disable=not-an-iterable
+            v = e if type(e) is str else e.value
+            if dialect.startswith(v):
+                return dialect
+        raise ValueError(f'Unsupported database dialect: {dialect}')
 @dataclass
 class DbConfig(IConfig):
+    def _setdialect(self, value: str):
+        self.__dict__["dialect"] = DbDialectValidator()(value)
+    def _getdialect(self) -> str:
+        return self.__dict__.get("dialect")
+
+    dialect: str  = property(_getdialect, _setdialect) # database dialect, e.g.: postgresql, mysql ...
     url: str      = ''
     name: str     = '' # database name
     user: str     = ''
     password: str = ''
+    del _setdialect, _getdialect
 
 @dataclass
 class MrtdPkd(IConfig):
