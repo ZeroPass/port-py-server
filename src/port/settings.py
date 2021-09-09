@@ -3,6 +3,7 @@ import collections
 import inspect
 from dataclasses import asdict, dataclass, fields, is_dataclass, MISSING
 from pathlib import Path
+from port import log
 from port.database import DatabaseDialect
 from typing import Any, Final, get_type_hints, Optional
 
@@ -132,6 +133,29 @@ class DbDialectValidator:
             if dialect.startswith(v):
                 return dialect
         raise ValueError(f'Unsupported database dialect: {dialect}')
+
+_levelToLogLevel: Final = {
+    'verbose'  : log.getLevelName(log.VERBOSE),
+    'debug'    : log.getLevelName(log.DEBUG),
+    'info'     : log.getLevelName(log.INFO),
+    'warning'  : log.getLevelName(log.WARNING),
+    'error'    : log.getLevelName(log.ERROR),
+    'critical' : log.getLevelName(log.CRITICAL)
+}
+
+class LogLevelValidator:
+    __name__ = getattr(str, '__name__') # Fake the name, so ArgumentParser shows error msg: '.. invalid str value..'
+
+    def __call__(self, level: str) -> str:
+        """
+        Converts `level` to value in _levelToLogLevel.
+        :raises `ValueError`: If `dialect` is not valid.
+        """
+        l = _levelToLogLevel.get(level.lower())
+        if l is None:
+            raise ValueError(f'Unsupported log level: {level}')
+        return l
+
 @dataclass
 class DbConfig(IConfig):
     def _setdialect(self, value: str):
