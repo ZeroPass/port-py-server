@@ -198,6 +198,67 @@ class ServerConfig(IConfig):
     log_level: str                  = 'verbose'
     mrtd_pkd: Optional[MrtdPkd]     = None # MRTD certificate folder to load into database when server starts
 
+    @classmethod
+    def fromArgs(cls, args: argparse.Namespace, infer_missing = True, strict: bool = True):
+        """
+        Creates `cls` from parsed command-line arguments.
+        :param `args`: The command-line arguments to create new `cls`.
+        :param `inferMissing`: See `IConfig.fromJson`.
+        :param `strict`: See `IConfig.fromJson`.
+        :raises `ValueError`: If `strict=True` and parser encounters field that is not part of `cls`.
+        :raises `ValueError`: If `None` value is encountered for non-optional field.
+        :raises `ValueError`: If the field value type differs the field type.
+        """
+        jcfg = cls._argsToJson(args)
+        return cls.fromJson(jcfg, inferMissing=infer_missing, strict=strict)
+
+    def update(self, args: argparse.Namespace, infer_missing = True, strict: bool = True):
+        """
+        Overrides config with parsed command-line `args`.
+        :param `args`: The command-line arguments to override config with.
+        :param `inferMissing`: See `IConfig.fromJson`.
+        :param `strict`: See `IConfig.fromJson`.
+        :raises `ValueError`: If `strict=True` and parser encounters field that is not part of ServerConfig.
+        :raises `ValueError`: If `None` value is encountered for non-optional field.
+        :raises `ValueError`: If the field value type differs the field type.
+        """
+        jargs = {}
+        jargs_dflt = {}
+        # throw out default values, so they
+        # don't override existing values
+        for k, v in vars(args).items():
+            if not isArgDefultValue(v):
+                jargs[k] = v
+            elif v is not None:
+                jargs_dflt[k] = stripDefaultArgWrapper(v) #Strip-off _DefaultArg type
+
+        args = argparse.Namespace(**jargs)
+        jcfg = self.toJson()
+        for k, v in type(self)._argsToJson(args).items():
+            if isinstance(v, dict):
+                if k not in jcfg:
+                    jcfg[k] = {}
+                jcfg[k] |= v
+            else:
+                jcfg[k] = v
+
+        # Add default values for non-optional fields that are not set
+        def setDefaultArgs(d, ddflt):
+            for k, v in ddflt.items():
+                if isinstance(v, dict):
+                    if k not in d:
+                        d[k] = {}
+                        d[k] |= v
+                    else:
+                        d[k] |= setDefaultArgs(d[k],v)
+                else:
+                    if k not in d:
+                        d[k] = v
+            return d
+        args = argparse.Namespace(**jargs_dflt)
+        jcfg = setDefaultArgs(jcfg, type(self)._argsToJson(args))
+        self.__dict__ = self.fromJson(jcfg, infer_missing, strict).__dict__
+
     @staticmethod
     def argumentParser(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
         """
@@ -271,6 +332,57 @@ class ServerConfig(IConfig):
 
         return parser
 
+    @classmethod
+    def _argsToJson(cls, args: argparse.Namespace) -> dict[str, Any]:
+        """
+        Converts parsed command-line arguments to Config JSON format.
+        Note, 'mrtd_pkd' is removed from returned JSON if 'path' is not set.
+        """
+        def genClsFieldDict(c):
+            # makes dict of arg-keys : {cfg:field} from cls fields
+            # e.g.: {'db_dialect' : { 'database' : 'dialect'}}
+            cfg_dict = collections.defaultdict(dict)
+            for f in fields(c):
+                name = _abbrev.get(f.name, f.name)
+                ft = _get_optional_type(f.type)
+                if is_dataclass(ft):
+                    flds = genClsFieldDict(ft)
+                    for cfk, cfv in flds.items():
+                        cfg_dict[name + '_' + cfk][f.name] = cfv
+                else:
+                    cfg_dict[name] = f.name
+            return cfg_dict
+
+        cfg_dict = genClsFieldDict(cls)
+        if 'mrtd_pkd_path' in cfg_dict:
+            cfg_dict['mrtd_pkd'] = cfg_dict.pop('mrtd_pkd_path')
+
+        # Parse args to json-config
+        jcfg = collections.defaultdict(dict)
+        for argk, argv in vars(args).items():
+            argv = stripDefaultArgWrapper(argv) #Strip-off _DefaultArg type
+            jf = cfg_dict.get(argk, argk) # If argk not in cfg_dict, the cls.fromJson should throw if `strict=True`
+            if isinstance(jf, dict):
+                def construct(d, v):
+                    # Constructs {'field': 'type_field'}
+                    # e.g.: { 'database' : 'dialect'}
+                    fd =  collections.defaultdict(dict)
+                    for k, kv in d.items():
+                        if isinstance(v, dict):
+                            kv = construct(kv, v)
+                            fd[k] = kv
+                        else:
+                            fd[k][kv] = v
+                    return fd
+                for k, v in construct(jf, argv).items():
+                    jcfg[k] |= v
+            else:
+                jcfg[jf] = argv
+
+        # Remove 'mrtd_pkd' if pkd path was not set
+        if 'mrtd_pkd' in jcfg and 'path' not in jcfg['mrtd_pkd']:
+            del jcfg['mrtd_pkd']
+        return jcfg
 
 def defaultArg(val):
     """
@@ -297,7 +409,28 @@ def defaultArg(val):
             _isDefaultArg_ = True
         return _DefaultArg(val)
 
+def stripDefaultArgWrapper(argv):
+    # Strip-off _DefaultArg type
+    if argv is not None and isArgDefultValue(argv):
+        argv = argv.__base_type__(argv)
+    return argv
+
 def isArgDefultValue(val):
     clsn = getattr(val, '__class__', '')
     clsn = getattr(clsn, '__name__', '')
     return val is None or (clsn == '_DefaultArg' and hasattr(val, '_isDefaultArg_')) # pylint: disable=protected-access
+
+class ArgumentHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
+    """
+    Same as ArgumentDefaultsHelpFormatter but doesn't print 'default: None' and default: ''
+    and allows line breaks in description text.
+    """
+    def _get_help_string(self, action):
+        if action.default is not None \
+            and (not isinstance(action.default, str) or len(action.default) > 0):
+            return super()._get_help_string(action)
+        return action.help
+
+    def _split_lines(self, text, width):
+        ## allow line breaks in description text
+        return text.splitlines()
