@@ -1,4 +1,4 @@
-import ssl
+import argparse
 import collections
 import inspect
 from dataclasses import asdict, dataclass, fields, is_dataclass, MISSING
@@ -29,6 +29,11 @@ def _get_optional_type(cls):
     if _is_optional(cls):
         return cls.__args__[0]
     return cls
+
+_abbrev: Final = {
+    'database' : 'db',
+    'password' : 'pwd'
+}
 
 @dataclass
 class IConfig:
@@ -193,3 +198,106 @@ class ServerConfig(IConfig):
     log_level: str                  = 'verbose'
     mrtd_pkd: Optional[MrtdPkd]     = None # MRTD certificate folder to load into database when server starts
 
+    @staticmethod
+    def argumentParser(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
+        """
+        Adds & formats cmd arguments of `ServerConfig` to the `parser`.
+        :param `parser`: The `ArgumentParser` to add arguments to.
+        :return: Updated parser.
+        """
+
+        class _KeepDfltStrWrapper(str):
+            """Forces the argparser to use _DefaultArg instead of underlaying str type"""
+            __name__ = getattr(str, '__name__')
+            def __call__(self, v):
+                return v
+
+        # Database
+        db = parser.add_argument_group('Database')
+        dbcmdg = _abbrev.get('database', 'database')
+        db.add_argument(f'--{dbcmdg}-dialect', type=DbDialectValidator(), required=True,
+            help='Database dialect with optional DB driver.\n  e.g.: mdb, mysql, postgresql, sqlite, sqlite+pysqlite etc...')
+
+        db.add_argument(f'--{dbcmdg}-url', type=_KeepDfltStrWrapper(), default=defaultArg(DbConfig.url),
+            help='Database URL. For SQLite it is the database file path')
+
+        db.add_argument(f'--{dbcmdg}-name', type=_KeepDfltStrWrapper(), default=defaultArg(DbConfig.name),
+            help='Database name.')
+
+        db.add_argument(f'--{dbcmdg}-user', type=_KeepDfltStrWrapper(), default=defaultArg(DbConfig.user),
+            help='Database user name.')
+
+        pwd = _abbrev.get('password', 'password')
+        db.add_argument(f'--{dbcmdg}-{pwd}', type=_KeepDfltStrWrapper(), default=defaultArg(DbConfig.password),
+            help='Database password.')
+
+        # Public API
+        api = parser.add_argument_group('Public API server')
+        api.add_argument('--api-host', type=_KeepDfltStrWrapper(), default=defaultArg('127.0.0.1'),
+            help='Server listening host.')
+
+        api.add_argument('--api-port', type=int, default=defaultArg(8080),
+            help='Server listening port.')
+
+        api.add_argument('--api-timeout-keep-alive', type=int, default=defaultArg(HttpServerConfig.timeout_keep_alive),
+            help="Close 'Keep-Alive' connections if no new data\nis received within this timeout.")
+
+        api.add_argument('--api-tls-cert', type=Path,
+            help='A path to the TLS certificate file to use in TLS connection.')
+
+        api.add_argument('--api-tls-key', type=Path,
+            help='A path to the TLS private key file to use in TLS connection.')
+
+        # Proto
+        srv = parser.add_argument_group('Server')
+        srv.add_argument('--challenge-ttl', default=defaultArg(ServerConfig.challenge_ttl),
+            type=int, help='The number of seconds before protocol challenge expires.')
+
+        # Server
+        srv.add_argument('--job-interval', default=defaultArg(ServerConfig.job_interval),
+            type=int, help='An interval in seconds at which the server schedule maintenance job and other tasks.\n  e.g.: Delete expired protocol challenges from database')
+
+        # Loglevel
+        parser.add_argument('--log-level', type=_KeepDfltStrWrapper(), default=defaultArg(ServerConfig.log_level),
+            choices=_levelToLogLevel.keys(), help='Set the log level.')
+
+        # MRTD PKD
+        pkd = parser.add_argument_group('MRTD PKD', 'MRTD PKI trustchain certificates & CRLs to load into DB at server start')
+        pkd.add_argument('--mrtd-pkd', type=Path,
+            help='A path to the PKD root folder.')
+
+        pkd.add_argument('--mrtd-pkd-allow-self-issued-csca', type=bool, default=defaultArg(MrtdPkd.allow_self_issued_csca),
+            action=argparse.BooleanOptionalAction, help='Allow self-issued CSCA to be loaded into DB.')
+
+        return parser
+
+
+def defaultArg(val):
+    """
+    Returns `val` wrapped in private `_DefaultArgVal` so default value is tagged, and
+    `isArgDefultValue` can be used to determine if argument value was set by user or is default value.
+    """
+    if type(val) is bool: # pylint: disable=unidiomatic-typecheck, no-else-return
+        class _DefaultArg:
+            _val: bool
+            __base_type__ = bool
+            def __init__(self, v:bool):
+                self._val = v
+            _isDefaultArg_ = True
+            def __bool__(self):
+                return self._val
+            def __str__(self):
+                return str(self._val)
+            def __repr__(self) -> str:
+                return repr(self._val)
+        return _DefaultArg(val)
+    else:
+        class _DefaultArg(type(val)):
+            __base_type__ = type(val)
+            _isDefaultArg_ = True
+        return _DefaultArg(val)
+
+def isArgDefultValue(val):
+    clsn = getattr(val, '__class__', '')
+    clsn = getattr(clsn, '__name__', '')
+    return val is None or (clsn == '_DefaultArg' and hasattr(val, '_isDefaultArg_')) # pylint: disable=protected-access
