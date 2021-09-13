@@ -16,7 +16,7 @@ from pymrtd.pki.ml import CscaMasterList
 from pymrtd.pki import x509
 from port.database import PortDatabaseConnection, truncateAll
 from port.proto import utils
-from port.settings import *
+from port.config import *
 
 logger = logging.getLogger(__name__)
 

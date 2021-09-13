@@ -2,7 +2,7 @@ import logging
 from asn1crypto.cms import CertificateRevocationLists
 from port.proto.utils import bytes_to_int
 
-from port.settings import *
+from port.config import *
 from port.database import CrlUpdateInfo, CscaStorage, DscStorage, PortDatabaseConnection
 from port.proto.types import CountryCode
 

@@ -1,13 +1,13 @@
 from port.management.builder import Builder
-from port.settings import *
+from port.config import *
 
 
 DSC_CRL = open('C://Users/nejko/Desktop/ZeroPass/B1/random/parseCSCAandCRL/data/abc/icaopkd-001-dsccrl-003903.ldif', 'rb')
 CSCA = open('C://Users/nejko/Desktop/ZeroPass/B1/random/parseCSCAandCRL/data/abc/icaopkd-002-ml-000131.ldif', 'rb')
 
-config = Config(
-        database=DbConfig(user="", pwd="", db=""),
-        api_server=ServerConfig(host=None, port=None, ssl_ctx=None),
+config = ServerConfig(
+        database=DbConfig(user="", password="", db=""),
+        api=HttpServerConfig(host=None, port=None, ssl_ctx=None),
         web_app=WebAppConfig(host=None, port=None),
         challenge_ttl=0
     )

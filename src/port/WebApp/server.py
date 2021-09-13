@@ -23,7 +23,7 @@ import shutil
 import mimetypes
 import re
 import argparse
-from port.settings import *
+from port.config import *
 import base64
 
 from io import BytesIO
@@ -436,13 +436,13 @@ elif args['url'] == "localhost":
 if args['db_user'] == None or args['db_pwd'] == None or args['db_name'] == None:
     raise Exception("Parameters 'db-user', 'db-pwd' and 'db-name' are necessary.")
 
-config = Config(
+config = ServerConfig(
         database=DbConfig(
             user=args['db_user'],
-            pwd=args['db_pwd'],
+            password=args['db_pwd'],
             db=args['db_name']
         ),
-        api_server=ServerConfig(
+        api=HttpServerConfig(
             host=None,
             port=None,
             ssl_ctx=None
