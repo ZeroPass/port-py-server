@@ -29,6 +29,7 @@ setup(
         'orjson>=3.6.3',
         'pycountry>=20.7.3',
         'pymrtd>=0.6.2',
+        'pywin32>=301;platform_system=="Windows"',
         'sqlalchemy>=1.4.23',
         'starlette>=0.16.0',
         'uvicorn[standard]>=0.15.0'
