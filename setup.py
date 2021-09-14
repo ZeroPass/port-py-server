@@ -3,7 +3,7 @@ import os
 import sys
 from setuptools import setup, find_packages
 __package_name__ = "port-py-server"
-__version__      = '0.8.2'
+__version__      = '0.9.0'
 __summery__      = 'Python implementation of Port server SDK'
 
 base_dir = os.path.dirname(__file__)
@@ -36,6 +36,7 @@ setup(
     ],
     extras_require={
         'examples' : [
+            'PyYAML>=5.4.1 ',
             'requests>=2.26.0'
         ],
         'mysql' : ['mysqlclient>=2.0.3'], # for using MySQL DB

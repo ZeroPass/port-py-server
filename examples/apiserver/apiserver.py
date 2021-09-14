@@ -2,41 +2,39 @@
 import argparse
 import coloredlogs
 import os
-import signal
 import sys
-import ssl
+import yaml
 
-from collections import defaultdict
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
-from pymrtd.pki.crl import CertificateRevocationList
 
 _script_path = Path(os.path.dirname(sys.argv[0]))
 #sys.path.append(str(_script_path / Path("../../")))
 
 from port import log
-from port.api import PortApi
-from port.database import AccountStorage, CertificateRevocationInfo, CertificateStorage, DscStorage, SodTrack
+from port.config import ServerConfig, defaultArg, LogLevelValidator, ArgumentHelpFormatter
+from port.database import (
+    AccountStorage,
+    CertificateStorage,
+    DscStorage,
+    SodTrack,
+    StorageAPI
+)
 from port.proto import (
     Challenge,
-    CountryCode,
-    DatabaseAPI,
-    MemoryDB,
     PortProto,
-    ProtoError,
-    SeEntryAlreadyExists,
-    StorageAPI,
     UserId,
     utils
 )
-from port.settings import Config, DbConfig, ServerConfig
 
-from pymrtd.pki import x509
-from typing import Callable, Optional, Tuple
+from port.server import PortServer
+from typing import Optional, Tuple, Union
+
 
 class DevProto(PortProto):
-    def __init__(self, storage: StorageAPI, cttl: int, fc: bool, no_tcv: bool):
-        super().__init__(storage, cttl)
+    def __init__(self, storage: StorageAPI, cttl: int, fc: bool, no_tcv: bool, maintenanceInterval: int = 36):
+        super().__init__(storage, cttl, maintenanceInterval)
         self._fc = fc
         self._no_tcv = no_tcv
         self._log = log.getLogger("port.dev_proto")
@@ -66,88 +64,28 @@ class DevProto(PortProto):
         else:
             self._log.warning("Skipping verification of certificate trustchain")
 
+class ExamplePortServer(PortServer):
+    def _init_proto(self, db: StorageAPI):
+        if self._cfg.dev:
+            self._proto = DevProto(db, self._cfg.challenge_ttl, self._cfg.dev_fc or False, self._cfg.dev_no_tcv or False,
+                maintenanceInterval=self._cfg.job_interval)
+        else:
+            super()._init_proto(db)
 
-def parse_args():
-    # Set-up cmd parameters
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--challenge-ttl", default=300,
-        type=int, help="number of seconds before requested challenge expires")
-
-    ap.add_argument("-c", "--cert", default=str(_script_path / "tls/port_server.cer"),
-        type=str, help="server TLS certificate")
-
-    ap.add_argument("--db-dialect",
-        type=str, help="database dialect e.g.: postgresql, mysql etc...\nOverrides --mdb")
-
-    ap.add_argument("--db-url", default="",
-        type=str, help="database URL")
-
-    ap.add_argument("--db-user", default="",
-        type=str, help="database user name")
-
-    ap.add_argument("--db-pwd", default="",
-        type=str, help="database password")
-
-    ap.add_argument("--db-name", default="",
-        type=str, help="database name")
-
-    ap.add_argument("--mdb", default=False,
-        action='store_true', help="use MemoryDB for database. --db-* args will be ignored")
-
-    ap.add_argument("--mrtd-pkd", default=None,
-        type=Path, help="path to eMRTD PKD root folder to load PKI certificates into DB, i.e.: CSCA, DSC, CRLs...")
-
-    ap.add_argument("--mrtd-pkd-allow-self-issued-csca", default=True, action=argparse.BooleanOptionalAction,
-        type=bool, help="allow self-issued CSCA to be loaded into DB")
-
-    ap.add_argument("--dev", default=False,
-        action='store_true', help="start development version of server")
-
-    ap.add_argument("--dev-fc", default=False,
-        action='store_true', help="dev option: use pre-set fixed challenge instead of random generated")
-
-    ap.add_argument("--dev-no-tcv", default=False,
-        action='store_true', help="dev option: do not verify eMRTD PKI trust-chain.\nOverrides --mrtd-pkd")
-
-    ap.add_argument("-k", "--key", default=str(_script_path / "tls/server_key.pem"),
-        type=str, help="server TLS private key")
-
-    ap.add_argument("--log-level", default=0,
-        type=int, help="logging level, [0=verbose, 1=debug, 2=info, 3=warn, 4=error]")
-
-
-    ap.add_argument("--no-tls", default=False,
-        action='store_true', help="do not use secure TLS connection")
-
-    ap.add_argument("-p", "--port",
-        type=int, help="server listening port")
-
-    ap.add_argument("-u", "--url", default='0.0.0.0',
-        type=str, help="server http address")
-
-    args = vars(ap.parse_args())
-
-    if args["log_level"] <= 0:
-        args["log_level"] = log.VERBOSE
-    elif args["log_level"] == 1:
-        args["log_level"] = log.DEBUG
-    elif args["log_level"] == 2:
-        args["log_level"] = log.INFO
-    elif args["log_level"] == 3:
-        args["log_level"] = log.WARNING
-    elif args["log_level"] >= 4:
-        args["log_level"] = log.ERROR
-
-    if args['port'] is None:
-        args['port'] = 80 if args['no_tls'] else 443
-
-    return args
-
-def init_log(logLevel):
-    l = log.getLogger()
+def init_log(logLevel: Union[str, int]):
+    """
+    Initializes global logging system for server.
+    Functions installs `coloredlogs` and adds `FileHandler("server.log")`
+    to the log.
+    :param `logLevel`: Int or string log level.
+    :raises `ValueError`: If `logLevel` is invalid value.
+    """
+    if isinstance(logLevel, str):
+        logLevel = LogLevelValidator()(logLevel)
+    _log = log.getLogger()
     coloredlogs.install(
         level  = log.getLevelName(logLevel),
-        logger = l,
+        logger = _log,
         fmt    = '[%(asctime)s] %(levelname)-8s %(thread)-8d %(name)s %(message)s',
         field_styles = {
             'asctime': {'color': 'white'},
@@ -166,172 +104,80 @@ def init_log(logLevel):
         }
     )
 
-    log.getLogger('requests').setLevel(log.WARN)
-    log.getLogger('urllib3').setLevel(log.WARN)
+    # Log file handler as local static var 'fh'.
+    # Initialized only once, but level can be changed
+    # with every call to init_log.
+    if not hasattr(init_log, 'fh'):
+        init_log.fh = log.FileHandler("server.log")
+        formatter = log.Formatter(
+            '[%(asctime)s] %(levelname)-8s %(thread)-8d %(name)s %(message)s'
+        )
+        init_log.fh.setFormatter(formatter)
+        _log.addHandler(init_log.fh)
+    init_log.fh.setLevel(logLevel)
 
-    fh = log.FileHandler("server.log")
-    fh.setLevel(logLevel)
-    formatter = log.Formatter(
-        '[%(asctime)s] %(levelname)-8s %(thread)-8d %(name)s %(message)s'
-    )
-    fh.setFormatter(formatter)
-    l.addHandler(fh)
+@dataclass
+class DevServerConfig(ServerConfig):
+    dev: Optional[bool]       = None # enable development mode
+    dev_fc: Optional[bool]    = None # fixed proto challenge when dev is enabled
+    dev_no_tcv:Optional[bool] = None # no trustchain validation when dev is enabled
 
-def load_pkd_to_db(proto: PortProto, pkdPath: Path, allowSelfIssuedCSCA: bool):
-    l = log.getLogger('port.api.server')
-    l.info("Loading PKI certificates into DB, allowSelfIssuedCSCA=%s ...", allowSelfIssuedCSCA)
-    def keyid2str(cert):
-        return cert.subjectKey.hex() if cert.subjectKey is not None else None
+    @staticmethod
+    def argumentParser(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
+        parser = ServerConfig.argumentParser(parser)
+        group = parser.add_argument_group('Development', 'development options')
+        group.add_argument('--dev', default=defaultArg(False), action='store_true',
+            help='Start development version of server')
 
-    timeNow = utils.time_now()
-    cscas:  dict[str, dict[str, x509.CscaCertificate]] = defaultdict(dict)
-    lcscas: dict[str, dict[str, x509.CscaCertificate]] = defaultdict(dict)
-    dscs:   dict[str, dict[str, x509.DocumentSignerCertificate]] = defaultdict(dict)
-    crls:   dict[str, CertificateRevocationList] = defaultdict()
-    for cert in pkdPath.rglob('*.cer'):
-        try:
-            l.verbose("Loading certificate: %s", cert)
-            cfd = cert.open('rb')
-            cert = x509.Certificate.load(cfd.read())
-            if not cert.isValidOn(timeNow):
-                l.debug("Skipping expired certificate. C=%s serial=%s key_id=%s",
-                    CountryCode(cert.issuerCountry), CertificateStorage.makeSerial(cert.serial_number).hex(), keyid2str(cert))
-                continue
+        group.add_argument('--dev-fc', default=None, action='store_true',
+            help='Dev option: use pre-set fixed challenge instead of random generated')
 
-            ku = cert.key_usage_value.native
-            if cert.ca:
-                if 'key_cert_sign' not in ku:
-                    l.warning("CSCA doesn't have key_cert_sign constrain. C=%s serial=%s key_id=%s",
-                        CountryCode(cert.issuerCountry), CertificateStorage.makeSerial(cert.serial_number).hex(), keyid2str(cert))
-                cert.__class__ = x509.CscaCertificate
-                if cert.self_signed == 'maybe':
-                    cscas[cert.issuerCountry][cert.serial_number] = cert
-                else:
-                    lcscas[cert.issuerCountry][cert.serial_number] = cert
-            elif 'digital_signature' in ku and 'key_cert_sign' not in ku:
-                cert.__class__ = x509.DocumentSignerCertificate
-                dscs[cert.issuerCountry][cert.serial_number] = cert
-
-            else:
-                l.warning("Skipping certificate because it is not CA but has key_cert_sign constrain. C=%s serial=%s key_id=%s",
-                    CountryCode(cert.issuerCountry), CertificateStorage.makeSerial(cert.serial_number).hex(), keyid2str(cert))
-        except Exception as e:
-            l.warning("Could not load certificate: %s", cert)
-            l.exception(e)
-
-    for crl in pkdPath.rglob('*.crl'):
-        try:
-            l.verbose("Loading crl: %s", crl)
-            cfd = crl.open('rb')
-            crl = CertificateRevocationList.load(cfd.read())
-            crls[crl.issuer.human_friendly] = crl
-        except Exception as e:
-            l.warning("Could not load CRL: %s", crl)
-            l.exception(e)
-
-    def insertCerts(certs, certType: str, insertIntoDB: Callable[[x509.Certificate], None]) -> int:
-        assert callable(insertIntoDB)
-        cert_count = 0
-        for _, cd in certs.items():
-            for _, cert in cd.items():
-                try:
-                    insertIntoDB(cert)
-                    cert_count += 1
-                except SeEntryAlreadyExists:
-                    l.info("Skipping %s certificate because it already exists. C=%s serial=%s key_id=%s",
-                        certType, CountryCode(cert.issuerCountry), CertificateStorage.makeSerial(cert.serial_number).hex(), keyid2str(cert))
-                except Exception as e:
-                    l.warning("Could not add %s certificate into DB. C=%s serial=%s key_id=%s",
-                        certType, CountryCode(cert.issuerCountry), CertificateStorage.makeSerial(cert.serial_number).hex(), keyid2str(cert))
-                    if isinstance(e, ProtoError):
-                        l.warning(" e=%s", e)
-        return cert_count
-
-    def insertCrls(crls: dict[str, CertificateRevocationList]) -> int:
-        crl_count = 0
-        for issuer, crl in crls.items():
-            try:
-                proto.updateCRL(crl)
-                crl_count += 1
-            except SeEntryAlreadyExists:
-                l.info("Skipping CRL because it already exists. issuer='%s' crlNumber=%s", issuer, crl.crlNumber)
-            except Exception as e:
-                l.warning("Could not add CRL into DB. issuer='%s' crlNumber=%s", issuer, crl.crlNumber)
-                if isinstance(e, ProtoError):
-                    l.warning(" e=%s", e)
-        return crl_count
-
-    cert_count  = insertCerts(cscas, 'CSCA', lambda csca: proto.addCscaCertificate(csca, allowSelfIssued=allowSelfIssuedCSCA))
-    cert_count += insertCerts(lcscas, 'LCSCA', lambda lcsca: proto.addCscaCertificate(lcsca, allowSelfIssued=False))
-    cert_count += insertCerts(dscs, 'DSC', proto.addDscCertificate)
-    crl_count   = insertCrls(crls)
-    l.info("%s certificates loaded into DB.", cert_count)
-    l.info("%s CRLs loaded into DB.", crl_count)
+        group.add_argument('--dev-no-tcv', default=None, action='store_true',
+            help='Dev option: do not verify eMRTD PKI trust-chain.')
+        return parser
 
 def main():
-    args = parse_args()
+    _log = log.getLogger('port.server')
+    try:
+        init_log(log.WARNING)
 
-    init_log(args['log_level'])
-    l = log.getLogger('port.api.server')
-    l.info("Starting new server session ...")
-    l.debug("run parameters: %s", sys.argv[1:])
+        parser = argparse.ArgumentParser(
+            prog  = Path(sys.argv[0]).stem,
+            usage = '%(prog)s [options]',
+            formatter_class = ArgumentHelpFormatter,
+            description = 'Example Port server.'
+        )
 
-    ctx = None
-    if not args['no_tls']:
-        ctx = ssl.SSLContext( ssl.PROTOCOL_TLS_SERVER)
-        ctx.options |= ssl.OP_SINGLE_ECDH_USE | ssl.OP_NO_TLSv1_2 | ssl.OP_NO_TLSv1_1 | ssl.OP_NO_TLSv1 | ssl.OP_NO_SSLv3 | ssl.OP_NO_SSLv2
-        ctx.load_cert_chain(args['cert'], args['key'])
+        parser.add_argument('--config', type=Path, default='config.yaml', help='Config file.')
+        DevServerConfig.argumentParser(parser)
 
-    config = Config(
-        database = DbConfig(
-            dialect = args['db_dialect'],
-            url     = args['db_url'],
-            user    = args['db_user'],
-            pwd     = args['db_pwd'],
-            db      = args['db_name']
-        ),
-        api_server = ServerConfig(
-            host = args['url'],
-            port = args['port'],
-            ssl_ctx = ctx
-        ),
-        web_app=None,
-        challenge_ttl = args['challenge_ttl']
-    )
+        args = parser.parse_args()
+        cfg: DevServerConfig = None
+        if args.config.exists():
+            with open(args.config, mode='r') as cf:
+                try:
+                    jcfg = yaml.safe_load(cf)
+                    cfg = DevServerConfig.fromJson(jcfg)
+                except Exception as e:
+                    _log.exception(e)
+                    return 1
 
-    if args['mdb'] and not args['db_dialect']:
-        db  = MemoryDB()
-    else:
-        db = DatabaseAPI(config.database.dialect, config.database.url, config.database.db, config.database.user, config.database.pwd)
+        delattr(args, 'config')
+        if cfg is None:
+            cfg = DevServerConfig.fromArgs(args)
+        else:
+            cfg.update(args) # override
 
-    # Setup and run server
-    if args["dev"]:
-        proto = DevProto(db, config.challenge_ttl, args['dev_fc'],  args['dev_no_tcv'])
-    else:
-        proto = PortProto(db, config.challenge_ttl)
+        # Re-init log with provided level
+        init_log(cfg.log_level)
+        srv = ExamplePortServer(cfg)
+        ret = srv.run()
+        return ret
 
-    if args['mrtd_pkd'] and not args['dev_no_tcv']:
-        allowSelfIssuedCSCA = args['mrtd_pkd_allow_self_issued_csca']
-        load_pkd_to_db(proto, args['mrtd_pkd'], allowSelfIssuedCSCA)
-
-    def signal_handler(sig, frame): #pylint: disable=unused-argument
-        print('Stopping server...')
-        proto.stop()
-        print('Stopping server... SUCCESS')
-        sys.exit(0)
-    signal.signal(signal.SIGINT, signal_handler)
-
-    import uvicorn
-    sslKeyfile = None
-    sslCertfile = None
-    if not args['no_tls']:
-        sslKeyfile = args['key']
-        sslCertfile = args['cert']
-
-    api = PortApi(proto, debug=True)
-    proto.start()
-    uvicorn.run(api, host=config.api_server.host, port=config.api_server.port,
-        ssl_ciphers='TLSv1.2', ssl_keyfile=sslKeyfile, ssl_certfile=sslCertfile, log_level="debug")
+    except Exception as e:
+        _log.exception(e)
+        return 1
 
 if __name__ == "__main__":
     main()
+    sys.exit(main())
