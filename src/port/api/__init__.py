@@ -1,6 +1,7 @@
 from .api import PortApi
-from .base import PortApiError
+from .base import JsonRpcApi, JsonRpcApiError
 __all__ = [
-    'PortApi',
-    'PortApiError'
+    'JsonRpcApi',
+    'JsonRpcApiError',
+    'PortApi'
 ]

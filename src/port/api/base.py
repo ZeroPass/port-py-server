@@ -29,7 +29,7 @@ from starlette.routing import Route
 
 from typing import Any, Callable, NoReturn, Optional
 
-class PortApiError(Exception):
+class JsonRpcApiError(Exception):
     pass
 
 def portapi(api_f: Callable): #pylint: disable=no-self-argument
@@ -122,7 +122,7 @@ class JsonRpcApi(IApi, Starlette):
         Constructs new JSON RPC API.
         :param `proto`: Port protocol object.
         :param `debug`: If true `Starlette` will be initialized in debug mode.
-        :raises `PortApiError`: If there is duplicate API method.
+        :raises `JsonRpcApiError`: If there is duplicate API method.
         """
 
         self._req_dispatcher = Dispatcher()
@@ -146,7 +146,7 @@ class JsonRpcApi(IApi, Starlette):
         def register_api_method(name, api_f):
             if name in self._req_dispatcher:
                 self._log.error("Can't register existing API method: '%s'", name)
-                PortApiError(f"Can't register existing API method: '{name}'")
+                raise JsonRpcApiError(f"Can't register existing API method: '{name}'")
             self._req_dispatcher.add_method(api_f, \
                 f'{self._api_method_prefix}.{name}')
         self._build_api(register_api_method)
