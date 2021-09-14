@@ -126,7 +126,7 @@ class SodTrack:
         if dgNumber == DataGroupNumber(1):
             return self.dg1Hash
         if dgNumber == DataGroupNumber(2):
-            return dgNumber
+            return self.dg2Hash
         if dgNumber == DataGroupNumber(3):
             return self.dg3Hash
         if dgNumber == DataGroupNumber(4):
