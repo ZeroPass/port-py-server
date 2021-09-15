@@ -86,21 +86,26 @@ class IApi:
         methods = inspect.getmembers(self, predicate=inspect.ismethod)
         for name, method in methods:
             if method.__name__ == "_wrapped_api_f":
-                self._log.debug("Registering API function: '%s'", name)
+                self._log.debug("Registering API method: '%s'", name)
                 register_api(name, method)
 
     def _log_api_call(self, f, **kwargs):
-        if self._log.level <= log.VERBOSE:
+        if self._log.level <= log.DEBUG:
             self._log.debug(":%s() ==>", f.__name__)
-            for a, v in kwargs.items():
-                self._log.verbose(" %s: %s", a, v)
-
-    def _log_api_response(self, f, resp: dict):
-        if self._log.level <= log.VERBOSE:
-            self._log.debug(":%s() <==", f.__name__)
-            if resp is not None:
-                for a, v in resp.items():
+            if self._log.level <= log.VERBOSE:
+                for a, v in kwargs.items():
                     self._log.verbose(" %s: %s", a, v)
+
+    def _log_api_response(self, f, resp: Any):
+        if self._log.level <= log.DEBUG:
+            self._log.debug(":%s() <==", f.__name__)
+            if self._log.level <= log.VERBOSE:
+                if resp is not None and self._log.level :
+                    if isinstance(resp, dict):
+                        for a, v in resp.items():
+                            self._log.verbose(" %s: %s", a, v)
+                    else:
+                        self._log.verbose(resp)
 
 class ORJSONResponse(JSONResponse):
     media_type = "application/json"
@@ -141,6 +146,7 @@ class JsonRpcApi(IApi, Starlette):
         """
         if method in self._req_dispatcher:
             del self._req_dispatcher[method]
+            self._log.info("API method '%s' was unregistered.", method)
 
     def _init_api(self):
         def register_api_method(name, api_f):
@@ -150,7 +156,7 @@ class JsonRpcApi(IApi, Starlette):
             self._req_dispatcher.add_method(api_f, \
                 f'{self._api_method_prefix}.{name}')
         self._build_api(register_api_method)
-        self._log.debug("%s API methods registered.", len(self._req_dispatcher))
+        self._log.info("%s API methods registered.", len(self._req_dispatcher))
 
     async def _handle_request(self, request: Request) -> Response:
         ct = request.headers['content-type'].split(';')
