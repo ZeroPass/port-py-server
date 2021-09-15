@@ -23,6 +23,7 @@ from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import mapper, sessionmaker, scoped_session
 from sqlalchemy.orm.session import Session
+from sqlalchemy.pool import StaticPool
 
 from .account import AccountStorage
 from .challenge import ChallengeStorage
@@ -268,20 +269,33 @@ class PortDatabaseConnection:
             self._log.verbose("  password='%s'", password) # Maybe should not log password?
             self._log.debug("  connectionRecycle'=%s'", connectionRecycle)
 
+            # If SQLite dialect and database is :memory: add additional
+            # engine params to enable single connection pool accross multiple threads.
+            # https://docs.sqlalchemy.org/en/14/dialects/sqlite.html#using-a-memory-database-in-multiple-threads
+            akwargs = {}
+            if not db \
+                and dialect.startswith(DatabaseDialect.SQLite.value):
+                akwargs = {
+                    'poolclass' : StaticPool,
+                    'connect_args' : {'check_same_thread':False}
+                }
+
             url = PortDatabaseConnection.__buildUrl(dialect, host, db, username, password)
-            self._engine = sqlalchemy.create_engine(url,
+            self._engine = sqlalchemy.create_engine(
+                url,
                 encoding     = 'utf-8',
                 pool_recycle = connectionRecycle,
                 echo         = debugLogging,
                 echo_pool    = logPool,
-                future       = True  # future=True -> support sqlalchemy v 2.0
+                future       = True,  # future=True -> support sqlalchemy v 2.0
+                **akwargs
             )
 
             # we create session object to use it later
             self._log.debug("Initializing SQL session from created engine.")
-            self._base = declarative_base()
             S = sessionmaker(bind=self._engine, expire_on_commit=True, future=True) # future=True -> support sqlalchemy v 2.0
             self._session = scoped_session(S)
+            self._base    = declarative_base(bind=self._engine, metadata=metadata)
             self.initTables()
 
         except Exception as e:
@@ -299,7 +313,7 @@ class PortDatabaseConnection:
 
     def initTables(self):
         self._log.debug("Initializing Port DB tables.")
-        self._base.metadata.create_all(self._engine, tables=[
+        self._base.metadata.create_all(tables=[
             crlUpdateInfo,
             crt,
             pkiDistributionInfo,
