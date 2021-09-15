@@ -43,4 +43,4 @@ class HttpServer(uvicorn.Server):
                 os.remove(self.config.uds)
             self._log.debug('Server was stopped successfully.')
         except KeyboardInterrupt:
-            self._log.warning('Stop procedure was interrupted!')
+            self._log.warning('Server was forced stopped by keyboard interrupt!')
