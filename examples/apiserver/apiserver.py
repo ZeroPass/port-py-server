@@ -123,8 +123,8 @@ class DevServerConfig(ServerConfig):
     dev_no_tcv:Optional[bool] = None # no trustchain validation when dev is enabled
 
     @staticmethod
-    def argumentParser(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
-        parser = ServerConfig.argumentParser(parser)
+    def argumentParser(parser: argparse.ArgumentParser, dbDialectRequired=True) -> argparse.ArgumentParser:
+        parser = ServerConfig.argumentParser(parser, dbDialectRequired)
         group = parser.add_argument_group('Development', 'development options')
         group.add_argument('--dev', default=defaultArg(False), action='store_true',
             help='Start development version of server')

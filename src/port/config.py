@@ -260,10 +260,11 @@ class ServerConfig(IConfig):
         self.__dict__ = self.fromJson(jcfg, infer_missing, strict).__dict__
 
     @staticmethod
-    def argumentParser(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
+    def argumentParser(parser: argparse.ArgumentParser, dbDialectRequired=True) -> argparse.ArgumentParser:
         """
         Adds & formats cmd arguments of `ServerConfig` to the `parser`.
         :param `parser`: The `ArgumentParser` to add arguments to.
+        :param `dbDialectRequired`: If True `--db-dialect` is required argument.
         :return: Updated parser.
         """
 
@@ -276,7 +277,7 @@ class ServerConfig(IConfig):
         # Database
         db = parser.add_argument_group('Database')
         dbcmdg = _abbrev.get('database', 'database')
-        db.add_argument(f'--{dbcmdg}-dialect', type=DbDialectValidator(), required=True,
+        db.add_argument(f'--{dbcmdg}-dialect', type=DbDialectValidator(), required=dbDialectRequired,
             help='Database dialect with optional DB driver.\n  e.g.: mdb, mysql, postgresql, sqlite, sqlite+pysqlite etc...')
 
         db.add_argument(f'--{dbcmdg}-url', type=_KeepDfltStrWrapper(), default=defaultArg(DbConfig.url),
@@ -304,10 +305,10 @@ class ServerConfig(IConfig):
             help="Close 'Keep-Alive' connections if no new data\nis received within this timeout.")
 
         api.add_argument('--api-tls-cert', type=Path,
-            help='A path to the TLS certificate file to use in TLS connection.')
+            help='A path to the TLS certificate file to use for secure connection.')
 
         api.add_argument('--api-tls-key', type=Path,
-            help='A path to the TLS private key file to use in TLS connection.')
+            help='A path to the TLS private key file to use for secure connection.')
 
         # Proto
         srv = parser.add_argument_group('Server')
