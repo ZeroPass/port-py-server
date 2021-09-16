@@ -320,8 +320,33 @@ class PortProto:
         self._log.verbose("dg2=%s"    , accnt.dg2.hex() if accnt.dg2 else None)
         self._log.verbose("pubkey=%s" , accnt.aaPublicKey.hex())
         self._log.verbose("sigAlgo=%s", "None" if aaSigAlgo is None else accnt.aaSigAlgo.hex())
-
         return {}
+
+    def getAttestationInfo(self, uid: UserId) -> Tuple[database.AccountStorage, database.SodTrack, datetime, bool]:
+        """
+        Returns attestation info for account under `uid`.
+        :param `uid`: `UserId` of account.
+        :return: A tuple consisting of `database.AccountStorage` object,
+                 accounts `database.SodTrack`object,
+                 `datetime` when the account attestation expires and a `bool`
+                 denoting whether the account has valid passive attestation or not.
+        :raises `seAccountNotFound`: If no account exists under provided `uid`.
+        :raises `StorageAPIError`: On storage related errors.
+        """
+        self._log.debug("getAttestationInfo: uid=%s", uid)
+        a = self._db.getAccount(uid)
+        if a.sodId is not None:
+            st = self._db.findSodTrack(a.sodId)
+        attested = self._is_account_attested(a, st)
+
+        expires = a.expires
+        if expires is None:
+            expires = utils.time_now()
+            if st is not None:
+                dsc = self._db.findDsc(st.dscId)
+                if dsc is not None:
+                    expires = dsc.notValidAfter
+        return (a, st, expires, attested)
 
     def getAssertion(self, uid: UserId, cid: CID, csigs: List[bytes]) -> dict:
         """
@@ -386,6 +411,9 @@ class PortProto:
                                          e.g. fully verified CSCA master list, server admin).
                                          Self-issued CSCA should be PROHIBITED, for example, through public api.
         :return database.CscaStorage:
+        :raises peCscaExists: When `csca` is already stored in the database.
+        :raises peCscaNotFound: When no issuing CSCA is found for LCSCA certificate `csca`.
+        :raises peCscaSelfIssued: If `allowSelfIssued` is False and no matching LCSCA certificate is found for `csca`.
         :raises peCscaTooNewOrExpired: If CSCA is too new (nvb > now) or has expired.
         :raises peInvalidCsca: When CSCA doesn't conform to the ICAO 9303 standard.
         """
@@ -485,11 +513,11 @@ class PortProto:
 
         :param dsc: The DSC certificate to add.
         :return database.DscStorage:
-        :raises peDscTooNewOrExpired: If DSC is too new (nvb > now) or has expired.
-        :raises peInvalidDsc: When DSC doesn't conform to the ICAO 9303 standard or
+        :raises peDscTooNewOrExpired: When `dsc` is too new (nvb > now) or has expired.
+        :raises peInvalidDsc: When `dsc` doesn't conform to the ICAO 9303 standard or
                               or verification of the signature with the issuing CSCA certificate fails.
         :raises peDscCantIssuePassport: If DSC can't issue passport document.
-        :raises peCscaNotFound: If the issuing CSCA certificate can't be found in the DB.
+        :raises peCscaNotFound: When the issuing CSCA certificate can't be found in the DB.
         """
         if not utils.is_valid_alpha2(dsc.issuerCountry):
             self._log.error("Trying to add DSC certificate with no or invalid country code!")
