@@ -3,11 +3,11 @@ import os
 import sys
 from setuptools import setup, find_packages
 __package_name__ = "port-py-server"
-__version__      = '0.9.1'
+__version__      = '0.10.0'
 __summery__      = 'Python implementation of Port server SDK'
 
 base_dir = os.path.dirname(__file__)
-src_dir = os.path.join(base_dir, "src")
+src_dir  = os.path.join(base_dir, "src")
 
 # When executing the setup.py, we need to be able to import ourselves, this
 # means that we need to add the src/ directory to the sys.path.

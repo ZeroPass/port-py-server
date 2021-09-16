@@ -4,7 +4,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from port import config, log
-from port.api import PortApi
+from port.api import PortApi, PortPrivateApi
 from port.database import (
     CertificateStorage,
     DatabaseAPI,
@@ -30,6 +30,7 @@ class PortServer:
     _cfg: config.ServerConfig
     _proto: PortProto
     _apisrv: HttpServer  = None
+    _papisrv: HttpServer = None
     _log: log.logging.Logger
     _name = 'port.server'
     _ev_stop: Event
@@ -70,12 +71,28 @@ class PortServer:
                 http='httptools'
             )
 
+        # Init PAPI server
+        if self._cfg.papi:
+            papi = PortPrivateApi(self._proto, debug=False)
+            self._papisrv = HttpServer(
+                papi,
+                host=self._cfg.papi.host,
+                port=self._cfg.papi.port,
+                timeout_keep_alive=self._cfg.papi.timeout_keep_alive,
+                ssl_ciphers='TLSv1.2',
+                ssl_keyfile=self._cfg.papi.tls_key,
+                ssl_certfile=self._cfg.papi.tls_cert ,
+                log_level=self._cfg.log_level,
+                http='httptools'
+            )
+
         # run the server
         return self._start()
 
     def _start(self) -> int: # returns exit code
         self._proto.start()
         if self._apisrv: self._apisrv.start()
+        if self._papisrv: self._papisrv.start()
         try:
             while not self._ev_stop.is_set():
                 self._run_tasks()
@@ -88,7 +105,8 @@ class PortServer:
             self._log.exception(e)
             return 1
         finally:
-            self._apisrv.stop()
+            if self._papisrv: self._papisrv.stop()
+            if self._apisrv: self._apisrv.stop()
             self._proto.stop()
 
     def _stop(self):
