@@ -15,8 +15,7 @@ class HttpServer(uvicorn.Server):
             if ll == 'verbose':
                 ll = 'trace'
             kwargs['log_level'] = ll
-
-        self._log        = log.getLogger(f'port.{app.__class__.__name__}.http.server')
+        self._log        = log.getLogger(f'port.{getattr(app, "__name__", type(app).__name__)}.http.server')
         self._run_thread = Thread(target=self.run, daemon=True)
         cfg              = uvicorn.Config(app, **kwargs)
         if cfg.reload or cfg.workers > 1:

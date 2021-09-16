@@ -19,6 +19,7 @@ class PortApi(JsonRpcApi):
     """
     Port public JSON-RPC API.
     """
+    __name__ = 'api' # api name used for logging
 
 # RPC API methods
     # API: port.ping

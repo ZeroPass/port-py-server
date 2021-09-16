@@ -48,11 +48,9 @@ def portapi(api_f: Callable): #pylint: disable=no-self-argument
 class IApi:
     """ Base API interface.  """
 
-    api_name = 'api' # api name used for logging
-
     def __init__(self, proto: PortProto):
         self._proto = proto
-        self._log   = log.getLogger("port." + self.api_name)
+        self._log   = log.getLogger("port." + getattr(self, "__name__", type(self).__name__))
 
         # Register rpc API  methods
         self._init_api()
