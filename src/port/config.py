@@ -193,6 +193,7 @@ class HttpServerConfig(IConfig):
 class ServerConfig(IConfig):
     database: DbConfig
     api: Optional[HttpServerConfig] = None
+    papi: Optional[HttpServerConfig] = None
     challenge_ttl: int              = 600 # 10 minutes
     job_interval: int               = 3600  # 1 hour, an interval at which server does maintenance job and other tasks. (e.g.: delete expired proto challenges from DB)
     log_level: str                  = 'verbose'
@@ -308,6 +309,23 @@ class ServerConfig(IConfig):
             help='A path to the TLS certificate file to use for secure connection.')
 
         api.add_argument('--api-tls-key', type=Path,
+            help='A path to the TLS private key file to use for secure connection.')
+
+        # Public API
+        papi = parser.add_argument_group('Private API server')
+        papi.add_argument('--papi-host', type=_KeepDfltStrWrapper(), default=defaultArg('127.0.0.1'),
+            help='Server listening host.')
+
+        papi.add_argument('--papi-port', type=int, default=defaultArg(9090),
+            help='Server listening port.')
+
+        papi.add_argument('--papi-timeout-keep-alive', type=int, default=defaultArg(HttpServerConfig.timeout_keep_alive),
+            help="Close 'Keep-Alive' connections if no new data\nis received within this timeout.")
+
+        papi.add_argument('--papi-tls-cert', type=Path,
+            help='A path to the TLS certificate file to use for secure connection.')
+
+        papi.add_argument('--papi-tls-key', type=Path,
             help='A path to the TLS private key file to use for secure connection.')
 
         # Proto
