@@ -29,7 +29,7 @@ from typing import Callable
 class PortServer:
     _cfg: config.ServerConfig
     _proto: PortProto
-    _apisrv: HttpServer
+    _apisrv: HttpServer  = None
     _log: log.logging.Logger
     _name = 'port.server'
     _ev_stop: Event
@@ -55,25 +55,27 @@ class PortServer:
         if self._cfg.mrtd_pkd is not None:
             self._load_pkd_to_db(self._cfg.mrtd_pkd.path, self._cfg.mrtd_pkd.allow_self_issued_csca)
 
-        api = PortApi(self._proto, debug=True)
-        self._apisrv = HttpServer(
-            api,
-            host=self._cfg.api.host,
-            port=self._cfg.api.port,
-            timeout_keep_alive=self._cfg.api.timeout_keep_alive,
-            ssl_ciphers='TLSv1.2',
-            ssl_keyfile=self._cfg.api.tls_key,
-            ssl_certfile=self._cfg.api.tls_cert ,
-            log_level=self._cfg.log_level,
-            http='httptools'
-        )
+        # Init API server
+        if self._cfg.api:
+            api = PortApi(self._proto, debug=False)
+            self._apisrv = HttpServer(
+                api,
+                host=self._cfg.api.host,
+                port=self._cfg.api.port,
+                timeout_keep_alive=self._cfg.api.timeout_keep_alive,
+                ssl_ciphers='TLSv1.2',
+                ssl_keyfile=self._cfg.api.tls_key,
+                ssl_certfile=self._cfg.api.tls_cert ,
+                log_level=self._cfg.log_level,
+                http='httptools'
+            )
 
         # run the server
         return self._start()
 
     def _start(self) -> int: # returns exit code
         self._proto.start()
-        self._apisrv.start()
+        if self._apisrv: self._apisrv.start()
         try:
             while not self._ev_stop.is_set():
                 self._run_tasks()
