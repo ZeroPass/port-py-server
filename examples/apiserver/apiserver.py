@@ -141,17 +141,10 @@ def main():
     try:
         init_log(log.WARNING)
 
-        parser = argparse.ArgumentParser(
-            prog  = Path(sys.argv[0]).stem,
-            usage = '%(prog)s [options]',
-            formatter_class = ArgumentHelpFormatter,
-            description = 'Example Port server.'
-        )
-
+        # Get config from file
+        parser = argparse.ArgumentParser(add_help = False)
         parser.add_argument('--config', type=Path, default='config.yaml', help='Config file.')
-        DevServerConfig.argumentParser(parser)
-
-        args = parser.parse_args()
+        args, leftovers = parser.parse_known_args()
         cfg: DevServerConfig = None
         if args.config.exists():
             with open(args.config, mode='r') as cf:
@@ -162,6 +155,17 @@ def main():
                     _log.exception(e)
                     return 1
 
+        # Parse cmd arguments and merge with existing config
+        parser = argparse.ArgumentParser(
+            parents=[parser],
+            prog  = Path(sys.argv[0]).stem,
+            usage = '%(prog)s [options]',
+            formatter_class = ArgumentHelpFormatter,
+            description = 'Example Port server.',
+        )
+        dbDialectRequired = cfg is None
+        DevServerConfig.argumentParser(parser, dbDialectRequired=dbDialectRequired)
+        args = parser.parse_args(leftovers)
         delattr(args, 'config')
         if cfg is None:
             cfg = DevServerConfig.fromArgs(args)
