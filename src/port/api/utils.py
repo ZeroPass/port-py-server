@@ -1,6 +1,8 @@
 from base64 import b64decode
 from port.proto import PeInvalidOrMissingParam
-from typing import List
+from typing import Final, List
+
+SUCCESS: Final = 'success'
 
 def try_deserialize(f):
     try:
