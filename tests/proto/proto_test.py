@@ -8,7 +8,10 @@ import random
 
 from datetime import timedelta
 
-from port.proto.proto import (
+from port.proto import (
+    CertificateId,
+    Challenge,
+    CountryCode,
     peAccountAlreadyRegistered,
     peAccountNotAttested,
     peAttestationExpired,
@@ -47,9 +50,12 @@ from port.proto.proto import (
     peTrustchainCheckFailedRevokedCert,
     PeUnauthorized,
     PortProto,
-    ProtoError
+    ProtoError,
+    SodId,
+    UserId,
+    utils
 )
-from port.proto import CertificateId, Challenge, CountryCode, SodId, UserId, utils
+
 from port.database import CertificateRevocationInfo, DscStorage, SeEntryAlreadyExists
 
 from pymrtd import ef
