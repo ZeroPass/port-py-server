@@ -120,9 +120,10 @@ class PortServer:
         self._log.debug('_run_tasks')
 
     def _init_proto(self, db: StorageAPI):
-        self._proto = PortProto(db, self._cfg.challenge_ttl, maintenanceInterval=self._cfg.job_interval)
+        self._proto = PortProto(db, self._cfg.challenge_ttl)
 
     def _load_pkd_to_db(self, pkdPath: Path, allowSelfIssuedCSCA: bool):
+        # pylint: disable=too-many-locals
         self._log.info("Loading PKI certificates and CRLs into DB, allowSelfIssuedCSCA=%s ...", allowSelfIssuedCSCA)
         def keyid2str(cert):
             return cert.subjectKey.hex() if cert.subjectKey is not None else None

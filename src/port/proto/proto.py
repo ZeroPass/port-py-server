@@ -96,51 +96,15 @@ def peInvalidDgFile(dgNumber: ef.dg.DataGroupNumber) -> PeInvalidOrMissingParam:
 
 class PortProto:
 
-    def __init__(self, storage: database.StorageAPI, cttl: int, maintenanceInterval: int = 36):
+    def __init__(self, storage: database.StorageAPI, cttl: int):
         """
         Initializes new PortProto.
         :param storage: database storage to use
-        :param cttl: Challenge expiration time in seconds (time-to-leave)
-        :param maintenanceInterval: Protocol maintenance interval in seconds.
-                                    i.e. expired challenges are purged once per this interval.
-                                    Default interval is 3600 sec (1 hour)
+        :param cttl: Challenge expiration time in seconds (time-to-live)
         """
         self.cttl = cttl
         self._db  = storage
         self._log = log.getLogger("port.proto")
-        self.maintenanceInterval = maintenanceInterval
-        self._mjtimer: Timer     = None
-
-    def start(self):
-        self.doMaintenance()
-
-    def stop(self):
-        if self._mjtimer is not None and self._mjtimer.is_alive():
-            self._log.debug("Stopping maintenance thread...")
-            self._mjtimer.cancel()
-            self._mjtimer.join(30)
-            if self._mjtimer.is_alive():
-                self._log.error("Couldn't stop maintenance thread")
-            else:
-                self._log.debug("Stopping maintenance thread...SUCCESS")
-
-    def doMaintenance(self):
-        self._log.debug('Start maintenance job')
-        if self._mjtimer is not None:
-            self._mjtimer.cancel()
-
-        try:
-            self.__purgeExpiredChallenges()
-        except Exception as e:
-            self._log.error("An exception was encountered while doing maintenance job")
-            self._log.exception(e)
-
-        self._mjtimer = Timer(self.maintenanceInterval, self.doMaintenance)
-        self._mjtimer.setName('maintenance_job')
-        self._mjtimer.daemon = True # Causes the thread to be canceled by SIGINT
-        self._mjtimer.start()
-        self._log.debug('Finished maintenance job, next schedule at: %s',
-            utils.time_now() + timedelta(seconds=self.maintenanceInterval))
 
     def createNewChallenge(self, uid: UserId) -> Tuple[Challenge, datetime]:
         """
@@ -169,6 +133,22 @@ class PortProto:
     def cancelChallenge(self, cid: CID) -> Union[None, dict]:
         self._db.deleteChallenge(cid)
         self._log.debug("Challenge canceled, cid=%s", cid)
+
+    def purgeExpiredChallenges(self, time:datetime = utils.time_now()) -> bool:
+        """
+        Function cleans all expired proto challenges from the database.
+        :param `time`: All challenges that are less than this time are deemed to be expired.
+                       Default is what returns `utils.time_now()`.
+        :return: True if deleting cleaning succeeds, otherwise False.
+        """
+        try:
+            self._log.debug('Purging expired challenges')
+            self._db.deleteExpiredChallenges(time)
+            return True
+        except Exception as e:
+            self._log.error("An exception was encountered while purging expired challenges!")
+            self._log.exception(e)
+            return False
 
     def register(self, uid: UserId, sod: ef.SOD, dg15: ef.DG15, cid: CID, csigs: List[bytes], dg14: ef.DG14 = None, allowSodOverride: bool = False) \
         -> dict:
@@ -961,12 +941,3 @@ class PortProto:
             not utils.has_expired(account.expires, utils.time_now()):
             return account.expires
         return None
-
-    def __purgeExpiredChallenges(self):
-        try:
-            self._log.debug('Purging expired challenges')
-            now = utils.time_now()
-            self._db.deleteExpiredChallenges(now)
-        except Exception as e:
-            self._log.error("An exception was encountered while purging expired challenges!")
-            self._log.exception(e)

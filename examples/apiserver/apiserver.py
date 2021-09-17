@@ -33,8 +33,8 @@ from typing import Optional, Tuple, Union
 
 
 class DevProto(PortProto):
-    def __init__(self, storage: StorageAPI, cttl: int, fc: bool, no_tcv: bool, maintenanceInterval: int = 36):
-        super().__init__(storage, cttl, maintenanceInterval)
+    def __init__(self, storage: StorageAPI, cttl: int, fc: bool, no_tcv: bool):
+        super().__init__(storage, cttl)
         self._fc = fc
         self._no_tcv = no_tcv
         self._log = log.getLogger("port.dev_proto")
@@ -67,8 +67,8 @@ class DevProto(PortProto):
 class ExamplePortServer(PortServer):
     def _init_proto(self, db: StorageAPI):
         if self._cfg.dev:
-            self._proto = DevProto(db, self._cfg.challenge_ttl, self._cfg.dev_fc or False, self._cfg.dev_no_tcv or False,
-                maintenanceInterval=self._cfg.job_interval)
+            self._proto = DevProto(db, self._cfg.challenge_ttl,
+                self._cfg.dev_fc or False, self._cfg.dev_no_tcv or False)
         else:
             super()._init_proto(db)
 
