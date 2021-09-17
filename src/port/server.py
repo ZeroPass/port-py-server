@@ -117,7 +117,14 @@ class PortServer:
             self._log.error(e)
 
     def _run_tasks(self):
-        self._log.debug('_run_tasks')
+        self._log.debug('Start maintenance job')
+        try:
+            self._proto.purgeExpiredChallenges()
+        except Exception as e:
+            self._log.error("An exception was encountered while doing maintenance job")
+            self._log.exception(e)
+        self._log.debug('Finished maintenance job, next schedule at: %s',
+            utils.time_now() + timedelta(seconds=self._cfg.job_interval))
 
     def _init_proto(self, db: StorageAPI):
         self._proto = PortProto(db, self._cfg.challenge_ttl)
