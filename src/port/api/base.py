@@ -84,7 +84,6 @@ class IApi:
         methods = inspect.getmembers(self, predicate=inspect.ismethod)
         for name, method in methods:
             if method.__name__ == "_wrapped_api_f":
-                self._log.debug("Registering API method: '%s'", name)
                 register_api(name, method)
 
     def _log_api_call(self, f, **kwargs):
@@ -144,10 +143,11 @@ class JsonRpcApi(IApi, Starlette):
         """
         if method in self._req_dispatcher:
             del self._req_dispatcher[method]
-            self._log.info("API method '%s' was unregistered.", method)
+            self._log.info("API method '%s.%s' was unregistered.", self._api_method_prefix, method)
 
     def _init_api(self):
         def register_api_method(name, api_f):
+            self._log.debug("Registering API method: '%s.%s'", self._api_method_prefix, name)
             if name in self._req_dispatcher:
                 self._log.error("Can't register existing API method: '%s'", name)
                 raise JsonRpcApiError(f"Can't register existing API method: '{name}'")
