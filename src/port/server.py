@@ -1,6 +1,8 @@
+import signal
 import sys
 
 from collections import defaultdict
+from datetime import timedelta
 from pathlib import Path
 
 from port import config, log
@@ -27,6 +29,8 @@ from threading import Event
 from typing import Callable
 
 class PortServer:
+    apiStopWait: float  = 30 # 30 sec
+    papiStopWait: float = 30 # 30 sec
     _cfg: config.ServerConfig
     _proto: PortProto
     _apisrv: HttpServer  = None
@@ -34,15 +38,20 @@ class PortServer:
     _log: log.logging.Logger
     _name = 'port.server'
     _ev_stop: Event
+    _ev_finished: Event
+    _exit_code = 0
 
     def __init__(self, cfg: config.ServerConfig):
-        self._cfg     = cfg
-        self._log     = log.getLogger(self._name)
-        self._ev_stop = Event()
+        self._cfg         = cfg
+        self._log         = log.getLogger(self._name)
+        self._ev_stop     = Event()
+        self._ev_finished = Event()
 
     def run(self) -> int: # returns exit code
         self._log.info("Starting new server session ...")
+        self._exit_code = 0
         self._ev_stop.clear()
+        self._ev_finished.clear()
         self._install_signal_handlers()
 
         # init DB and proto
@@ -86,34 +95,44 @@ class PortServer:
                 http='httptools'
             )
 
+        if self._cfg.api is None and self._cfg.papi is None:
+            self._log.warning("Configured not to serve any API!")
+
         # run the server
         return self._start()
 
     def _start(self) -> int: # returns exit code
-        self._proto.start()
-        if self._apisrv: self._apisrv.start()
-        if self._papisrv: self._papisrv.start()
         try:
+            if self._apisrv: self._apisrv.start()
+            if self._papisrv: self._papisrv.start()
             while not self._ev_stop.is_set():
                 self._run_tasks()
                 try:
                     self._ev_stop.wait(self._cfg.job_interval)
                 except KeyboardInterrupt: pass # pylint: disable=multiple-statements
-            return 0
+        except KeyboardInterrupt: pass # pylint: disable=multiple-statements
+        except SystemExit as e:
+            self._log.debug("Caught exit exception, setting exit code to: %s", e.code or 1)
+            self._exit_code = e.code or 1
         except Exception as e:
-            self._log.error("Unhandled exception was encountered!")
+            self._log.critical("Unhandled exception was encountered:")
             self._log.exception(e)
-            return 1
+            self._exit_code = 1
         finally:
-            if self._papisrv: self._papisrv.stop()
-            if self._apisrv: self._apisrv.stop()
-            self._proto.stop()
+            if self._papisrv: self._papisrv.stop(self.papiStopWait)
+            if self._apisrv: self._apisrv.stop(self.apiStopWait)
+            self._log.info("Server has stopped!")
+            self._ev_finished.set()
+            return self._exit_code # pylint: disable=lost-exception
 
     def _stop(self):
-        self._log.debug("_stop()")
+        self._log.info("Stopping server...")
         try:
             self._ev_stop.set()
+            if not self._ev_finished.wait(30):
+                self._log.error("Server failed to stop in time!")
         except Exception as e:
+            self._log.warning("Stopping server...FAILED")
             self._log.error(e)
 
     def _run_tasks(self):
