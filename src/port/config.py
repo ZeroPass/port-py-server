@@ -67,11 +67,15 @@ class IConfig:
         :raises `ValueError`: If `None` value is encountered for non-optional field.
         :raises `ValueError`: If the field value type differs the field type.
         """
+        return cls._buildFromJson(json, inferMissing, strict)
+
+    @classmethod
+    def _buildFromJson(cls, json: dict[str, Any], inferMissing, strict: bool, baseName = None):
         json = {} if json is None and inferMissing else json
         clsFields = {field.name : field for field in fields(cls)}
         for f in json.keys():
             if strict and f not in clsFields:
-                raise ValueError(f"Parameter '{f}' not part of {cls.__name__}")
+                raise ValueError(f"Parameter '{f}' is not part of {baseName or cls.__name__}")
         missing_fields = {field for field in clsFields.values() if field.name not in json}
 
         for field in missing_fields:
@@ -93,7 +97,7 @@ class IConfig:
             ftype  = types[field.name]
             if fvalue is None:
                 if not _is_optional(ftype):
-                    raise ValueError(f"Expected value for non-optional parameter '{cls.__name__}.{field.name}'")
+                    raise ValueError(f"Expected value for non-optional parameter '{baseName + '-' if baseName else ''}{field.name}'")
                 continue
 
             while True:
@@ -105,14 +109,14 @@ class IConfig:
             ftype = _get_optional_type(ftype)
             if _issubclass_safe(ftype, IConfig):
                 if not isinstance(fvalue, IConfig):
-                    fvalue = ftype.fromJson(fvalue, inferMissing)
+                    fvalue = ftype._buildFromJson(fvalue, inferMissing, strict, baseName=field.name) # pylint: disable=protected-access
                 initKwargs[field.name] = fvalue
             elif _isinstance_safe(fvalue, ftype):
                 initKwargs[field.name] = fvalue
             elif _isinstance_safe(fvalue, str) and _issubclass_safe(ftype, Path):
                 initKwargs[field.name] = Path(fvalue)
             else:
-                raise ValueError(f"Expected {cls.__name__}.{field.name} parameter value of type '{ftype.__name__}' got '{type(fvalue).__name__}'")
+                raise ValueError(f"Expected {baseName + '-' if baseName else ''}{field.name} parameter value of type '{ftype.__name__}' got '{type(fvalue).__name__}'")
 
         return cls(**initKwargs)
 
