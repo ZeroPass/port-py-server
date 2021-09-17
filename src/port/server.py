@@ -219,20 +219,17 @@ class PortServer:
         On unix system the function hooks on signals: SIGHUP, SIGINT, SIGTERM.
         On windows the CTRL+C signals are caught.
         """
-        def stop_server(sig): #pylint: disable=unused-argument
+        def stop_server(*args): #pylint: disable=unused-argument
             try:
                 self._stop()
             except BaseException as e: #pylint: disable=broad-except
-                self._log.warning('An exception was encountered while stopping server!')
+                self._log.critical('An exception was encountered while stopping server!')
                 self._log.exception(e)
 
         if sys.platform == "win32":
             import win32api # pylint: disable=import-outside-toplevel
             win32api.SetConsoleCtrlHandler(stop_server, True)
         else:
-            import signal # pylint: disable=import-outside-toplevel
-            def unix_signal_handler(sig, frame): #pylint: disable=unused-argument
-                stop_server(sig)
-            signal.signal(signal.SIGHUP, unix_signal_handler) #pylint: disable=no-member
-            signal.signal(signal.SIGINT, unix_signal_handler)
-            signal.signal(signal.SIGTERM, unix_signal_handler)
+            signal.signal(signal.SIGHUP, stop_server) #pylint: disable=no-member
+            signal.signal(signal.SIGINT, stop_server)
+            signal.signal(signal.SIGTERM, stop_server)
