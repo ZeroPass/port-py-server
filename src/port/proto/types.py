@@ -1,12 +1,14 @@
+from __future__ import annotations
 import base64
 import os
 from asn1crypto.x509 import Name
 from cryptography.hazmat.primitives.hashes import Hash, SHA512_256
 from cryptography.hazmat.backends import default_backend
 from datetime import datetime
+from inspect import isclass
 from pymrtd import ef
 from pymrtd.pki import x509
-from typing import cast, Union
+from typing import Any, Callable, Final, NoReturn, Optional, TypeVar, cast, Union, final
 
 from .utils import bytes_to_int, format_alpha2, int_count_bytes, int_to_bytes, sha512_256
 
@@ -237,3 +239,159 @@ class Challenge(bytes):
         h.update(extraData)
         h.update(rs)
         return Challenge(h.finalize())
+
+@final
+class FunctionHook:
+    """
+    Wrapper class which hooks on function call and function return.
+    To set function call hook use `onCall` method.
+    To set function return hook use `onReturn` method.
+
+    e.g.:
+    ```
+       def some_func(x, y, z) -> int:
+           return 1
+
+       fh = FunctionHook(some_func)
+       fh.onCall(lambda *args, *kwargs: print("calling some_func with args: ", *args, *kwargs))
+       fh.onReturn(lambda ret: print("some_func returned: ", ret))
+       fh("a", 5, 8)
+       # Should print
+       # "calling some_func with args: a, 5, 8"
+       # "some_func returned: 1"
+    ```
+    """
+
+    _hooked_func: Callable
+    __storage_prefix_name: Final   = f'__{__module__}.__func_hook_.'
+    __call_hf_tag: Final[str]   = '__call_hf__'
+    __return_hf_tag: Final[str] = '__return_hf__'
+
+    def onCall(self, func: Callable) -> Optional[Callable]:
+        """
+        Function call hook.
+        :param `func`: The function called prior to call hooked function.
+                       Pass None to unset call hook.
+
+                       The `func` function signature:
+
+                            - function hook: `(args_of_hooked_function) -> None`
+
+                            - class method hook: `(class_instance, args_of_hooked_function) -> None`
+
+        :return: Previous hook function or None.
+        :raises `ValueError`: If `func` is not callable or None.
+        """
+        return self._set_hook_func(self.__call_hf_tag, func)
+
+    def onReturn(self, func: Callable) -> Optional[Callable]:
+        """
+        Function return hook.
+        Note, the `func` object is responsible for returning value.
+        :param `func`: The function to call after hooked function returns.
+                       Pass None to unset return hook.
+
+                       The `func` function signature:
+
+                            - function hook: `(hooked_function_return_value, args_of_hooked_function) -> None`
+
+                            - class method hook: `(hooked_function_return_value, class_instance, args_of_hooked_function) -> None`
+
+        :return: Previous hook function or None.
+        :raises `ValueError`: If `func` is not callable or None.
+        """
+        return self._set_hook_func(self.__return_hf_tag, func)
+
+    def __init__(self, func: TypeVar("T", Callable, staticmethod)) -> None:
+        """
+        Creates new `FunctionHook` wrapper for `func` function.
+        :param `func`: A function, class function, class static function or classmethod.
+        :raises `ValueError`: If `func` is not callable function.
+        """
+        if not callable(func) \
+            and not isinstance(func, staticmethod) \
+            and not isinstance(func, classmethod):
+            raise ValueError("Can hook only on function, class function, staticmethod or classmethod")
+        self._hooked_func = func
+
+    def _get_hooked_function_name(self):
+        if isinstance(self._hooked_func, classmethod) \
+            or isinstance(self._hooked_func, staticmethod):
+            return self._hooked_func.__func__.__name__
+        return self._hooked_func.__name__
+
+    def _get_storage_key(self, name):
+        return FunctionHook.__storage_prefix_name + \
+               self._get_hooked_function_name() + name
+
+    def __get__(self, obj, obj_type):
+        func = self._hooked_func.__get__(obj, obj_type)
+        #TODO: Try to cache new instance
+        return self.__class__(func)
+
+    def _get_hook_func(self, name: str):
+        return self._get_hook_storage() \
+            .get(self._get_storage_key(name))
+
+    def _set_hook_func(self, name: str, func: Callable) -> Optional[Callable]:
+        if func is not None and not callable(func):
+            raise ValueError(f"'{repr(func)}' is not function")
+        name = self._get_storage_key(name)
+        s    = self._get_hook_storage()
+        old_hook = s.get(name)
+        s[name] = func
+        return old_hook
+
+    def _get_self_obj_of_hooked_function(self) -> Optional[Any]:
+        return getattr(self._hooked_func, '__self__', None)
+
+    def _get_hook_storage(self) -> dict:
+        obj = self._get_self_obj_of_hooked_function()
+        if obj and not isclass(obj): # if object is instantaned and not class type
+            return obj.__dict__
+        return self._hooked_func.__dict__
+
+    def _on_call(self, *args: Any, **kwds: Any):
+        self._call_hook(self.__call_hf_tag, NoReturn, *args, **kwds)
+
+    def _on_return(self, ret: Any, *args: Any, **kwds: Any):
+        return self._call_hook(self.__return_hf_tag, ret, *args, **kwds)
+
+    def _call_hook(self, fname: str, ret: Union[Any, NoReturn], *args: Any, **kwds: Any):
+        func = self._get_hook_func(fname)
+        if func:
+            o = self._get_self_obj_of_hooked_function()
+            if o:
+                # Prepend class instance or class type (classmethod) to the args
+                args = (o, *args)
+            if ret is not NoReturn:
+                args = (ret, *args)
+            ret = func(*args, **kwds)
+        return ret
+
+    def __call__(self, *args: Any, **kwds: Any) -> Any:
+        self._on_call(*args, **kwds)
+        fret = self._hooked_func(*args, **kwds)
+        return self._on_return(fret, *args, **kwds)
+
+def hook(func: Callable):
+    """
+    The function decorator which wraps `func` in `FunctionHook` instance.
+    :param `func`: The function to hook on.
+    :return: `FunctionHook` object.
+
+    e.g.:
+    ```
+       @hook
+       def some_func(x, y, z) -> int:
+           return 1
+
+       some_func.onCall(lambda *args, *kwargs: print("calling some_func with args: ", *args, *kwargs))
+       some_func.onReturn(lambda ret: print("some_func returned: ", ret))
+       some_func("a", 5, 8)
+       # Should print
+       # "calling some_func with args: a, 5, 8"
+       # "some_func returned: 1"
+    ```
+    """
+    return FunctionHook(func)

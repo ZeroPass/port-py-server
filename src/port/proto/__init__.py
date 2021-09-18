@@ -48,6 +48,8 @@ from port.proto.types import (
     CID,
     CountryCode,
     CrlId,
+    FunctionHook,
+    hook,
     SodId,
     UserId,
     UserIdError
@@ -62,6 +64,8 @@ __all__ = [
     "CID",
     "CountryCode",
     "CrlId",
+    "FunctionHook",
+    "hook",
     "peAccountAlreadyRegistered",
     "peAccountNotAttested",
     "peAttestationExpired",
