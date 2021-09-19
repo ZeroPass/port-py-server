@@ -1,9 +1,9 @@
 # pylint: disable=too-many-statements
 import os
-from typing import Any
 import py
 import pytest
 import string
+
 from cryptography.hazmat.primitives.hashes import SHA512_256
 from datetime import datetime
 from port.proto.types import (
@@ -24,6 +24,7 @@ from port.proto.utils import int_to_bytes
 from pymrtd import ef
 from pymrtd.pki import  x509
 from pymrtd.pki.crl import CertificateRevocationList
+from typing import Any, Optional
 
 _dir = os.path.dirname(os.path.realpath(__file__))
 TV_DIR    = py.path.local(_dir) /'..'/'tv'
@@ -929,10 +930,11 @@ def test_FunctionHook():
         assert args_in   == args_cmp
         assert kwargs_in == kwargs_cmp
 
-    def check_call_hook_args(args_in: tuple, kwargs_in: dict, args_cmp: tuple, kwargs_cmp) -> None:
+    def check_call_hook_args(args_in: tuple, kwargs_in: dict, args_cmp: tuple, kwargs_cmp, overridden_args: Optional[dict] = None) -> None:
         check_hook_args(args_in, kwargs_in, args_cmp, kwargs_cmp)
         nonlocal  call_hook_invoked
         call_hook_invoked = True
+        return overridden_args
 
     def check_return_hook_args(args_in: tuple, kwargs_in: dict, args_cmp: tuple, kwargs_cmp, return_value: Any) -> Any:
         check_hook_args(args_in, kwargs_in, args_cmp, kwargs_cmp)
@@ -982,6 +984,48 @@ def test_FunctionHook():
     assert ret_value           == 2
     reset_test_vars()
 
+    # Set call hook with overridden args and return hook
+    assert test_hooked_func.onCall(lambda *args, **kwargs: \
+        check_call_hook_args(args, kwargs, ("a", 5, 8), {}, overridden_args={'a' : 0xfeed})) is not None
+    assert test_hooked_func.onReturn(lambda *args, **kwargs:\
+        check_return_hook_args(args, kwargs, (1, 0xfeed, 5, 8), {}, return_value = args[0])) is not None
+    ret_value = test_hooked_func("a", 5, 8)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == True
+    assert ret_value           == 1
+    reset_test_vars()
+
+    assert test_hooked_func.onCall(lambda *args, **kwargs: \
+        check_call_hook_args(args, kwargs, ("a", 5), {'c' : 8}, overridden_args={'c' : 0x0badf00d})) is not None
+    assert test_hooked_func.onReturn(lambda *args, **kwargs:\
+        check_return_hook_args(args, kwargs, (1, "a", 5), {'c' : 0x0badf00d}, return_value = args[0])) is not None
+    ret_value = test_hooked_func("a", 5, c=8)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == True
+    assert ret_value           == 1
+    reset_test_vars()
+
+    # Set call hook with overridden args and return hook with override value
+    assert test_hooked_func.onCall(lambda *args, **kwargs: \
+        check_call_hook_args(args, kwargs, ("a", 5), {'c' : 8}, overridden_args={'c' : 0x0badf00d})) is not None
+    assert test_hooked_func.onReturn(lambda *args, **kwargs:\
+        check_return_hook_args(args, kwargs, (1, "a", 5), {'c' : 0x0badf00d}, return_value = 88)) is not None
+    ret_value = test_hooked_func("a", 5, c=8)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == True
+    assert ret_value           == 88
+    reset_test_vars()
+
+    assert test_hooked_func.onCall(lambda *args, **kwargs: \
+        check_call_hook_args(args, kwargs, ("a", 5, 8), {}, overridden_args={'a' : 0xfeed})) is not None
+    assert test_hooked_func.onReturn(lambda *args, **kwargs:\
+        check_return_hook_args(args, kwargs, (1, 0xfeed, 5, 8), {}, return_value = 'overridden_value')) is not None
+    ret_value = test_hooked_func("a", 5, 8)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == True
+    assert ret_value           == "overridden_value"
+    reset_test_vars()
+
     # Unset return hook
     assert test_hooked_func.onReturn(None) is not None
     ret_value = test_hooked_func("a", 5, 8)
@@ -1014,6 +1058,72 @@ def test_FunctionHook():
     assert ret_value           == "test_hooked_method return: 120, '2nd arg', 0.05895"
     reset_test_vars()
 
+    # Override call arguments
+    assert tcls.test_hooked_method.onCall(lambda *args, **kwargs: \
+        check_call_hook_args(args, kwargs, (tcls, 120, "'2nd arg'"), {'c' : 0.05895}, overridden_args={'b': 5})) is not None
+    ret_value = tcls.test_hooked_method(120, "'2nd arg'", c=0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == False
+    assert ret_value           == "test_hooked_method return: 120, 5, 0.05895"
+    reset_test_vars()
+
+    assert tcls.test_hooked_method.onCall(lambda *args, **kwargs: \
+        check_call_hook_args(args, kwargs, (tcls, 120, "'2nd arg'"), {'c' : 0.05895}, overridden_args={'c': "'3rd_arg'"})) is not None
+    ret_value = tcls.test_hooked_method(120, "'2nd arg'", c=0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == False
+    assert ret_value           == "test_hooked_method return: 120, '2nd arg', '3rd_arg'"
+    reset_test_vars()
+
+    assert tcls.test_hooked_method.onCall(lambda *args, **kwargs: \
+        check_call_hook_args(args, kwargs, (tcls, 120, "'2nd arg'"), {'c' : 0.05895}, overridden_args={'a': "'1st_arg was 120'"})) is not None
+    ret_value = tcls.test_hooked_method(120, "'2nd arg'", c=0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == False
+    assert ret_value           == "test_hooked_method return: '1st_arg was 120', '2nd arg', 0.05895"
+    reset_test_vars()
+
+    assert tcls.test_hooked_method.onCall(lambda *args, **kwargs: \
+        check_call_hook_args(args, kwargs, (tcls, 120, "'2nd arg'", 0.05895), {})) is not None
+    ret_value = tcls.test_hooked_method(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == False
+    assert ret_value           == "test_hooked_method return: 120, '2nd arg', 0.05895"
+    reset_test_vars()
+
+    assert tcls.test_hooked_method.onCall(lambda *args, **kwargs: \
+        check_call_hook_args(args, kwargs, (tcls, 120, "'2nd arg'", 0.05895), {},  overridden_args={'b': 5})) is not None
+    ret_value = tcls.test_hooked_method(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == False
+    assert ret_value           == "test_hooked_method return: 120, 5, 0.05895"
+    reset_test_vars()
+
+    assert tcls.test_hooked_method.onCall(lambda *args, **kwargs: \
+        check_call_hook_args(args, kwargs, (tcls, 120, "'2nd arg'", 0.05895), {}, overridden_args={'c': "'3rd_arg'"})) is not None
+    ret_value = tcls.test_hooked_method(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == False
+    assert ret_value           == "test_hooked_method return: 120, '2nd arg', '3rd_arg'"
+    reset_test_vars()
+
+    assert tcls.test_hooked_method.onCall(lambda *args, **kwargs: \
+        check_call_hook_args(args, kwargs, (tcls, 120, "'2nd arg'", 0.05895), {}, overridden_args={'a': "'1st_arg was 120'"})) is not None
+    ret_value = tcls.test_hooked_method(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == False
+    assert ret_value           == "test_hooked_method return: '1st_arg was 120', '2nd arg', 0.05895"
+    reset_test_vars()
+
+    assert tcls.test_hooked_method.onCall(lambda *args, **kwargs: \
+        check_call_hook_args(args, kwargs, (tcls, 120, "'2nd arg'", 0.05895), {}, overridden_args={'a': "'1st_arg was 120'", 'b': 6 , 'c': "'3rd_arga'"})) is not None
+    ret_value = tcls.test_hooked_method(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == False
+    assert ret_value           == "test_hooked_method return: '1st_arg was 120', 6, '3rd_arga'"
+    reset_test_vars()
+
+    # Reset call hook to not override params
     assert tcls.test_hooked_method.onCall(lambda *args, **kwargs: \
         check_call_hook_args(args, kwargs, (tcls, 120, "'2nd arg'", 0.05895), {})) is not None
     ret_value = tcls.test_hooked_method(120, "'2nd arg'", 0.05895)
@@ -1042,12 +1152,45 @@ def test_FunctionHook():
     assert ret_value           == "return of the Hook"
     reset_test_vars()
 
+    # Set call hook with overridden param and return hook
+    assert tcls.test_hooked_method.onCall(lambda *args, **kwargs: \
+        check_call_hook_args(args, kwargs, (tcls, 120, "'2nd arg'", 0.05895), {}, overridden_args={'a': "'1st_arg was 120'"})) is not None
+    assert tcls.test_hooked_method.onReturn(lambda *args, **kwargs:\
+        check_return_hook_args(args, kwargs, \
+            ("test_hooked_method return: '1st_arg was 120', '2nd arg', 0.05895", tcls, "'1st_arg was 120'", "'2nd arg'", 0.05895), {}, return_value = args[0])) is not None
+    ret_value = tcls.test_hooked_method(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == True
+    assert ret_value           == "test_hooked_method return: '1st_arg was 120', '2nd arg', 0.05895"
+    reset_test_vars()
+
+    assert tcls.test_hooked_method.onCall(lambda *args, **kwargs: \
+        check_call_hook_args(args, kwargs, (tcls, 120, "'2nd arg'", 0.05895), {}, overridden_args={'a': "'1st_arg was 120'", 'b': 6 , 'c': "'3rd_arga'"})) is not None
+    assert tcls.test_hooked_method.onReturn(lambda *args, **kwargs:\
+        check_return_hook_args(args, kwargs, \
+            ("test_hooked_method return: '1st_arg was 120', 6, '3rd_arga'", tcls, "'1st_arg was 120'", 6, "'3rd_arga'"), {}, return_value = args[0])) is not None
+    ret_value = tcls.test_hooked_method(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == True
+    assert ret_value           == "test_hooked_method return: '1st_arg was 120', 6, '3rd_arga'"
+    reset_test_vars()
+
+    # Set call hook with overridden param and return hook with overridden return value
+    assert tcls.test_hooked_method.onReturn(lambda *args, **kwargs:\
+        check_return_hook_args(args, kwargs, \
+            ("test_hooked_method return: '1st_arg was 120', 6, '3rd_arga'", tcls, "'1st_arg was 120'", 6, "'3rd_arga'"), {}, return_value = "return of the Hook 2")) is not None
+    ret_value = tcls.test_hooked_method(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == True
+    assert ret_value           == "return of the Hook 2"
+    reset_test_vars()
+
     # Unset return hook
     assert tcls.test_hooked_method.onReturn(None) is not None
     ret_value = tcls.test_hooked_method(120, "'2nd arg'", 0.05895)
     assert call_hook_invoked   == True
     assert return_hook_invoked == False
-    assert ret_value           == "test_hooked_method return: 120, '2nd arg', 0.05895"
+    assert ret_value           == "test_hooked_method return: '1st_arg was 120', 6, '3rd_arga'"
     reset_test_vars()
 
     # Unset call hook
@@ -1350,6 +1493,42 @@ def test_FunctionHook():
     assert call_hook_invoked   == True
     assert return_hook_invoked == True
     assert ret_value           == "return of the Hook"
+    reset_test_vars()
+
+    # Override call arguments in tcls1.test_hooked_method
+    assert tcls1.test_hooked_method.onCall(lambda *args, **kwargs: \
+        check_call_hook_args(args, kwargs, (tcls1, 120, "'2nd arg'", 0.05895), {}, overridden_args={'a' : "'no, no, no'"})) is not None
+    assert tcls1.test_hooked_method.onReturn(lambda *args, **kwargs:\
+        check_return_hook_args(args, kwargs, \
+            ("test_hooked_method return: 'no, no, no', '2nd arg', 0.05895", tcls1, "'no, no, no'", "'2nd arg'", 0.05895), {}, return_value = args[0])) is not None
+    ret_value = tcls1.test_hooked_method(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == True
+    assert ret_value           == "test_hooked_method return: 'no, no, no', '2nd arg', 0.05895"
+    reset_test_vars()
+
+    ret_value = tcls2.test_hooked_method("'test 1st arg'", 0.5, 81)
+    assert call_hook_invoked   == False
+    assert return_hook_invoked == False
+    assert ret_value           == "test_hooked_method return: 'test 1st arg', 0.5, 81"
+    reset_test_vars()
+
+    # Override call arguments in tcls1.test_hooked_method and set return hook with overridden value
+    assert tcls1.test_hooked_method.onCall(lambda *args, **kwargs: \
+        check_call_hook_args(args, kwargs, (tcls1, 120, "'2nd arg'", 0.05895), {}, overridden_args={'a' : "'no, no, no'"})) is not None
+    assert tcls1.test_hooked_method.onReturn(lambda *args, **kwargs:\
+        check_return_hook_args(args, kwargs, \
+            ("test_hooked_method return: 'no, no, no', '2nd arg', 0.05895", tcls1, "'no, no, no'", "'2nd arg'", 0.05895), {}, return_value = "return of the Hook 2")) is not None
+    ret_value = tcls1.test_hooked_method(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == True
+    assert ret_value           == "return of the Hook 2"
+    reset_test_vars()
+
+    ret_value = tcls2.test_hooked_method("'test 1st arg'", 0.5, 81)
+    assert call_hook_invoked   == False
+    assert return_hook_invoked == False
+    assert ret_value           == "test_hooked_method return: 'test 1st arg', 0.5, 81"
     reset_test_vars()
 
 # Add FunctionHook to non-hooked function
@@ -1801,3 +1980,8 @@ def test_FunctionHook():
 
     with pytest.raises(ValueError, match=f"'{repr(tcls1)}' is not function"):
         tcls1.test_hooked_method.onReturn(tcls1)
+
+    # Override call arguments with invalid arguments:
+    with pytest.raises(ValueError, match="Invalid overridden call args: {'invalid_arg1': 5}"):
+        tcls1.test_hooked_method.onCall(lambda *args, **kwargs: {'invalid_arg1' : 5})
+        tcls1.test_hooked_method(a=1, b=2, c=3)
