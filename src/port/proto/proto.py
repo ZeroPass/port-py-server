@@ -31,7 +31,7 @@ class PortProto:
         self._log = log.getLogger("port.proto")
 
     @hook
-    def createNewChallenge(self, uid: UserId) -> Tuple[Challenge, datetime]:
+    def createNewChallenge(self, uid: UserId, seed: Optional[bytes] = None) -> Tuple[Challenge, datetime]:
         """
         Returns new proto challenge for user ID.
         If non-expired challenge is found in the db for the user, that challenge is returned instead.
@@ -49,7 +49,7 @@ class PortProto:
                 self._log.debug("Found existing challenge")
                 return cet
         # Let's generate new challenge, as non was found or already expired.
-        c  = Challenge.generate(now, uid)
+        c  = Challenge.generate(now, uid + (seed or b''))
         et = self._get_challenge_expiration(now)
         self._db.addChallenge(uid, c, et)
         self._log.debug("New challenge created cid=%s", c.id)

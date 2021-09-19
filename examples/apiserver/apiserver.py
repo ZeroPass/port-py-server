@@ -39,8 +39,8 @@ class DevProto(PortProto):
         self._no_tcv = no_tcv
         self._log = log.getLogger("port.dev_proto")
 
-    def createNewChallenge(self, uid: UserId) -> Tuple[Challenge, datetime]:
-        c, cct = super().createNewChallenge(uid)
+    def createNewChallenge(self, uid: UserId, seed: Optional[bytes] = None) -> Tuple[Challenge, datetime]:
+        c, cct = super().createNewChallenge(uid, seed)
         if self._fc:
             fc = Challenge.fromhex("47E4EE7F211F73265DD17658F6E21C1318BD6C81F37598E20A2756299542EFCF")
             if c == fc:
