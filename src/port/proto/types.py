@@ -5,7 +5,7 @@ from asn1crypto.x509 import Name
 from cryptography.hazmat.primitives.hashes import Hash, SHA512_256
 from cryptography.hazmat.backends import default_backend
 from datetime import datetime
-from inspect import isclass
+from inspect import getfullargspec, isclass, ismethod
 from pymrtd import ef
 from pymrtd.pki import x509
 from typing import Any, Callable, Final, NoReturn, Optional, TypeVar, cast, Union, final
@@ -275,9 +275,21 @@ class FunctionHook:
 
                        The `func` function signature:
 
-                            - function hook: `(args_of_hooked_function) -> None`
+                            - function hook: `(args_of_hooked_function) -> Optional[dict]`
 
-                            - class method hook: `(class_instance, args_of_hooked_function) -> None`
+                            - class function hook: `(class_instance, args_of_hooked_function) -> Optional[dict]`
+
+                            - classmethod hook: `(class_type, args_of_hooked_function) -> Optional[dict]`
+
+                            - static class function hook: `(args_of_hooked_function) -> Optional[dict]`
+
+                       The `func` optional return dictionary is the kwargs of overridden call arguments.
+                       e.g.:
+                       ```
+                           def f(a, b, c)
+                           f.onCall(lambda *args, *kwargs: {'a' : 5})
+                           f(1, 2, 3) <- the param 'a' (1s param) will be overridden with value 5 and passed to hooked function.
+                       ```
 
         :return: Previous hook function or None.
         :raises `ValueError`: If `func` is not callable or None.
@@ -351,8 +363,9 @@ class FunctionHook:
             return obj.__dict__
         return self._hooked_func.__dict__
 
-    def _on_call(self, *args: Any, **kwds: Any):
-        self._call_hook(self.__call_hf_tag, NoReturn, *args, **kwds)
+    def _on_call(self, *args: Any, **kwds: Any) -> Optional[dict]:
+        r = self._call_hook(self.__call_hf_tag, NoReturn, *args, **kwds)
+        return r if r is not NoReturn else None
 
     def _on_return(self, ret: Any, *args: Any, **kwds: Any):
         return self._call_hook(self.__return_hf_tag, ret, *args, **kwds)
@@ -369,8 +382,27 @@ class FunctionHook:
             ret = func(*args, **kwds)
         return ret
 
+    def _merge_args(self, new_args: Optional[dict], *args, **kwds) -> tuple(tuple, dict): # returns (*args, **kwargs)
+        if isinstance(new_args, dict):
+            fargs = getfullargspec(self._hooked_func)[0]
+            if ismethod(self._hooked_func):
+                fargs = fargs[1:]
+
+            largs = list(args)
+            for idx, p in enumerate(fargs):
+                if p in new_args:
+                    if idx < len(largs):
+                        largs[idx] = new_args.pop(p)
+                    else:
+                        kwds[p] = new_args.pop(p)
+            if len(new_args):
+                raise ValueError(f"Invalid overridden call args: {new_args}")
+        return (tuple(largs), kwds)
+
     def __call__(self, *args: Any, **kwds: Any) -> Any:
-        self._on_call(*args, **kwds)
+        new_args = self._on_call(*args, **kwds)
+        if new_args:
+            args, kwds = self._merge_args(new_args, *args, **kwds)
         fret = self._hooked_func(*args, **kwds)
         return self._on_return(fret, *args, **kwds)
 
