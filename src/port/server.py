@@ -112,7 +112,7 @@ class PortServer:
                 except KeyboardInterrupt: pass # pylint: disable=multiple-statements
         except KeyboardInterrupt: pass # pylint: disable=multiple-statements
         except SystemExit as e:
-            self._log.debug("Caught exit exception, setting exit code to: %s", e.code or 1)
+            self._log.debug("Caught SystemExit, setting exit code to: %s", e.code or 1)
             self._exit_code = e.code or 1
         except Exception as e:
             self._log.critical("Unhandled exception was encountered:")
