@@ -104,11 +104,17 @@ class IApi:
                     else:
                         self._log.verbose(resp)
 
+def _orjson_dumps_default(obj):
+    if isinstance(obj, bytes):
+        # Expects utf-8 encoded string e.g. what b64encode returns
+        return obj.decode(encoding='utf-8')
+    return obj
+
 class ORJSONResponse(JSONResponse):
     media_type = "application/json"
 
     def render(self, content: Any) -> bytes:
-        return orjson.dumps(content)
+        return orjson.dumps(content, default=_orjson_dumps_default)
 
 class JsonRpcApi(IApi, Starlette):
     """
