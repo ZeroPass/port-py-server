@@ -1,11 +1,25 @@
 # pylint: disable=too-many-statements
 import os
+from typing import Any
 import py
 import pytest
 import string
 from cryptography.hazmat.primitives.hashes import SHA512_256
 from datetime import datetime
-from port.proto.types import CID, CertificateId, Challenge, ChallengeError, CountryCode, CrlId, IIntegerId, SodId, UserId, UserIdError
+from port.proto.types import (
+    CID,
+    CertificateId,
+    Challenge,
+    ChallengeError,
+    CountryCode,
+    CrlId,
+    FunctionHook,
+    hook,
+    IIntegerId,
+    SodId,
+    UserId,
+    UserIdError
+)
 from port.proto.utils import int_to_bytes
 from pymrtd import ef
 from pymrtd.pki import  x509
@@ -805,3 +819,985 @@ def test_Challenge():
 
     with pytest.raises(ChallengeError, match='Invalid challenge type'): # invalid data type
         Challenge(float(5))
+
+def test_FunctionHook():
+    # pylint: disable=unused-argument, unnecessary-lambda, no-self-use, singleton-comparison, no-member
+    @hook
+    def test_hooked_func(a,b,c) -> int:
+        return 1
+
+    def test_func(a,b, c) -> str:
+        return f"test_func return: {a}, {b}, {c}"
+
+    class TestClass:
+        @hook
+        def test_hooked_method(self, a,b,c) -> str:
+            return f"test_hooked_method return: {a}, {b}, {c}"
+
+        def test_method(self, a, b, c) -> str:
+            return f"test_method return: {a}, {b}, {c}"
+
+        @hook
+        @classmethod
+        def test_hooked_classmethod(cls, a, b, c) -> str:
+            return f"test_hooked_classmethod return: {a}, {b}, {c}"
+
+        @classmethod
+        def test_classmethod(cls, a, b, c) -> str:
+            return f"test_classmethod return: {a}, {b}, {c}"
+
+        @hook
+        @staticmethod
+        def test_hooked_static_method(a,b,c) -> str:
+            return f"test_hooked_static_method return: {a}, {b}, {c}"
+
+        @staticmethod
+        def test_static_method(a,b,c) -> str:
+            return f"test_static_method return: {a}, {b}, {c}"
+
+    tcls = TestClass()
+
+    # Test function & method types and hook attributes
+    assert isinstance(test_hooked_func, FunctionHook) == True
+    assert hasattr(test_hooked_func, 'onCall')        == True
+    assert hasattr(test_hooked_func, 'onReturn')      == True
+
+    assert isinstance(test_func, FunctionHook) == False
+    assert hasattr(test_func, 'onCall')        == False
+    assert hasattr(test_func, 'onReturn')      == False
+
+    assert isinstance(TestClass.test_hooked_method, FunctionHook) == True
+    assert hasattr(TestClass.test_hooked_method, 'onCall')        == True
+    assert hasattr(TestClass.test_hooked_method, 'onReturn')      == True
+
+    assert isinstance(tcls.test_hooked_method, FunctionHook) == True
+    assert hasattr(tcls.test_hooked_method, 'onCall')        == True
+    assert hasattr(tcls.test_hooked_method, 'onReturn')      == True
+
+    assert isinstance(TestClass.test_method, FunctionHook) == False
+    assert hasattr(TestClass.test_method, 'onCall')        == False
+    assert hasattr(TestClass.test_method, 'onReturn')      == False
+
+    assert isinstance(tcls.test_method, FunctionHook) == False
+    assert hasattr(tcls.test_method, 'onCall')        == False
+    assert hasattr(tcls.test_method, 'onReturn')      == False
+
+    assert isinstance(TestClass.test_hooked_classmethod, FunctionHook) == True
+    assert hasattr(TestClass.test_hooked_classmethod, 'onCall')        == True
+    assert hasattr(TestClass.test_hooked_classmethod, 'onReturn')      == True
+
+    assert isinstance(tcls.test_hooked_classmethod, FunctionHook) == True
+    assert hasattr(tcls.test_hooked_classmethod, 'onCall')        == True
+    assert hasattr(tcls.test_hooked_classmethod, 'onReturn')      == True
+
+    assert isinstance(TestClass.test_classmethod, FunctionHook) == False
+    assert hasattr(TestClass.test_classmethod, 'onCall')        == False
+    assert hasattr(TestClass.test_classmethod, 'onReturn')      == False
+
+    assert isinstance(tcls.test_classmethod, FunctionHook) == False
+    assert hasattr(tcls.test_classmethod, 'onCall')        == False
+    assert hasattr(tcls.test_classmethod, 'onReturn')      == False
+
+    assert isinstance(TestClass.test_hooked_static_method, FunctionHook) == True
+    assert hasattr(TestClass.test_hooked_static_method, 'onCall')        == True
+    assert hasattr(TestClass.test_hooked_static_method, 'onReturn')      == True
+
+    assert isinstance(tcls.test_hooked_static_method, FunctionHook) == True
+    assert hasattr(tcls.test_hooked_static_method, 'onCall')        == True
+    assert hasattr(tcls.test_hooked_static_method, 'onReturn')      == True
+
+    assert isinstance(TestClass.test_static_method, FunctionHook) == False
+    assert hasattr(TestClass.test_static_method, 'onCall')        == False
+    assert hasattr(TestClass.test_static_method, 'onReturn')      == False
+
+    assert isinstance(tcls.test_static_method, FunctionHook) == False
+    assert hasattr(tcls.test_static_method, 'onCall')        == False
+    assert hasattr(tcls.test_static_method, 'onReturn')      == False
+
+    ret_value           = None
+    call_hook_invoked   = False
+    return_hook_invoked = False
+    def reset_test_vars():
+        nonlocal ret_value
+        ret_value = None
+        nonlocal call_hook_invoked
+        call_hook_invoked = False
+        nonlocal return_hook_invoked
+        return_hook_invoked = False
+
+    def check_hook_args(args_in: tuple, kwargs_in: dict, args_cmp: tuple, kwargs_cmp: dict):
+        assert args_in   == args_cmp
+        assert kwargs_in == kwargs_cmp
+
+    def check_call_hook_args(args_in: tuple, kwargs_in: dict, args_cmp: tuple, kwargs_cmp) -> None:
+        check_hook_args(args_in, kwargs_in, args_cmp, kwargs_cmp)
+        nonlocal  call_hook_invoked
+        call_hook_invoked = True
+
+    def check_return_hook_args(args_in: tuple, kwargs_in: dict, args_cmp: tuple, kwargs_cmp, return_value: Any) -> Any:
+        check_hook_args(args_in, kwargs_in, args_cmp, kwargs_cmp)
+        nonlocal return_hook_invoked
+        return_hook_invoked = True
+        return return_value
+
+# Test function hooks
+    ret_value = test_hooked_func("a", 5, 8)
+    assert call_hook_invoked   == False
+    assert return_hook_invoked == False
+    assert ret_value           == 1
+    reset_test_vars()
+
+    # Set call hook
+    assert test_hooked_func.onCall(lambda *args, **kwargs: \
+        check_call_hook_args(args, kwargs, ("a", 5), {'c': 8})) is None
+    ret_value = test_hooked_func("a", 5, c=8)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == False
+    assert ret_value           == 1
+    reset_test_vars()
+
+    assert test_hooked_func.onCall(lambda *args, **kwargs: \
+        check_call_hook_args(args, kwargs, ("a", 5, 8), {})) is not None
+    ret_value = test_hooked_func("a", 5, 8)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == False
+    assert ret_value           == 1
+    reset_test_vars()
+
+    # Set return hook
+    assert test_hooked_func.onReturn(lambda *args, **kwargs:\
+        check_return_hook_args(args, kwargs, (1, "a", 5, 8), {}, return_value = args[0])) is None
+    ret_value = test_hooked_func("a", 5, 8)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == True
+    assert ret_value           == 1
+    reset_test_vars()
+
+    # Set return hook and change return value to 2
+    assert test_hooked_func.onReturn(lambda *args, **kwargs:\
+         check_return_hook_args(args, kwargs, (1, "a", 5, 8), {}, return_value = 2)) is not None
+    ret_value = test_hooked_func("a", 5, 8)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == True
+    assert ret_value           == 2
+    reset_test_vars()
+
+    # Unset return hook
+    assert test_hooked_func.onReturn(None) is not None
+    ret_value = test_hooked_func("a", 5, 8)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == False
+    assert ret_value           == 1
+    reset_test_vars()
+
+    # Unset call hook
+    assert test_hooked_func.onCall(None) is not None
+    ret_value = test_hooked_func("a", 9, 8)
+    assert call_hook_invoked   == False
+    assert return_hook_invoked == False
+    assert ret_value           == 1
+    reset_test_vars()
+
+# Test class hooked method
+    ret_value = tcls.test_hooked_method("'a'", 5, 8)
+    assert call_hook_invoked   == False
+    assert return_hook_invoked == False
+    assert ret_value           == "test_hooked_method return: 'a', 5, 8"
+    reset_test_vars()
+
+    # Set call hook
+    assert tcls.test_hooked_method.onCall(lambda *args, **kwargs: \
+        check_call_hook_args(args, kwargs, (tcls, 120, "'2nd arg'"), {'c' : 0.05895})) is None
+    ret_value = tcls.test_hooked_method(120, "'2nd arg'", c=0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == False
+    assert ret_value           == "test_hooked_method return: 120, '2nd arg', 0.05895"
+    reset_test_vars()
+
+    assert tcls.test_hooked_method.onCall(lambda *args, **kwargs: \
+        check_call_hook_args(args, kwargs, (tcls, 120, "'2nd arg'", 0.05895), {})) is not None
+    ret_value = tcls.test_hooked_method(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == False
+    assert ret_value           == "test_hooked_method return: 120, '2nd arg', 0.05895"
+    reset_test_vars()
+
+    # Set return hook
+    assert tcls.test_hooked_method.onReturn(lambda *args, **kwargs:\
+        check_return_hook_args(args, kwargs, \
+            ("test_hooked_method return: 120, '2nd arg', 0.05895", tcls, 120, "'2nd arg'", 0.05895), {}, return_value = args[0])) is None
+    ret_value = tcls.test_hooked_method(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == True
+    assert ret_value           == "test_hooked_method return: 120, '2nd arg', 0.05895"
+    reset_test_vars()
+
+    # Set return hook with changed return value
+    assert tcls.test_hooked_method.onReturn(lambda *args, **kwargs:\
+        check_return_hook_args(args, kwargs, \
+            ("test_hooked_method return: 120, '2nd arg', 0.05895", tcls, 120, "'2nd arg'", 0.05895), {}, return_value = "return of the Hook")) is not None
+    ret_value = tcls.test_hooked_method(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == True
+    assert ret_value           == "return of the Hook"
+    reset_test_vars()
+
+    # Unset return hook
+    assert tcls.test_hooked_method.onReturn(None) is not None
+    ret_value = tcls.test_hooked_method(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == False
+    assert ret_value           == "test_hooked_method return: 120, '2nd arg', 0.05895"
+    reset_test_vars()
+
+    # Unset call hook
+    assert tcls.test_hooked_method.onCall(None) is not None
+    ret_value = tcls.test_hooked_method("'a'", 5, 8)
+    assert call_hook_invoked   == False
+    assert return_hook_invoked == False
+    assert ret_value           == "test_hooked_method return: 'a', 5, 8"
+    reset_test_vars()
+
+# Test class hooked classmethod
+    ret_value = tcls.test_hooked_classmethod("'a'", 5, 8)
+    assert call_hook_invoked   == False
+    assert return_hook_invoked == False
+    assert ret_value           == "test_hooked_classmethod return: 'a', 5, 8"
+    reset_test_vars()
+
+    # Set call hook
+    assert tcls.test_hooked_classmethod.onCall(lambda *args, **kwargs: \
+        check_call_hook_args(args, kwargs, (TestClass, 120, "'2nd arg'"), {'c' : 0.05895})) is None
+    ret_value = tcls.test_hooked_classmethod(120, "'2nd arg'", c=0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == False
+    assert ret_value           == "test_hooked_classmethod return: 120, '2nd arg', 0.05895"
+    reset_test_vars()
+
+    assert tcls.test_hooked_classmethod.onCall(lambda *args, **kwargs: \
+        check_call_hook_args(args, kwargs, (TestClass, 120, "'2nd arg'", 0.05895), {})) is not None
+    ret_value = tcls.test_hooked_classmethod(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == False
+    assert ret_value           == "test_hooked_classmethod return: 120, '2nd arg', 0.05895"
+    reset_test_vars()
+
+    # Set return hook
+    assert tcls.test_hooked_classmethod.onReturn(lambda *args, **kwargs:\
+        check_return_hook_args(args, kwargs, \
+            ("test_hooked_classmethod return: 120, '2nd arg', 0.05895", TestClass, 120, "'2nd arg'", 0.05895), {}, return_value = args[0])) is None
+    ret_value = tcls.test_hooked_classmethod(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == True
+    assert ret_value           == "test_hooked_classmethod return: 120, '2nd arg', 0.05895"
+    reset_test_vars()
+
+    # Set return hook with changed return value
+    assert tcls.test_hooked_classmethod.onReturn(lambda *args, **kwargs:\
+        check_return_hook_args(args, kwargs, \
+            ("test_hooked_classmethod return: 120, '2nd arg', 0.05895", TestClass, 120, "'2nd arg'", 0.05895), {}, return_value = "return of the Hook")) is not None
+    ret_value = tcls.test_hooked_classmethod(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == True
+    assert ret_value           == "return of the Hook"
+    reset_test_vars()
+
+    # Test class type has hooks on classmethod
+    ret_value = TestClass.test_hooked_classmethod(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == True
+    assert ret_value           == "return of the Hook"
+    reset_test_vars()
+
+    # Unset return hook
+    assert tcls.test_hooked_classmethod.onReturn(None) is not None
+    ret_value = tcls.test_hooked_classmethod(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == False
+    assert ret_value           == "test_hooked_classmethod return: 120, '2nd arg', 0.05895"
+    reset_test_vars()
+
+    # Unset call hook
+    assert tcls.test_hooked_classmethod.onCall(None) is not None
+    ret_value = tcls.test_hooked_classmethod("'a'", 5, 8)
+    assert call_hook_invoked   == False
+    assert return_hook_invoked == False
+    assert ret_value           == "test_hooked_classmethod return: 'a', 5, 8"
+    reset_test_vars()
+
+# Test class hooked classmethod without object instance
+    ret_value = TestClass.test_hooked_classmethod("'a'", 5, 8)
+    assert call_hook_invoked   == False
+    assert return_hook_invoked == False
+    assert ret_value           == "test_hooked_classmethod return: 'a', 5, 8"
+    reset_test_vars()
+
+    # Set call hook
+    assert TestClass.test_hooked_classmethod.onCall(lambda *args, **kwargs: \
+        check_call_hook_args(args, kwargs, (TestClass, 120, "'2nd arg'"), {'c' : 0.05895})) is None
+    ret_value = TestClass.test_hooked_classmethod(120, "'2nd arg'", c=0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == False
+    assert ret_value           == "test_hooked_classmethod return: 120, '2nd arg', 0.05895"
+    reset_test_vars()
+
+    assert TestClass.test_hooked_classmethod.onCall(lambda *args, **kwargs: \
+        check_call_hook_args(args, kwargs, (TestClass, 120, "'2nd arg'", 0.05895), {})) is not None
+    ret_value = TestClass.test_hooked_classmethod(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == False
+    assert ret_value           == "test_hooked_classmethod return: 120, '2nd arg', 0.05895"
+    reset_test_vars()
+
+    # Set return hook
+    assert TestClass.test_hooked_classmethod.onReturn(lambda *args, **kwargs:\
+        check_return_hook_args(args, kwargs, \
+            ("test_hooked_classmethod return: 120, '2nd arg', 0.05895", TestClass, 120, "'2nd arg'", 0.05895), {}, return_value = args[0])) is None
+    ret_value = TestClass.test_hooked_classmethod(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == True
+    assert ret_value           == "test_hooked_classmethod return: 120, '2nd arg', 0.05895"
+    reset_test_vars()
+
+    # Set return hook with changed return value
+    assert TestClass.test_hooked_classmethod.onReturn(lambda *args, **kwargs:\
+        check_return_hook_args(args, kwargs, \
+            ("test_hooked_classmethod return: 120, '2nd arg', 0.05895", TestClass, 120, "'2nd arg'", 0.05895), {}, return_value = "return of the Hook")) is not None
+    ret_value = TestClass.test_hooked_classmethod(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == True
+    assert ret_value           == "return of the Hook"
+    reset_test_vars()
+
+    # Test class instance has hooks on classmethod
+    ret_value = tcls.test_hooked_classmethod(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == True
+    assert ret_value           == "return of the Hook"
+    reset_test_vars()
+
+    # Unset return hook
+    assert TestClass.test_hooked_classmethod.onReturn(None) is not None
+    ret_value = TestClass.test_hooked_classmethod(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == False
+    assert ret_value           == "test_hooked_classmethod return: 120, '2nd arg', 0.05895"
+    reset_test_vars()
+
+    # Unset call hook
+    assert TestClass.test_hooked_classmethod.onCall(None) is not None
+    ret_value = TestClass.test_hooked_classmethod("'a'", 5, 8)
+    assert call_hook_invoked   == False
+    assert return_hook_invoked == False
+    assert ret_value           == "test_hooked_classmethod return: 'a', 5, 8"
+    reset_test_vars()
+
+# Test class hooked static method
+    ret_value = tcls.test_hooked_static_method("'a'", 5, 8)
+    assert call_hook_invoked   == False
+    assert return_hook_invoked == False
+    assert ret_value           == "test_hooked_static_method return: 'a', 5, 8"
+    reset_test_vars()
+
+    # Set call hook
+    assert tcls.test_hooked_static_method.onCall(lambda *args, **kwargs: \
+        check_call_hook_args(args, kwargs, (120, "'2nd arg'"), {'c' : 0.05895})) is None
+    ret_value = tcls.test_hooked_static_method(120, "'2nd arg'", c=0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == False
+    assert ret_value           == "test_hooked_static_method return: 120, '2nd arg', 0.05895"
+    reset_test_vars()
+
+    assert tcls.test_hooked_static_method.onCall(lambda *args, **kwargs: \
+        check_call_hook_args(args, kwargs, (120, "'2nd arg'", 0.05895), {})) is not None
+    ret_value = tcls.test_hooked_static_method(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == False
+    assert ret_value           == "test_hooked_static_method return: 120, '2nd arg', 0.05895"
+    reset_test_vars()
+
+    # Set return hook
+    assert tcls.test_hooked_static_method.onReturn(lambda *args, **kwargs:\
+        check_return_hook_args(args, kwargs, \
+            ("test_hooked_static_method return: 120, '2nd arg', 0.05895", 120, "'2nd arg'", 0.05895), {}, return_value = args[0])) is None
+    ret_value = tcls.test_hooked_static_method(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == True
+    assert ret_value           == "test_hooked_static_method return: 120, '2nd arg', 0.05895"
+    reset_test_vars()
+
+    # Set return hook with changed return value
+    assert tcls.test_hooked_static_method.onReturn(lambda *args, **kwargs:\
+        check_return_hook_args(args, kwargs, \
+            ("test_hooked_static_method return: 120, '2nd arg', 0.05895", 120, "'2nd arg'", 0.05895), {}, return_value = "return of the Hook")) is not None
+    ret_value = tcls.test_hooked_static_method(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == True
+    assert ret_value           == "return of the Hook"
+    reset_test_vars()
+
+    # Test class type has also set hook on static methods
+    ret_value = TestClass.test_hooked_static_method(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == True
+    assert ret_value           == "return of the Hook"
+    reset_test_vars()
+
+    # Unset return hook
+    assert tcls.test_hooked_static_method.onReturn(None) is not None
+    ret_value = tcls.test_hooked_static_method(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == False
+    assert ret_value           == "test_hooked_static_method return: 120, '2nd arg', 0.05895"
+    reset_test_vars()
+
+    # Unset call hook
+    assert tcls.test_hooked_static_method.onCall(None) is not None
+    ret_value = tcls.test_hooked_static_method("'a'", 5, 8)
+    assert call_hook_invoked   == False
+    assert return_hook_invoked == False
+    assert ret_value           == "test_hooked_static_method return: 'a', 5, 8"
+    reset_test_vars()
+
+# Test class hooked static method without object instance
+    ret_value = TestClass.test_hooked_static_method("'a'", 5, 8)
+    assert call_hook_invoked   == False
+    assert return_hook_invoked == False
+    assert ret_value           == "test_hooked_static_method return: 'a', 5, 8"
+    reset_test_vars()
+
+    # Set call hook
+    assert TestClass.test_hooked_static_method.onCall(lambda *args, **kwargs: \
+        check_call_hook_args(args, kwargs, (120, "'2nd arg'"), {'c' : 0.05895})) is None
+    ret_value = TestClass.test_hooked_static_method(120, "'2nd arg'", c=0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == False
+    assert ret_value           == "test_hooked_static_method return: 120, '2nd arg', 0.05895"
+    reset_test_vars()
+
+    assert TestClass.test_hooked_static_method.onCall(lambda *args, **kwargs: \
+        check_call_hook_args(args, kwargs, (120, "'2nd arg'", 0.05895), {})) is not None
+    ret_value = TestClass.test_hooked_static_method(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == False
+    assert ret_value           == "test_hooked_static_method return: 120, '2nd arg', 0.05895"
+    reset_test_vars()
+
+    # Set return hook
+    assert TestClass.test_hooked_static_method.onReturn(lambda *args, **kwargs:\
+        check_return_hook_args(args, kwargs, \
+            ("test_hooked_static_method return: 120, '2nd arg', 0.05895", 120, "'2nd arg'", 0.05895), {}, return_value = args[0])) is None
+    ret_value = TestClass.test_hooked_static_method(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == True
+    assert ret_value           == "test_hooked_static_method return: 120, '2nd arg', 0.05895"
+    reset_test_vars()
+
+    # Set return hook with changed return value
+    assert TestClass.test_hooked_static_method.onReturn(lambda *args, **kwargs:\
+        check_return_hook_args(args, kwargs, \
+            ("test_hooked_static_method return: 120, '2nd arg', 0.05895", 120, "'2nd arg'", 0.05895), {}, return_value = "return of the Hook")) is not None
+    ret_value = TestClass.test_hooked_static_method(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == True
+    assert ret_value           == "return of the Hook"
+    reset_test_vars()
+
+    # Test class instance has also set hook on static methods
+    ret_value = tcls.test_hooked_static_method(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == True
+    assert ret_value           == "return of the Hook"
+    reset_test_vars()
+
+    # Unset return hook
+    assert TestClass.test_hooked_static_method.onReturn(None) is not None
+    ret_value = TestClass.test_hooked_static_method(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == False
+    assert ret_value           == "test_hooked_static_method return: 120, '2nd arg', 0.05895"
+    reset_test_vars()
+
+    # Unset call hook
+    assert TestClass.test_hooked_static_method.onCall(None) is not None
+    ret_value = TestClass.test_hooked_static_method("'a'", 5, 8)
+    assert call_hook_invoked   == False
+    assert return_hook_invoked == False
+    assert ret_value           == "test_hooked_static_method return: 'a', 5, 8"
+    reset_test_vars()
+
+# Test 2 TestClass objects with different hooks
+    tcls1 = TestClass()
+    assert tcls1.test_hooked_method.onCall(lambda *args, **kwargs: \
+        check_call_hook_args(args, kwargs, (tcls1, 120, "'2nd arg'", 0.05895), {})) is None
+    assert tcls1.test_hooked_method.onReturn(lambda *args, **kwargs:\
+        check_return_hook_args(args, kwargs, \
+            ("test_hooked_method return: 120, '2nd arg', 0.05895", tcls1, 120, "'2nd arg'", 0.05895), {}, return_value = "return of the Hook")) is None
+    ret_value = tcls1.test_hooked_method(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == True
+    assert ret_value           == "return of the Hook"
+    reset_test_vars()
+
+    tcls2 = TestClass()
+    ret_value = tcls2.test_hooked_method("'test 1st arg'", 0.5, 81)
+    assert call_hook_invoked   == False
+    assert return_hook_invoked == False
+    assert ret_value           == "test_hooked_method return: 'test 1st arg', 0.5, 81"
+    reset_test_vars()
+
+    ret_value = tcls1.test_hooked_method(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == True
+    assert ret_value           == "return of the Hook"
+    reset_test_vars()
+
+# Add FunctionHook to non-hooked function
+    test_func = FunctionHook(test_func)
+    assert isinstance(test_func, FunctionHook) == True
+    assert hasattr(test_func, 'onCall')        == True
+    assert hasattr(test_func, 'onReturn')      == True
+
+    ret_value = test_func("a", 5, 8)
+    assert call_hook_invoked   == False
+    assert return_hook_invoked == False
+    assert ret_value           == "test_func return: a, 5, 8"
+    reset_test_vars()
+
+    # Set call hook
+    assert test_func.onCall(lambda *args, **kwargs: \
+        check_call_hook_args(args, kwargs, ("a", 5), {'c': 8})) is None
+    ret_value = test_func("a", 5, c=8)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == False
+    assert ret_value           == "test_func return: a, 5, 8"
+    reset_test_vars()
+
+    assert test_func.onCall(lambda *args, **kwargs: \
+        check_call_hook_args(args, kwargs, ("a", 5, 8), {})) is not None
+    ret_value = test_func("a", 5, 8)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == False
+    assert ret_value           == "test_func return: a, 5, 8"
+    reset_test_vars()
+
+    # Set return hook
+    assert test_func.onReturn(lambda *args, **kwargs:\
+        check_return_hook_args(args, kwargs, ("test_func return: a, 5, 8", "a", 5, 8), {}, return_value = args[0])) is None
+    ret_value = test_func("a", 5, 8)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == True
+    assert ret_value           == "test_func return: a, 5, 8"
+    reset_test_vars()
+
+    # Set return hook and change return value to 2
+    assert test_func.onReturn(lambda *args, **kwargs:\
+         check_return_hook_args(args, kwargs, ("test_func return: a, 5, 8", "a", 5, 8), {}, return_value = "return func of test_func hooked")) is not None
+    ret_value = test_func("a", 5, 8)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == True
+    assert ret_value           == "return func of test_func hooked"
+    reset_test_vars()
+
+    # Unset return hook
+    assert test_func.onReturn(None) is not None
+    ret_value = test_func("a", 5, 8)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == False
+    assert ret_value           == "test_func return: a, 5, 8"
+    reset_test_vars()
+
+    # Unset call hook
+    assert test_func.onCall(None) is not None
+    ret_value = test_func("a", 9, 8)
+    assert call_hook_invoked   == False
+    assert return_hook_invoked == False
+    assert ret_value           == "test_func return: a, 9, 8"
+    reset_test_vars()
+
+# Add hook to non-hooked class function
+    TestClass.test_method = FunctionHook(TestClass.test_method)
+    assert isinstance(tcls.test_method, FunctionHook) == True
+    assert hasattr(tcls.test_method, 'onCall')        == True
+    assert hasattr(tcls.test_method, 'onReturn')      == True
+
+    ret_value = tcls.test_method("'a'", 5, 8)
+    assert call_hook_invoked   == False
+    assert return_hook_invoked == False
+    assert ret_value           == "test_method return: 'a', 5, 8"
+    reset_test_vars()
+
+    # Set call hook
+    assert tcls.test_method.onCall(lambda *args, **kwargs: \
+        check_call_hook_args(args, kwargs, (tcls, 120, "'2nd arg'"), {'c' : 0.05895})) is None
+    ret_value = tcls.test_method(120, "'2nd arg'", c=0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == False
+    assert ret_value           == "test_method return: 120, '2nd arg', 0.05895"
+    reset_test_vars()
+
+    assert tcls.test_method.onCall(lambda *args, **kwargs: \
+        check_call_hook_args(args, kwargs, (tcls, 120, "'2nd arg'", 0.05895), {})) is not None
+    ret_value = tcls.test_method(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == False
+    assert ret_value           == "test_method return: 120, '2nd arg', 0.05895"
+    reset_test_vars()
+
+    # Set return hook
+    assert tcls.test_method.onReturn(lambda *args, **kwargs:\
+        check_return_hook_args(args, kwargs, \
+            ("test_method return: 120, '2nd arg', 0.05895", tcls, 120, "'2nd arg'", 0.05895), {}, return_value = args[0])) is None
+    ret_value = tcls.test_method(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == True
+    assert ret_value           == "test_method return: 120, '2nd arg', 0.05895"
+    reset_test_vars()
+
+    # Set return hook with changed return value
+    assert tcls.test_method.onReturn(lambda *args, **kwargs:\
+        check_return_hook_args(args, kwargs, \
+            ("test_method return: 120, '2nd arg', 0.05895", tcls, 120, "'2nd arg'", 0.05895), {}, return_value = "return of the Hook")) is not None
+    ret_value = tcls.test_method(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == True
+    assert ret_value           == "return of the Hook"
+    reset_test_vars()
+
+    # Unset return hook
+    assert tcls.test_method.onReturn(None) is not None
+    ret_value = tcls.test_method(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == False
+    assert ret_value           == "test_method return: 120, '2nd arg', 0.05895"
+    reset_test_vars()
+
+    # Unset call hook
+    assert tcls.test_method.onCall(None) is not None
+    ret_value = tcls.test_method("'a'", 5, 8)
+    assert call_hook_invoked   == False
+    assert return_hook_invoked == False
+    assert ret_value           == "test_method return: 'a', 5, 8"
+    reset_test_vars()
+
+# Add hook to non-hooked classmethod
+    TestClass.test_classmethod = FunctionHook(TestClass.test_classmethod)
+    ret_value = tcls.test_classmethod("'a'", 5, 8)
+    assert call_hook_invoked   == False
+    assert return_hook_invoked == False
+    assert ret_value           == "test_classmethod return: 'a', 5, 8"
+    reset_test_vars()
+
+    # Set call hook
+    assert tcls.test_classmethod.onCall(lambda *args, **kwargs: \
+        check_call_hook_args(args, kwargs, (TestClass, 120, "'2nd arg'"), {'c' : 0.05895})) is None
+    ret_value = tcls.test_classmethod(120, "'2nd arg'", c=0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == False
+    assert ret_value           == "test_classmethod return: 120, '2nd arg', 0.05895"
+    reset_test_vars()
+
+    assert tcls.test_classmethod.onCall(lambda *args, **kwargs: \
+        check_call_hook_args(args, kwargs, (TestClass, 120, "'2nd arg'", 0.05895), {})) is not None
+    ret_value = tcls.test_classmethod(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == False
+    assert ret_value           == "test_classmethod return: 120, '2nd arg', 0.05895"
+    reset_test_vars()
+
+    # Set return hook
+    assert tcls.test_classmethod.onReturn(lambda *args, **kwargs:\
+        check_return_hook_args(args, kwargs, \
+            ("test_classmethod return: 120, '2nd arg', 0.05895", TestClass, 120, "'2nd arg'", 0.05895), {}, return_value = args[0])) is None
+    ret_value = tcls.test_classmethod(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == True
+    assert ret_value           == "test_classmethod return: 120, '2nd arg', 0.05895"
+    reset_test_vars()
+
+    # Set return hook with changed return value
+    assert tcls.test_classmethod.onReturn(lambda *args, **kwargs:\
+        check_return_hook_args(args, kwargs, \
+            ("test_classmethod return: 120, '2nd arg', 0.05895", TestClass, 120, "'2nd arg'", 0.05895), {}, return_value = "return of the Hook")) is not None
+    ret_value = tcls.test_classmethod(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == True
+    assert ret_value           == "return of the Hook"
+    reset_test_vars()
+
+    # Test class type has hooks on classmethod
+    ret_value = TestClass.test_classmethod(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == True
+    assert ret_value           == "return of the Hook"
+    reset_test_vars()
+
+    # Unset return hook
+    assert tcls.test_classmethod.onReturn(None) is not None
+    ret_value = tcls.test_classmethod(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == False
+    assert ret_value           == "test_classmethod return: 120, '2nd arg', 0.05895"
+    reset_test_vars()
+
+    # Unset call hook
+    assert tcls.test_classmethod.onCall(None) is not None
+    ret_value = tcls.test_classmethod("'a'", 5, 8)
+    assert call_hook_invoked   == False
+    assert return_hook_invoked == False
+    assert ret_value           == "test_classmethod return: 'a', 5, 8"
+    reset_test_vars()
+
+# Test class hooked classmethod without object instance
+    ret_value = TestClass.test_classmethod("'a'", 5, 8)
+    assert call_hook_invoked   == False
+    assert return_hook_invoked == False
+    assert ret_value           == "test_classmethod return: 'a', 5, 8"
+    reset_test_vars()
+
+    # Set call hook
+    assert TestClass.test_classmethod.onCall(lambda *args, **kwargs: \
+        check_call_hook_args(args, kwargs, (TestClass, 120, "'2nd arg'"), {'c' : 0.05895})) is None
+    ret_value = TestClass.test_classmethod(120, "'2nd arg'", c=0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == False
+    assert ret_value           == "test_classmethod return: 120, '2nd arg', 0.05895"
+    reset_test_vars()
+
+    assert TestClass.test_classmethod.onCall(lambda *args, **kwargs: \
+        check_call_hook_args(args, kwargs, (TestClass, 120, "'2nd arg'", 0.05895), {})) is not None
+    ret_value = TestClass.test_classmethod(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == False
+    assert ret_value           == "test_classmethod return: 120, '2nd arg', 0.05895"
+    reset_test_vars()
+
+    # Set return hook
+    assert TestClass.test_classmethod.onReturn(lambda *args, **kwargs:\
+        check_return_hook_args(args, kwargs, \
+            ("test_classmethod return: 120, '2nd arg', 0.05895", TestClass, 120, "'2nd arg'", 0.05895), {}, return_value = args[0])) is None
+    ret_value = TestClass.test_classmethod(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == True
+    assert ret_value           == "test_classmethod return: 120, '2nd arg', 0.05895"
+    reset_test_vars()
+
+    # Set return hook with changed return value
+    assert TestClass.test_classmethod.onReturn(lambda *args, **kwargs:\
+        check_return_hook_args(args, kwargs, \
+            ("test_classmethod return: 120, '2nd arg', 0.05895", TestClass, 120, "'2nd arg'", 0.05895), {}, return_value = "return of the Hook")) is not None
+    ret_value = TestClass.test_classmethod(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == True
+    assert ret_value           == "return of the Hook"
+    reset_test_vars()
+
+    # Test class instance has hooks on classmethod
+    ret_value = tcls.test_classmethod(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == True
+    assert ret_value           == "return of the Hook"
+    reset_test_vars()
+
+    # Unset return hook
+    assert TestClass.test_classmethod.onReturn(None) is not None
+    ret_value = TestClass.test_classmethod(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == False
+    assert ret_value           == "test_classmethod return: 120, '2nd arg', 0.05895"
+    reset_test_vars()
+
+    # Unset call hook
+    assert TestClass.test_classmethod.onCall(None) is not None
+    ret_value = TestClass.test_classmethod("'a'", 5, 8)
+    assert call_hook_invoked   == False
+    assert return_hook_invoked == False
+    assert ret_value           == "test_classmethod return: 'a', 5, 8"
+    reset_test_vars()
+
+# Add hook to non-hooked static method
+    TestClass.test_static_method = FunctionHook(staticmethod(TestClass.test_static_method))
+    ret_value = tcls.test_static_method("'a'", 5, 8)
+    assert call_hook_invoked   == False
+    assert return_hook_invoked == False
+    assert ret_value           == "test_static_method return: 'a', 5, 8"
+    reset_test_vars()
+
+    # Set call hook
+    assert tcls.test_static_method.onCall(lambda *args, **kwargs: \
+        check_call_hook_args(args, kwargs, (120, "'2nd arg'"), {'c' : 0.05895})) is None
+    ret_value = tcls.test_static_method(120, "'2nd arg'", c=0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == False
+    assert ret_value           == "test_static_method return: 120, '2nd arg', 0.05895"
+    reset_test_vars()
+
+    assert tcls.test_static_method.onCall(lambda *args, **kwargs: \
+        check_call_hook_args(args, kwargs, (120, "'2nd arg'", 0.05895), {})) is not None
+    ret_value = tcls.test_static_method(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == False
+    assert ret_value           == "test_static_method return: 120, '2nd arg', 0.05895"
+    reset_test_vars()
+
+    # Set return hook
+    assert tcls.test_static_method.onReturn(lambda *args, **kwargs:\
+        check_return_hook_args(args, kwargs, \
+            ("test_static_method return: 120, '2nd arg', 0.05895", 120, "'2nd arg'", 0.05895), {}, return_value = args[0])) is None
+    ret_value = tcls.test_static_method(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == True
+    assert ret_value           == "test_static_method return: 120, '2nd arg', 0.05895"
+    reset_test_vars()
+
+    # Set return hook with changed return value
+    assert tcls.test_static_method.onReturn(lambda *args, **kwargs:\
+        check_return_hook_args(args, kwargs, \
+            ("test_static_method return: 120, '2nd arg', 0.05895", 120, "'2nd arg'", 0.05895), {}, return_value = "return of the Hook")) is not None
+    ret_value = tcls.test_static_method(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == True
+    assert ret_value           == "return of the Hook"
+    reset_test_vars()
+
+    # Test class type has also set hook on static methods
+    ret_value = TestClass.test_static_method(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == True
+    assert ret_value           == "return of the Hook"
+    reset_test_vars()
+
+    # Unset return hook
+    assert tcls.test_static_method.onReturn(None) is not None
+    ret_value = tcls.test_static_method(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == False
+    assert ret_value           == "test_static_method return: 120, '2nd arg', 0.05895"
+    reset_test_vars()
+
+    # Unset call hook
+    assert tcls.test_static_method.onCall(None) is not None
+    ret_value = tcls.test_static_method("'a'", 5, 8)
+    assert call_hook_invoked   == False
+    assert return_hook_invoked == False
+    assert ret_value           == "test_static_method return: 'a', 5, 8"
+    reset_test_vars()
+
+# Test class hooked static method without object instance
+    ret_value = TestClass.test_static_method("'a'", 5, 8)
+    assert call_hook_invoked   == False
+    assert return_hook_invoked == False
+    assert ret_value           == "test_static_method return: 'a', 5, 8"
+    reset_test_vars()
+
+    # Set call hook
+    assert TestClass.test_static_method.onCall(lambda *args, **kwargs: \
+        check_call_hook_args(args, kwargs, (120, "'2nd arg'"), {'c' : 0.05895})) is None
+    ret_value = TestClass.test_static_method(120, "'2nd arg'", c=0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == False
+    assert ret_value           == "test_static_method return: 120, '2nd arg', 0.05895"
+    reset_test_vars()
+
+    assert TestClass.test_static_method.onCall(lambda *args, **kwargs: \
+        check_call_hook_args(args, kwargs, (120, "'2nd arg'", 0.05895), {})) is not None
+    ret_value = TestClass.test_static_method(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == False
+    assert ret_value           == "test_static_method return: 120, '2nd arg', 0.05895"
+    reset_test_vars()
+
+    # Set return hook
+    assert TestClass.test_static_method.onReturn(lambda *args, **kwargs:\
+        check_return_hook_args(args, kwargs, \
+            ("test_static_method return: 120, '2nd arg', 0.05895", 120, "'2nd arg'", 0.05895), {}, return_value = args[0])) is None
+    ret_value = TestClass.test_static_method(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == True
+    assert ret_value           == "test_static_method return: 120, '2nd arg', 0.05895"
+    reset_test_vars()
+
+    # Set return hook with changed return value
+    assert TestClass.test_static_method.onReturn(lambda *args, **kwargs:\
+        check_return_hook_args(args, kwargs, \
+            ("test_static_method return: 120, '2nd arg', 0.05895", 120, "'2nd arg'", 0.05895), {}, return_value = "return of the Hook")) is not None
+    ret_value = TestClass.test_static_method(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == True
+    assert ret_value           == "return of the Hook"
+    reset_test_vars()
+
+    # Test class instance has also set hook on static methods
+    ret_value = tcls.test_static_method(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == True
+    assert ret_value           == "return of the Hook"
+    reset_test_vars()
+
+    # Unset return hook
+    assert TestClass.test_static_method.onReturn(None) is not None
+    ret_value = TestClass.test_static_method(120, "'2nd arg'", 0.05895)
+    assert call_hook_invoked   == True
+    assert return_hook_invoked == False
+    assert ret_value           == "test_static_method return: 120, '2nd arg', 0.05895"
+    reset_test_vars()
+
+    # Unset call hook
+    assert TestClass.test_static_method.onCall(None) is not None
+    ret_value = TestClass.test_static_method("'a'", 5, 8)
+    assert call_hook_invoked   == False
+    assert return_hook_invoked == False
+    assert ret_value           == "test_static_method return: 'a', 5, 8"
+    reset_test_vars()
+
+# Fuzz tests
+    with pytest.raises(ValueError, match='Can hook only on function, class function, staticmethod or classmethod'):
+        FunctionHook(1)
+
+    with pytest.raises(ValueError, match='Can hook only on function, class function, staticmethod or classmethod'):
+        FunctionHook("")
+
+    with pytest.raises(ValueError, match='Can hook only on function, class function, staticmethod or classmethod'):
+        FunctionHook("test_str")
+
+    with pytest.raises(ValueError, match='Can hook only on function, class function, staticmethod or classmethod'):
+        FunctionHook(b'')
+
+    with pytest.raises(ValueError, match='Can hook only on function, class function, staticmethod or classmethod'):
+        FunctionHook(bytes.fromhex('AABBCCDD'))
+
+    with pytest.raises(ValueError, match='Can hook only on function, class function, staticmethod or classmethod'):
+        FunctionHook(None)
+
+    with pytest.raises(ValueError, match='Can hook only on function, class function, staticmethod or classmethod'):
+        FunctionHook(tcls1)
+
+    with pytest.raises(ValueError, match="'1' is not function"):
+        tcls1.test_hooked_method.onCall(1)
+
+    with pytest.raises(ValueError, match="'''' is not function"):
+        tcls1.test_hooked_method.onCall("")
+
+    with pytest.raises(ValueError, match="''test'' is not function"):
+        tcls1.test_hooked_method.onCall("test")
+
+    with pytest.raises(ValueError, match="'b''' is not function"):
+        tcls1.test_hooked_method.onCall(b'')
+
+    with pytest.raises(ValueError, match=f"'{repr(tcls1)}' is not function"):
+        tcls1.test_hooked_method.onCall(tcls1)
+
+    with pytest.raises(ValueError, match="'1' is not function"):
+        tcls1.test_hooked_method.onReturn(1)
+
+    with pytest.raises(ValueError, match="'''' is not function"):
+        tcls1.test_hooked_method.onReturn("")
+
+    with pytest.raises(ValueError, match="''test'' is not function"):
+        tcls1.test_hooked_method.onReturn("test")
+
+    with pytest.raises(ValueError, match="'b''' is not function"):
+        tcls1.test_hooked_method.onReturn(b'')
+
+    with pytest.raises(ValueError, match=f"'{repr(tcls1)}' is not function"):
+        tcls1.test_hooked_method.onReturn(tcls1)
