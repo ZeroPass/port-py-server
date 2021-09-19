@@ -16,7 +16,7 @@ from typing import List, Optional, Tuple, Union
 
 from . import utils
 from .error import * # pylint: disable=unused-wildcard-import, wildcard-import
-from .types import Challenge, CID, CountryCode, UserId
+from .types import Challenge, CID, CountryCode, hook, UserId
 
 class PortProto:
 
@@ -30,6 +30,7 @@ class PortProto:
         self._db  = storage
         self._log = log.getLogger("port.proto")
 
+    @hook
     def createNewChallenge(self, uid: UserId) -> Tuple[Challenge, datetime]:
         """
         Returns new proto challenge for user ID.
@@ -54,6 +55,7 @@ class PortProto:
         self._log.debug("New challenge created cid=%s", c.id)
         return (c, et)
 
+    @hook
     def cancelChallenge(self, cid: CID) -> Union[None, dict]:
         self._db.deleteChallenge(cid)
         self._log.debug("Challenge canceled, cid=%s", cid)
@@ -74,6 +76,7 @@ class PortProto:
             self._log.exception(e)
             return False
 
+    @hook
     def register(self, uid: UserId, sod: ef.SOD, dg15: ef.DG15, cid: CID, csigs: List[bytes], dg14: ef.DG14 = None, allowSodOverride: bool = False) \
         -> dict:
         """
@@ -226,6 +229,7 @@ class PortProto:
         self._log.verbose("sigAlgo=%s", "None" if aaSigAlgo is None else accnt.aaSigAlgo.hex())
         return {}
 
+    @hook
     def getAttestationInfo(self, uid: UserId) -> Tuple[database.AccountStorage, database.SodTrack, datetime, bool]:
         """
         Returns attestation info for account under `uid`.
@@ -252,6 +256,7 @@ class PortProto:
                     expires = dsc.notValidAfter
         return (a, st, expires, attested)
 
+    @hook
     def getAssertion(self, uid: UserId, cid: CID, csigs: List[bytes]) -> dict:
         """
         Get eMRTD active authentication assertion for existing account with `uid`.
@@ -300,6 +305,7 @@ class PortProto:
 
         return {}
 
+    @hook
     def addCscaCertificate(self, csca: CscaCertificate, allowSelfIssued: bool = False) -> database.CscaStorage:
         """
         Adds new CSCA certificate into database.
@@ -403,6 +409,7 @@ class PortProto:
             self._log.error("  e=%s", e)
             raise
 
+    @hook
     def addDscCertificate(self, dsc: DocumentSignerCertificate) -> database.DscStorage:
         """
         Adds new DSC certificate into database.
@@ -478,6 +485,7 @@ class PortProto:
             self._log.error("  e=%s", e)
             raise
 
+    @hook
     def updateCRL(self, crl: CertificateRevocationList):
         """
         Adds new or update existing country CRL in DB.
