@@ -23,13 +23,16 @@ from port.database import (
 )
 from port.proto import (
     Challenge,
+    CID,
+    PeUnauthorized,
     PortProto,
     UserId,
     utils
 )
 
 from port.server import PortServer
-from typing import Optional, Tuple, Union
+from pymrtd import ef
+from typing import List, Optional, Tuple, Union
 
 
 class DevProto(PortProto):
@@ -71,6 +74,52 @@ class ExamplePortServer(PortServer):
                 self._cfg.dev_fc or False, self._cfg.dev_no_tcv or False)
         else:
             super()._init_proto(db)
+
+        # install proto hooks
+        if  self._proto is PortProto:
+            self._proto.createNewChallenge.onCall(self.onGetChallenge)
+        else:
+            super(DevProto, self._proto).createNewChallenge.onCall(self.onGetChallenge)
+
+        self._proto.register.onCall(self.onRegister)
+        self._proto.register.onReturn(self.onRegisterFinish)
+        self._proto.getAssertion.onReturn(self.onGetAssertionFinish)
+
+    def onGetChallenge(self, proto, uid: UserId, seed: Optional[bytes]): # pylint: disable=unused-argument
+        self._log.info("Get challenge called with uid=%s %s", uid, seed)
+        if str(uid) == 'Obi Wan Kenobi':
+            self._log.error("Ay caramba, Obi Wan Kenobi requested challenge!")
+            raise PeUnauthorized("Obi Wan Kenobi is not allowed to call proto.get_challenge")
+
+        # override seed value
+        if seed:
+            seed += bytes.fromhex("0b16b00b")
+        else:
+            seed = bytes.fromhex("600df00d")
+        return { 'seed': seed }
+
+    def onRegister(self, proto: PortProto, uid: UserId, sod: ef.SOD, dg15: ef.DG15, cid: CID, csigs: List[bytes], dg14: ef.DG14 = None, allowSodOverride: bool = False): # pylint: disable=unused-argument
+        self._log.info("Register called with uid=%s %s %s %s %s", uid, sod, dg15, dg14 or '', cid)
+        if str(uid) == 'crt.vavros':
+            self._log.error("ccc, someone tries to fake ID of Crt Vavros!")
+            raise PeUnauthorized("crt.vavros is not allowed to register")
+
+    def onRegisterFinish(self, return_val: dict, proto: PortProto, uid: UserId, sod: ef.SOD, dg15: ef.DG15, cid: CID, csigs: List[bytes], dg14: ef.DG14 = None, allowSodOverride: bool = False): # pylint: disable=unused-argument
+        success = {
+            "uid": uid.toBase64(),
+            "result" : "registered"
+         }
+        self._log.info("Register returned val=%s, changing to %s", return_val, success)
+        return success
+
+    def onGetAssertionFinish(self, *args, **kwargs): # pylint: disable=unused-argument
+        from base64 import b64encode # pylint: disable=import-outside-toplevel
+        success = {
+            "uid": args[2].toBase64(),
+            "cookie" : b64encode(os.urandom(32))
+         }
+        self._log.info("Register returned val=%s, changing to %s", args[0], success)
+        return success
 
 def init_log(logLevel: Union[str, int]):
     """
