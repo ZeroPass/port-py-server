@@ -288,7 +288,7 @@ class FunctionHook:
                        ```
                            def f(a, b, c)
                            f.onCall(lambda *args, *kwargs: {'a' : 5})
-                           f(1, 2, 3) <- the param 'a' (1s param) will be overridden with value 5 and passed to hooked function.
+                           f(1, 2, 3) <- the param 'a' (1st param) will be overridden with value 5 and passed to hooked function.
                        ```
 
         :return: Previous hook function or None.
@@ -396,7 +396,7 @@ class FunctionHook:
                     else:
                         kwds[p] = new_args.pop(p)
             if len(new_args):
-                raise ValueError(f"Invalid overridden call args: {new_args}")
+                raise ValueError(f"Invalid overridden call arg(s): {new_args}")
         return (tuple(largs), kwds)
 
     def __call__(self, *args: Any, **kwds: Any) -> Any:
