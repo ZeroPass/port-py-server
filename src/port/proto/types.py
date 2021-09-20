@@ -383,7 +383,7 @@ class FunctionHook:
         return ret
 
     def _merge_args(self, new_args: Optional[dict], *args, **kwds) -> tuple(tuple, dict): # returns (*args, **kwargs)
-        if isinstance(new_args, dict):
+        if isinstance(new_args, dict) and new_args:
             fargs = getfullargspec(self._hooked_func)[0]
             if ismethod(self._hooked_func):
                 fargs = fargs[1:]
