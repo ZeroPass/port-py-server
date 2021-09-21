@@ -121,7 +121,7 @@ class ExamplePortServer(PortServer):
         self._log.info("Register returned val=%s, changing to %s", args[0], success)
         return success
 
-def init_log(logLevel: Union[str, int]):
+def init_log(logLevel: log.LogLevelType):
     """
     Initializes global logging system for server.
     Functions installs `coloredlogs` and adds `FileHandler("server.log")`
@@ -133,7 +133,7 @@ def init_log(logLevel: Union[str, int]):
         logLevel = LogLevelValidator()(logLevel)
     _log = log.getLogger()
     coloredlogs.install(
-        level  = log.getLevelName(logLevel),
+        level  = logLevel,
         logger = _log,
         fmt    = '[%(asctime)s] %(levelname)-8s %(thread)-8d %(name)s %(message)s',
         field_styles = {

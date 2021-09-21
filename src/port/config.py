@@ -144,18 +144,19 @@ class DbDialectValidator:
         raise ValueError(f'Unsupported database dialect: {dialect}')
 
 _levelToLogLevel: Final = {
-    'verbose'  : log.getLevelName(log.VERBOSE),
-    'debug'    : log.getLevelName(log.DEBUG),
-    'info'     : log.getLevelName(log.INFO),
-    'warning'  : log.getLevelName(log.WARNING),
-    'error'    : log.getLevelName(log.ERROR),
-    'critical' : log.getLevelName(log.CRITICAL)
+    'verbose'  : log.VERBOSE,
+    'debug'    : log.DEBUG,
+    'info'     : log.INFO,
+    'warning'  : log.WARNING,
+    'error'    : log.ERROR,
+    'critical' : log.CRITICAL
 }
 
 class LogLevelValidator:
+    """Converts string log level to int level"""
     __name__ = getattr(str, '__name__') # Fake the name, so ArgumentParser shows error msg: '.. invalid str value..'
 
-    def __call__(self, level: str) -> str:
+    def __call__(self, level: str) -> int:
         """
         Converts `level` to value in _levelToLogLevel.
         :raises `ValueError`: If `dialect` is not valid.
