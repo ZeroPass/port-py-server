@@ -2,6 +2,7 @@ import inspect
 import orjson
 
 from abc import abstractmethod
+from functools import wraps
 
 from jsonrpc import Dispatcher, JSONRPCResponseManager
 from jsonrpc.exceptions import (
@@ -32,17 +33,19 @@ from typing import Any, Callable, NoReturn, Optional
 class JsonRpcApiError(Exception):
     pass
 
-def portapi(api_f: Callable): #pylint: disable=no-self-argument
-    def _wrapped_api_f(*args, **kwargs):
+def portapi(api_f: Callable):
+    @wraps(api_f)
+    def _wrapped_api_f(*args, **kwargs): # pylint: disable=inconsistent-return-statements
         assert len(args) > 0 and isinstance(args[0], IApi)
         self = args[0]
         try:
             self._log_api_call(api_f, **kwargs) #pylint: disable=protected-access
-            ret  = api_f(*args, **kwargs) #pylint: disable=not-callable
+            ret  = api_f(*args, **kwargs)
             self._log_api_response(api_f, ret) #pylint: disable=protected-access
             return ret
         except Exception as e:
             self._handle_exception(e) # pylint: disable=protected-access
+    setattr(_wrapped_api_f, '__is_portapi_func__', True)
     return _wrapped_api_f
 
 class IApi:
@@ -85,7 +88,7 @@ class IApi:
         # register methods with @portapi decorator as rpc api handler
         methods = inspect.getmembers(self, predicate=inspect.ismethod)
         for name, method in methods:
-            if method.__name__ == "_wrapped_api_f":
+            if getattr(method, '__is_portapi_func__', False):
                 register_api(name, method)
 
     def _log_api_call(self, f, **kwargs):
