@@ -76,10 +76,10 @@ class ExamplePortServer(PortServer):
             super()._init_proto(db)
 
         # install proto hooks
-        if  self._proto is PortProto:
-            self._proto.createNewChallenge.onCall(self.onGetChallenge)
-        else:
+        if isinstance(self._proto, DevProto):
             super(DevProto, self._proto).createNewChallenge.onCall(self.onGetChallenge)
+        else:
+            self._proto.createNewChallenge.onCall(self.onGetChallenge)
 
         self._proto.register.onCall(self.onRegister)
         self._proto.register.onReturn(self.onRegisterFinish)
@@ -142,6 +142,7 @@ def init_log(logLevel: Union[str, int]):
         },
         level_styles = {
             'verbose': {'color': 'black', 'bright': True},
+            'trace': {'color': 'black', 'bright': True},
             'debug': {},
             'info': {'color': 'cyan', 'bright': True},
             'warning': {'color': 'yellow'},
