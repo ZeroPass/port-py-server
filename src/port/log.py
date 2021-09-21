@@ -4,7 +4,7 @@ from typing import Optional, TypeVar
 logging.SUCCESS = 25  # between WARNING and INFO
 logging.addLevelName(logging.SUCCESS, 'SUCCESS')
 
-logging.VERBOSE = 5  # between NOTSET and DEBUG
+logging.VERBOSE = 4  # between NOTSET and DEBUG (or TRACE)
 logging.addLevelName(logging.VERBOSE, 'VERBOSE')
 LogLevelType = TypeVar("LogLevelType", int, str)
 
