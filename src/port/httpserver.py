@@ -10,13 +10,34 @@ from port import log
 from threading import Thread, get_ident
 from typing import Any, Optional, Union
 
+UVICORN_DEFAULT_LOGGING_CONFIG: dict = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "default": {
+            "()": "uvicorn.logging.DefaultFormatter",
+            "fmt": "%(levelprefix)s %(message)s",
+            "use_colors": None,
+        },
+        "access": {
+            "()": "uvicorn.logging.AccessFormatter",
+            "fmt": '%(levelprefix)s %(client_addr)s - "%(request_line)s" %(status_code)s',
+        },
+    },
+    "loggers": {
+        "uvicorn": { "level": "INFO"},
+        "uvicorn.error": {"level": "INFO"},
+        "uvicorn.access": { "level": "INFO"},
+    }
+}
+
 class HttpServer(uvicorn.Server):
     """
     Http ASGI server which runs uvicorn server loop on thread.
     """
 
     _run_thread: Thread
-    _ptid = None
+    _ptid = None # parent thread ID - the thread ID of thread which created HttpServer instance
 
     def __init__(self, app: Union[ASGIApplication, str], **kwargs: Any) -> None:
         """
@@ -44,11 +65,8 @@ class HttpServer(uvicorn.Server):
         self._ptid       = get_ident()
         self._run_thread = Thread(target=self._run, daemon=True)
 
-        if not 'log_config' in kwargs:
-            lc = uvicorn.config.LOGGING_CONFIG
-            if 'uvicorn' in lc['loggers']:
-                del lc['loggers']['uvicorn'] # remove uvicorn default log handler, so there won't be repeated logs printed to the console
-            kwargs['log_config'] = lc
+        if 'log_config' not in kwargs:
+            kwargs['log_config'] = UVICORN_DEFAULT_LOGGING_CONFIG
 
         cfg = uvicorn.Config(app, **kwargs)
         if cfg.reload or cfg.workers > 1:
