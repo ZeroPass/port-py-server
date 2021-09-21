@@ -49,8 +49,7 @@ class PortServer:
 
     def run(self) -> int: # returns exit code
         self._log.info("Starting new server session ...")
-        self._log.debug("with config:")
-        self._log.debug(self._cfg)
+        self._log.debug("  with config: %s", self._cfg)
         self._exit_code = 0
         self._ev_stop.clear()
         self._ev_finished.clear()

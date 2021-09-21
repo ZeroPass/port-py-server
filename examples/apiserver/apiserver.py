@@ -211,7 +211,7 @@ def main():
             prog  = Path(sys.argv[0]).stem,
             usage = '%(prog)s [options]',
             formatter_class = ArgumentHelpFormatter,
-            description = 'Example Port server.',
+            description = 'Example Port server',
         )
         dbDialectRequired = cfg is None
         DevServerConfig.argumentParser(parser, dbDialectRequired=dbDialectRequired)
