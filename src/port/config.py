@@ -197,17 +197,18 @@ class HttpServerConfig(IConfig):
 @dataclass
 class ServerConfig(IConfig):
     database: DbConfig
-    api: Optional[HttpServerConfig] = None
+    api: Optional[HttpServerConfig]  = None
     papi: Optional[HttpServerConfig] = None
-    challenge_ttl: int              = 600 # 10 minutes
-    job_interval: int               = 3600  # 1 hour, an interval at which server does maintenance job and other tasks. (e.g.: delete expired proto challenges from DB)
-    log_level: str                  = 'verbose'
-    mrtd_pkd: Optional[MrtdPkd]     = None # MRTD certificate folder to load into database when server starts
+    challenge_ttl: int               = 600 # 10 minutes
+    job_interval: int                = 3600  # 1 hour, an interval at which server does maintenance job and other tasks. (e.g.: delete expired proto challenges from DB)
+    log_level: str                   = 'verbose'
+    mrtd_pkd: Optional[MrtdPkd]      = None # MRTD certificate folder to load into database when server starts
 
     @classmethod
     def fromArgs(cls, args: argparse.Namespace, infer_missing = True, strict: bool = True):
         """
         Creates `cls` from parsed command-line arguments.
+        Note: All string and `Path` config values that are equal to 'None' will be converted to `None`.
         :param `args`: The command-line arguments to create new `cls`.
         :param `inferMissing`: See `IConfig.fromJson`.
         :param `strict`: See `IConfig.fromJson`.
@@ -221,6 +222,7 @@ class ServerConfig(IConfig):
     def update(self, args: argparse.Namespace, infer_missing = True, strict: bool = True):
         """
         Overrides config with parsed command-line `args`.
+        Note: All string and `Path` config values that are equal to 'None' will be converted to `None`.
         :param `args`: The command-line arguments to override config with.
         :param `inferMissing`: See `IConfig.fromJson`.
         :param `strict`: See `IConfig.fromJson`.
@@ -366,7 +368,8 @@ class ServerConfig(IConfig):
     def _argsToJson(cls, args: argparse.Namespace) -> dict[str, Any]:
         """
         Converts parsed command-line arguments to Config JSON format.
-        Note, 'mrtd_pkd' is removed from returned JSON if 'path' is not set.
+        Note: 'mrtd_pkd' is removed from returned JSON if 'path' is not set.
+        Note: All string and `Path` config values that are equal to 'None' will be converted to `None`.
         """
         def genClsFieldDict(c):
             # makes dict of arg-keys : {cfg:field} from cls fields
@@ -387,10 +390,19 @@ class ServerConfig(IConfig):
         if 'mrtd_pkd_path' in cfg_dict:
             cfg_dict['mrtd_pkd'] = cfg_dict.pop('mrtd_pkd_path')
 
+        def updateValue(val):
+            # Convert all 'None' string and Path values to None
+            if isinstance(val, str) and val == 'None':
+                val = None
+            if isinstance(val, Path) and val == Path('None'):
+                val = None
+            return val
+
         # Parse args to json-config
         jcfg = collections.defaultdict(dict)
         for argk, argv in vars(args).items():
             argv = stripDefaultArgWrapper(argv) #Strip-off _DefaultArg type
+            argv = updateValue(argv)
             jf = cfg_dict.get(argk, argk) # If argk not in cfg_dict, the cls.fromJson should throw if `strict=True`
             if isinstance(jf, dict):
                 def construct(d, v):
@@ -419,6 +431,8 @@ def defaultArg(val):
     Returns `val` wrapped in private `_DefaultArgVal` so default value is tagged, and
     `isArgDefultValue` can be used to determine if argument value was set by user or is default value.
     """
+    if val is None:
+        return None
     if type(val) is bool: # pylint: disable=unidiomatic-typecheck, no-else-return
         class _DefaultArg:
             _val: bool
