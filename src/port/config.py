@@ -315,7 +315,10 @@ class ServerConfig(IConfig):
         api.add_argument('--api-tls-key', type=Path,
             help='A path to the TLS private key file to use for secure connection.')
 
-        # Public API
+        api.add_argument('--api-log-level', type=_KeepDfltStrWrapper(), default=defaultArg(HttpServerConfig.log_level),
+            choices=_levelToLogLevel.keys(), help='Set the API log level. Default is --log-level')
+
+        # Private API
         papi = parser.add_argument_group('Private API server')
         papi.add_argument('--papi-host', type=_KeepDfltStrWrapper(), default=defaultArg('127.0.0.1'),
             help='Server listening host.')
@@ -331,6 +334,9 @@ class ServerConfig(IConfig):
 
         papi.add_argument('--papi-tls-key', type=Path,
             help='A path to the TLS private key file to use for secure connection.')
+
+        api.add_argument('--papi-log-level', type=_KeepDfltStrWrapper(), default=defaultArg(HttpServerConfig.log_level),
+            choices=_levelToLogLevel.keys(), help='Set the PAPI log level. Default is --log-level')
 
         # Proto
         srv = parser.add_argument_group('Server')
