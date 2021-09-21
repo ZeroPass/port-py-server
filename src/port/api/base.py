@@ -48,10 +48,12 @@ def portapi(api_f: Callable): #pylint: disable=no-self-argument
 class IApi:
     """ Base API interface.  """
 
-    def __init__(self, proto: PortProto):
+    def __init__(self, proto: PortProto, logLevel: Optional[log.LogLevelType] = None):
         self._proto = proto
-        self._log   = log.getLogger("port." + getattr(self, "__name__", type(self).__name__))
-
+        self._log   = log.getLogger(
+            "port." + getattr(self, "__name__", type(self).__name__),
+            logLevel = logLevel
+        )
         # Register rpc API  methods
         self._init_api()
 
@@ -125,7 +127,7 @@ class JsonRpcApi(IApi, Starlette):
 
     _api_method_prefix = "port"
 
-    def __init__(self, proto: PortProto, debug = False):
+    def __init__(self, proto: PortProto, logLevel: Optional[log.LogLevelType] = None, debug = False):
         """
         Constructs new JSON RPC API.
         :param `proto`: Port protocol object.
@@ -134,7 +136,7 @@ class JsonRpcApi(IApi, Starlette):
         """
 
         self._req_dispatcher = Dispatcher()
-        IApi.__init__(self, proto)
+        IApi.__init__(self, proto, logLevel=logLevel)
 
         # init Starlette
         routes = [
