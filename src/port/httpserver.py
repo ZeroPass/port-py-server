@@ -3,6 +3,7 @@ import os
 import sys
 import time
 import uvicorn
+import uvicorn.config
 
 from asgiref.typing import ASGIApplication
 from port import log
@@ -10,19 +11,46 @@ from threading import Thread, get_ident
 from typing import Any, Optional, Union
 
 class HttpServer(uvicorn.Server):
+    """
+    Http ASGI server which runs uvicorn server loop on thread.
+    """
+
     _run_thread: Thread
     _ptid = None
 
     def __init__(self, app: Union[ASGIApplication, str], **kwargs: Any) -> None:
+        """
+        Initializes new `HttpServer` instance with ASGI `app`.
+        Note: If `kwargs` contains param `log_level`, the uvicorn log level
+              will be changed for all `HttpServer` instances.
+
+        :app: The ASGI application to host.
+        :kwargs: The config arguments to initialize underlaying `uvicorn` server instance.
+                 See `uvicorn.Config` for available options.
+        """
+        logLevel = None
         if 'log_level' in kwargs:
-            ll = kwargs['log_level'].lower()
-            if ll == 'verbose':
-                ll = 'trace'
-            kwargs['log_level'] = ll
+            logLevel = kwargs['log_level']
+            if isinstance(logLevel, str):
+                ll = logLevel.lower() # uvicorn log level
+                if ll == 'verbose':
+                    ll = 'trace'
+                kwargs['log_level'] = ll
+
+        self._log = log.getLogger(
+            f'port.{getattr(app, "__name__", type(app).__name__)}.http.server',
+            logLevel=logLevel
+        )
         self._ptid       = get_ident()
-        self._log        = log.getLogger(f'port.{getattr(app, "__name__", type(app).__name__)}.http.server')
         self._run_thread = Thread(target=self._run, daemon=True)
-        cfg              = uvicorn.Config(app, **kwargs)
+
+        if not 'log_config' in kwargs:
+            lc = uvicorn.config.LOGGING_CONFIG
+            if 'uvicorn' in lc['loggers']:
+                del lc['loggers']['uvicorn'] # remove uvicorn default log handler, so there won't be repeated logs printed to the console
+            kwargs['log_config'] = lc
+
+        cfg = uvicorn.Config(app, **kwargs)
         if cfg.reload or cfg.workers > 1:
             raise ValueError("Invalid config 'reload' or `workers`")
         super().__init__(config=cfg)

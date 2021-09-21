@@ -43,12 +43,14 @@ class PortServer:
 
     def __init__(self, cfg: config.ServerConfig):
         self._cfg         = cfg
-        self._log         = log.getLogger(self._name)
+        self._log         = log.getLogger(self._name, cfg.log_level)
         self._ev_stop     = Event()
         self._ev_finished = Event()
 
     def run(self) -> int: # returns exit code
         self._log.info("Starting new server session ...")
+        self._log.debug("with config:")
+        self._log.debug(self._cfg)
         self._exit_code = 0
         self._ev_stop.clear()
         self._ev_finished.clear()
@@ -67,7 +69,8 @@ class PortServer:
 
         # Init API server
         if self._cfg.api:
-            api = PortApi(self._proto, debug=False)
+            apill = self._cfg.api.log_level or self._cfg.log_level
+            api = PortApi(self._proto, logLevel=apill, debug=False)
             self._apisrv = HttpServer(
                 api,
                 host=self._cfg.api.host,
@@ -75,14 +78,15 @@ class PortServer:
                 timeout_keep_alive=self._cfg.api.timeout_keep_alive,
                 ssl_ciphers='TLSv1.2',
                 ssl_keyfile=self._cfg.api.tls_key,
-                ssl_certfile=self._cfg.api.tls_cert ,
-                log_level=self._cfg.log_level,
+                ssl_certfile=self._cfg.api.tls_cert,
+                log_level=apill,
                 http='httptools'
             )
 
         # Init PAPI server
         if self._cfg.papi:
-            papi = PortPrivateApi(self._proto, debug=False)
+            papill = self._cfg.papi.log_level or self._cfg.log_level
+            papi = PortPrivateApi(self._proto, logLevel=papill, debug=False)
             self._papisrv = HttpServer(
                 papi,
                 host=self._cfg.papi.host,
@@ -91,7 +95,7 @@ class PortServer:
                 ssl_ciphers='TLSv1.2',
                 ssl_keyfile=self._cfg.papi.tls_key,
                 ssl_certfile=self._cfg.papi.tls_cert ,
-                log_level=self._cfg.log_level,
+                log_level=papill,
                 http='httptools'
             )
 
