@@ -24,7 +24,7 @@ class PortApi(JsonRpcApi):
 # RPC API methods
     # API: port.ping
     @portapi
-    def ping(self, ping: int) -> dict:
+    def ping(self, ping: int) -> dict: # pylint: disable=no-self-use
         """
         Play ping-pong with server.
         :`ping`: Client ping number.
@@ -59,7 +59,6 @@ class PortApi(JsonRpcApi):
         """
         challenge = try_deserialize(lambda: Challenge.fromBase64(challenge))
         self._proto.cancelChallenge(challenge.id)
-        return None
 
     # API: port.register
     @portapi

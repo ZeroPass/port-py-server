@@ -32,7 +32,7 @@ from port.proto import (
 
 from port.server import PortServer
 from pymrtd import ef
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Tuple
 
 
 class DevProto(PortProto):

@@ -105,6 +105,7 @@ class PortServer:
         return self._start()
 
     def _start(self) -> int: # returns exit code
+        # pylint: disable=multiple-statements
         try:
             if self._apisrv: self._apisrv.start()
             if self._papisrv: self._papisrv.start()
@@ -257,7 +258,7 @@ class PortServer:
 
         if sys.platform == "win32":
             import win32api # pylint: disable=import-outside-toplevel
-            win32api.SetConsoleCtrlHandler(stop_server, True)
+            win32api.SetConsoleCtrlHandler(stop_server, True) # pylint: disable=c-extension-no-member
         else:
             signal.signal(signal.SIGHUP, stop_server) #pylint: disable=no-member
             signal.signal(signal.SIGINT, stop_server)

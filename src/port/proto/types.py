@@ -206,8 +206,7 @@ class Challenge(bytes):
             if len(challenge) != cls._hash_algo.digest_size:
                 raise ChallengeError("Invalid challenge length")
             return cast(Challenge, super().__new__(cls, challenge))  # type: ignore  # https://github.com/python/typeshed/issues/2630  # noqa: E501
-        else:
-            raise ChallengeError("Invalid challenge type")
+        raise ChallengeError("Invalid challenge type")
 
     @property
     def id(self) -> CID:
@@ -321,14 +320,12 @@ class FunctionHook:
         :raises `ValueError`: If `func` is not callable function.
         """
         if not callable(func) \
-            and not isinstance(func, staticmethod) \
-            and not isinstance(func, classmethod):
+            and not isinstance(func, (classmethod, staticmethod)):
             raise ValueError("Can hook only on function, class function, staticmethod or classmethod")
         self._hooked_func = func
 
     def _get_hooked_function_name(self):
-        if isinstance(self._hooked_func, classmethod) \
-            or isinstance(self._hooked_func, staticmethod):
+        if isinstance(self._hooked_func, (classmethod, staticmethod)):
             return self._hooked_func.__func__.__name__
         return self._hooked_func.__name__
 
@@ -406,7 +403,7 @@ class FunctionHook:
         fret = self._hooked_func(*args, **kwds)
         return self._on_return(fret, *args, **kwds)
 
-def hook(func: Callable):
+def hook(func: Callable) -> FunctionHook:
     """
     The function decorator which wraps `func` in `FunctionHook` instance.
     :param `func`: The function to hook on.

@@ -119,7 +119,7 @@ class ORJSONResponse(JSONResponse):
     media_type = "application/json"
 
     def render(self, content: Any) -> bytes:
-        return orjson.dumps(content, default=_orjson_dumps_default)
+        return orjson.dumps(content, default=_orjson_dumps_default) # pylint: disable=no-member
 
 class JsonRpcApi(IApi, Starlette):
     """
@@ -176,8 +176,8 @@ class JsonRpcApi(IApi, Starlette):
 
     async def _dispatch_request(self, request: Request) -> ORJSONResponse:
         try:
-            data = orjson.loads(await request.body())
-        except (orjson.JSONDecodeError, ValueError):
+            data = orjson.loads(await request.body()) # pylint: disable=no-member
+        except (orjson.JSONDecodeError, ValueError): # pylint: disable=no-member
             return JSONRPC20Response(error=JSONRPCParseError()._data) # pylint: disable=protected-access
         try:
             request = JSONRPC20Request.from_data(data)

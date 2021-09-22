@@ -21,7 +21,7 @@ from sqlalchemy import (
 from sqlalchemy.future import Engine
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import mapper, sessionmaker, scoped_session
+from sqlalchemy.orm import mapper, scoped_session, sessionmaker
 from sqlalchemy.orm.session import Session
 from sqlalchemy.pool import StaticPool
 

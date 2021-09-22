@@ -134,7 +134,7 @@ def main():
         print(f'Pong: {pong}\n')
 
         try:
-            print(f'Requesting challenge from server as dissalowed user: {tvUidDissallowedGetChl} ...')
+            print(f'Requesting challenge from server as dissalowed user {tvUidDissallowedGetChl} ...')
             requestChallenge(url, tvUidDissallowedGetChl)
             raise AssertionError('Registration with dissalowed user succeed!')
         except Exception as e:

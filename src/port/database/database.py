@@ -19,6 +19,15 @@ from .x509 import (
     CscaStorage
 )
 
+from port.proto.types import (
+    CertificateId,
+    Challenge,
+    CID,
+    CountryCode,
+    CrlId,
+    SodId,
+    UserId
+)
 from port.proto.utils import bytes_to_int, sha512_256
 
 from pymrtd.pki.crl import CertificateRevocationList
@@ -30,7 +39,6 @@ from sqlalchemy.orm.query import Query
 from sqlalchemy.sql.functions import func
 
 from typing import Final, List, NoReturn, Optional, Tuple, TypeVar, Union
-from port.proto.types import CertificateId, Challenge, CID, CountryCode, CrlId, SodId, UserId
 
 class StorageAPIError(Exception):
     pass
@@ -846,7 +854,7 @@ class DatabaseAPI(StorageAPI):
         :raises DatabaseAPIError: On DB connection errors.
         """
         assert isinstance(issuer, x509.Name)
-        assert isinstance(serial, int) or isinstance(serial, bytes)
+        assert isinstance(serial, (bytes, int))
         try:
             if isinstance(serial, int):
                 serial = CertificateStorage.makeSerial(serial)
@@ -1001,7 +1009,7 @@ class DatabaseAPI(StorageAPI):
         :raises DatabaseAPIError: On DB connection errors.
         """
         assert isinstance(issuer, x509.Name)
-        assert isinstance(serial, int) or isinstance(serial, bytes)
+        assert isinstance(serial, (bytes, int))
         try:
             if isinstance(serial, int):
                 serial = CertificateStorage.makeSerial(serial)
@@ -1184,7 +1192,7 @@ class DatabaseAPI(StorageAPI):
         :return: Returns True if certificate is revoked, otherwise False.
         :raises DatabaseAPIError: On DB connection errors.
         """
-        assert isinstance(crt, Certificate) or isinstance(crt, CertificateStorage)
+        assert isinstance(crt, (Certificate, CertificateStorage))
         try:
             if isinstance(crt, Certificate):
                 country = CountryCode(crt.issuerCountry)
@@ -1561,7 +1569,7 @@ class MemoryDB(StorageAPI):
         :return:
         """
         assert isinstance(issuer, x509.Name)
-        assert isinstance(serial, int) or isinstance(serial, bytes)
+        assert isinstance(serial, (bytes, int))
         country = CountryCode(issuer.native['country_name'])
         if isinstance(serial, int):
             serial = CertificateStorage.makeSerial(serial)
@@ -1683,7 +1691,7 @@ class MemoryDB(StorageAPI):
 
         """
         assert isinstance(issuer, x509.Name)
-        assert isinstance(serial, int) or isinstance(serial, bytes)
+        assert isinstance(serial, (bytes, int))
         if isinstance(serial, int):
             serial = CertificateStorage.makeSerial(serial)
         for dsc in self._d['dsc'][CountryCode(issuer.native['country_name'])]:
@@ -1826,7 +1834,7 @@ class MemoryDB(StorageAPI):
         :param crt: The certificate to verify.
         :return: Returns True if certificate is revoked, otherwise False.
         """
-        assert isinstance(crt, Certificate) or isinstance(crt, CertificateStorage)
+        assert isinstance(crt, (Certificate, CertificateStorage))
         if isinstance(crt, Certificate):
             certId  = CertificateId.fromCertificate(crt)
             serial  = CertificateStorage.makeSerial(crt.serial_number)

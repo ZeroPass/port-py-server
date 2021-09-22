@@ -12,7 +12,7 @@ class PeSigVerifyFailed(PeUnauthorized):
     """ Challenge signature verification error """
 
 class PeNotFound(ProtoError):
-    """ Non existing elements error (e.g.: account doesn't exist, CSCA can't be faound etc...) """
+    """ Non existing elements error (e.g.: account doesn't exist, CSCA can't be found etc...) """
     code = 404
 
 class PeConflict(ProtoError):

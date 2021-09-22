@@ -138,7 +138,7 @@ class DbDialectValidator:
         :raises `ValueError`: If `dialect` is not valid.
         '''
         for e in ['mdb', *DatabaseDialect]: # pylint: disable=not-an-iterable
-            v = e if type(e) is str else e.value
+            v = e if isinstance(e, str) else e.value
             if dialect.startswith(v):
                 return dialect
         raise ValueError(f'Unsupported database dialect: {dialect}')
@@ -411,7 +411,7 @@ class ServerConfig(IConfig):
                     fd =  collections.defaultdict(dict)
                     for k, kv in d.items():
                         if isinstance(v, dict):
-                            kv = construct(kv, v)
+                            kv = construct(kv, v) # pylint: disable=cell-var-from-loop
                             fd[k] = kv
                         else:
                             fd[k][kv] = v

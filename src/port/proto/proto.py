@@ -1,9 +1,8 @@
 from __future__ import annotations
-import port.log as log
 
 from asn1crypto.cms import IssuerAndSerialNumber
 from datetime import datetime, timedelta
-from port import database
+from port import database, log as log
 
 from pymrtd import ef
 from pymrtd.ef.sod import DataGroupHash
@@ -159,7 +158,7 @@ class PortProto:
         if aaPubKey.isEcKey():
             if dg14 is None:
                 raise peEfDg14Required
-            elif dg14.aaSignatureAlgo is None:
+            if dg14.aaSignatureAlgo is None:
                 raise peEfDg14MissingAAInfo
             aaSigAlgo = dg14.aaSignatureAlgo
         self._verify_challenge(cid, aaPubKey, csigs, aaSigAlgo)
@@ -418,7 +417,7 @@ class PortProto:
             - that conforms to the ICAO 9303 standard.
             - if dsc contains document type list, check it can produce passport document.
             - that the issuing CSCA certificate exists in the DB and it has issued dsc (signature check)
-            - has valid truschain i.e. non of the certificate in the chain (CSCA => ... => dsc)
+            - has valid trustchain i.e. non of the certificate in the chain (CSCA => ... => dsc)
               has expired or has been revoked.
             - that the same DSC doesn't exist yet.
 
@@ -818,7 +817,7 @@ class PortProto:
         createTime = createTime.replace(tzinfo=None)
         return createTime + timedelta(seconds=self.cttl)
 
-    def _has_challenge_expired(self, expireTime: datetime, date: datetime) -> bool:
+    def _has_challenge_expired(self, expireTime: datetime, date: datetime) -> bool: # pylint: disable=no-self-use
         """
         Verifies if challenge create time is already in the range of challenge expiration interval.
         :param expireTime: The challenge expiration time.

@@ -2,11 +2,9 @@ from base64 import b64decode, b64encode
 from collections import defaultdict
 from enum import IntFlag
 
-from port.proto import UserId
+from port.proto import PeInvalidOrMissingParam, UserId
 from pymrtd.ef.dg import DataGroupNumber
 from pymrtd.pki import x509
-
-from port.proto.proto import PeInvalidOrMissingParam
 
 from .base import JsonRpcApi, portapi
 from .utils import SUCCESS, try_deserialize
