@@ -152,9 +152,12 @@ class JsonRpcApi(IApi, Starlette):
         Unregisters API `method`.
         :param `method`: The API method to unregister
         """
+        if self._api_method_prefix and \
+            not method.startswith(f'{self._api_method_prefix}'):
+            method = f'{self._api_method_prefix}.{method}'
         if method in self._req_dispatcher:
             del self._req_dispatcher[method]
-            self._log.info("API method '%s.%s' was unregistered.", self._api_method_prefix, method)
+            self._log.info("API method '%s' was unregistered.", method)
 
     def _init_api(self):
         def register_api_method(name, api_f):
