@@ -8,7 +8,7 @@ import uvicorn.config
 from asgiref.typing import ASGIApplication
 from port import log
 from threading import Thread, get_ident
-from typing import Any, Optional, Union
+from typing import Any, Optional
 
 UVICORN_DEFAULT_LOGGING_CONFIG: dict = {
     "version": 1,
@@ -36,10 +36,11 @@ class HttpServer(uvicorn.Server):
     Http ASGI server which runs uvicorn server loop on thread.
     """
 
+    app: ASGIApplication
     _run_thread: Thread
     _ptid = None # parent thread ID - the thread ID of thread which created HttpServer instance
 
-    def __init__(self, app: Union[ASGIApplication, str], **kwargs: Any) -> None:
+    def __init__(self, app: ASGIApplication, **kwargs: Any) -> None:
         """
         Initializes new `HttpServer` instance with ASGI `app`.
         Note: If `kwargs` contains param `log_level`, the uvicorn log level
@@ -49,6 +50,7 @@ class HttpServer(uvicorn.Server):
         :kwargs: The config arguments to initialize underlaying `uvicorn` server instance.
                  See `uvicorn.Config` for available options.
         """
+        self.app = app
         logLevel = None
         if 'log_level' in kwargs:
             logLevel = kwargs['log_level']
@@ -68,7 +70,7 @@ class HttpServer(uvicorn.Server):
         if 'log_config' not in kwargs:
             kwargs['log_config'] = UVICORN_DEFAULT_LOGGING_CONFIG
 
-        cfg = uvicorn.Config(app, **kwargs)
+        cfg = uvicorn.Config(self.app, **kwargs)
         if cfg.reload or cfg.workers > 1:
             raise ValueError("Invalid config 'reload' or `workers`")
         super().__init__(config=cfg)
