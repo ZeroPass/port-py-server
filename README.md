@@ -11,7 +11,7 @@ PIP
 
 **Linux**
 
-* MySQL:  
+* MySQL:
 [mysqlclient](https://pypi.org/project/mysqlclient/) requires MySQL development headers and libraries.
   ```
   # Debian/Ubuntu
@@ -22,8 +22,8 @@ PIP
   yum install mysql-devel
   ```
 
-* PostgreSQL:  
-[psycopg2](https://pypi.org/project/psycopg2/) requires additional tools, libraries and headers to be installed on your system.  
+* PostgreSQL:
+[psycopg2](https://pypi.org/project/psycopg2/) requires additional tools, libraries and headers to be installed on your system.
 See:
 https://www.psycopg.org/docs/install.html#prerequisites
 
@@ -56,7 +56,7 @@ Production with database driver for SQLite:
 python -m pip install -r requirements-sqlite.txt
 ```
 
-Development:  
+Development:
 ```
 python -m pip install -r requirements-dev.txt
 ```
@@ -70,7 +70,7 @@ python -m pip install -r requirements-dev.txt
 
 * Login to PostgreSQL
 
-```sudo -i -u postgres```
+   ```sudo -i -u postgres```
 
 * Create user
 
@@ -92,7 +92,8 @@ python -m pip install -r requirements-dev.txt
 
 ## Usage
 To extract eMRTD trustchain certificates (CSCA/DSC) from master list files (`*.ml`) and PKD LDAP files (`*.ldif`) use python tool [pkdext](https://github.com/ZeroPass/PassID-documntation-and-tools/tree/master/tools/pkdext).
-(Optional) If using SQL database you can use class [Builder](https://github.com/ZeroPass/port-py-server/blob/a87cb5cc55c160a9ca80583ecb6099d7a6e57660/src/management/builder.py#L54) to load trustchain certificates into database via custom script.
+
+In **production** python should be run in optimized mode (by passing the `-O` or `-OO` switch to the interpreter, or by setting the `PYTHONOPTIMIZE` environment variable to 1 (or higher) to eliminate any assert type checking code and speed up execution.
 
 #### Instructions for running example server:
 * Example API service [README](examples/apiserver/README.md)
