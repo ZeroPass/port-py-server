@@ -7,17 +7,18 @@ from typing import Optional
 class AccountStorage:
     """Class for interaction between code structure and database"""
     uid: UserId
-    country: CountryCode # The country code of attestation Passport at first registration. Used for pinning account to the country, since sodId can be None.
-    sodId: Optional[SodId] # If None, account is not attested by passport
+    country: CountryCode        # The country code of attestation Passport at first registration. Used for pinning account to the country, since sodId can be None.
+    sodId: Optional[SodId]      # If None, account is not attested by passport
     expires: Optional[datetime] # The date the account attestation expires, usually set to dsc expiration time
     aaPublicKey: bytes
     aaSigAlgo: Optional[bytes]
     aaCount: int                # ActiveAuthentication counter, counts how many AAs have been done. When greater than 0, account is ActiveAuthenticated with eMRTD.
+    aaLastAuthn: Optional[datetime] # The date of last successful Active Authentication.
     dg1: Optional[bytes]
     dg2: Optional[bytes]
 
     def __init__(self, uid: UserId, country: CountryCode, sodId: Optional[SodId], expires: Optional[datetime], \
-        aaPublicKey: AAPublicKey, aaSigAlgo: Optional[SignatureAlgorithm], aaCount: int, dg1: Optional[ef.DG1], dg2: Optional[bytes]):
+        aaPublicKey: AAPublicKey, aaSigAlgo: Optional[SignatureAlgorithm], aaCount: int, aaLastAuthn: Optional[datetime], dg1: Optional[ef.DG1], dg2: Optional[bytes]):
         """Initialization object"""
         assert isinstance(uid, UserId)
         assert isinstance(country, CountryCode)
@@ -26,6 +27,7 @@ class AccountStorage:
         assert isinstance(aaPublicKey, AAPublicKey)
         assert isinstance(aaSigAlgo, (SignatureAlgorithm, type(None)))
         assert isinstance(aaCount, int)
+        assert isinstance(aaLastAuthn, (datetime, type(None)))
         assert isinstance(dg1, (ef.DG1, type(None)))
         assert isinstance(dg2, (bytes, type(None)))
 
@@ -41,6 +43,7 @@ class AccountStorage:
         self.aaPublicKey = aaPublicKey.dump()
         self.aaSigAlgo   = aaSigAlgo
         self.aaCount     = aaCount
+        self.aaLastAuthn = aaLastAuthn
         self.dg1         = dg1
         self.dg2         = dg2
 

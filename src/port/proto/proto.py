@@ -212,7 +212,18 @@ class PortProto:
                         dg2 = accnt.dg2
 
         et = self._get_account_expiration(uid, accnt, st, dsc)
-        accnt = database.AccountStorage(uid, dsc.country, st.id, et, aaPubKey, aaSigAlgo, aaCount=1, dg1=dg1, dg2=dg2)
+        accnt = database.AccountStorage(
+            uid=uid,
+            country=dsc.country,
+            sodId=st.id,
+            expires=et,
+            aaPublicKey=aaPubKey,
+            aaSigAlgo=aaSigAlgo,
+            aaCount=1,
+            aaLastAuthn=utils.time_now(),
+            dg1=dg1,
+            dg2=dg2
+        )
         self._db.updateAccount(accnt)
 
         self._log.debug("New account created: uid=%s", uid)
@@ -280,8 +291,9 @@ class PortProto:
         a = self._db.getAccount(uid)
 
         # 2. Verify account hasn't expired (expired attestation)
+        timeNow = utils.time_now()
         if a.expires is not None \
-            and utils.has_expired(a.expires, utils.time_now()):
+            and utils.has_expired(a.expires, timeNow):
             raise peAttestationExpired
 
         # 3. Verify challenge
@@ -298,7 +310,8 @@ class PortProto:
         self._db.deleteChallenge(cid) # Verifying has succeeded, delete challenge from db
 
         # 6. Update account
-        a.aaCount += 1
+        a.aaCount    += 1
+        a.aaLastAuthn = timeNow
         self._db.updateAccount(a)
         self._log.debug("Authentication for gerAssert succeeded. uid=%s aaCount=%s", uid, a.aaCount)
 

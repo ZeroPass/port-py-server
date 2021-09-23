@@ -203,16 +203,17 @@ mapper(SodTrack, sod)
 
 # table contains info about attested account
 account: Final = Table('account', metadata,
-    Column('uid'        , UserIdSqlType()         , primary_key=True                      ), # uid = UserId
-    Column('country'    , CountryCodeSqlType()    , nullable=False, index=True            ), # The country code of attestation Passport at first registration. Used for pinning account to the country, since sodId can be None.
-    Column('sodId'      , SodIdSqlType            ,
-        ForeignKey('sod.id', ondelete='SET NULL'), nullable=True, unique=True, index=True ), # If null, the account is not attested
-    Column('expires'    , DateTime(timezone=False), nullable=True                         ), # Usually set to DSC expiration time. If NULL, expires when EF.SOD TC expires
-    Column('aaPublicKey', LargeBinary             , nullable=False                        ),
-    Column('aaSigAlgo'  , LargeBinary             , nullable=True                         ),
-    Column('aaCount'    , Integer                 , default=0                             ), # Counts number of successful ActiveAuthentications. When greater than 0 account is ActiveAuthenticated.
-    Column('dg1'        , LargeBinary             , nullable=True                         ),
-    Column('dg2'        , LargeBinary             , nullable=True                         )
+    Column('uid'         , UserIdSqlType()         , primary_key=True                      ), # uid = UserId
+    Column('country'     , CountryCodeSqlType()    , nullable=False, index=True            ), # The country code of attestation Passport at first registration. Used for pinning account to the country, since sodId can be None.
+    Column('sodId'       , SodIdSqlType            ,
+        ForeignKey('sod.id', ondelete='SET NULL'), nullable=True, unique=True, index=True  ), # If null, the account is not attested
+    Column('expires'     , DateTime(timezone=False), nullable=True                         ), # Usually set to DSC expiration time. If NULL, expires when EF.SOD TC expires
+    Column('aaPublicKey' , LargeBinary             , nullable=False                        ),
+    Column('aaSigAlgo'   , LargeBinary             , nullable=True                         ),
+    Column('aaCount'     , Integer                 , default=0                             ), # Counts number of successful Active Authentications. When greater than 0 account is ActiveAuthenticated.
+    Column('aaLastAuthn' , DateTime(timezone=False), nullable=True                         ), # The date of last successful Active Authentication.
+    Column('dg1'         , LargeBinary             , nullable=True                         ),
+    Column('dg2'         , LargeBinary             , nullable=True                         )
 )
 mapper(AccountStorage, account)
 
