@@ -36,14 +36,14 @@ class PortServer:
     _apisrv: HttpServer  = None
     _papisrv: HttpServer = None
     _log: log.logging.Logger
-    _name = 'port.server'
+    __name__ = 'port.server'
     _ev_stop: Event
     _ev_finished: Event
     _exit_code = 0
 
     def __init__(self, cfg: config.ServerConfig):
         self._cfg         = cfg
-        self._log         = log.getLogger(self._name, cfg.log_level)
+        self._log         = log.getLogger(self.__name__, cfg.log_level)
         self._ev_stop     = Event()
         self._ev_finished = Event()
 
@@ -68,35 +68,11 @@ class PortServer:
 
         # Init API server
         if self._cfg.api:
-            apill = self._cfg.api.log_level or self._cfg.log_level
-            api = PortApi(self._proto, logLevel=apill, debug=False)
-            self._apisrv = HttpServer(
-                api,
-                host=self._cfg.api.host,
-                port=self._cfg.api.port,
-                timeout_keep_alive=self._cfg.api.timeout_keep_alive,
-                ssl_ciphers='TLSv1.2',
-                ssl_keyfile=self._cfg.api.tls_key,
-                ssl_certfile=self._cfg.api.tls_cert,
-                log_level=apill,
-                http='httptools'
-            )
+            self._init_api()
 
         # Init PAPI server
         if self._cfg.papi:
-            papill = self._cfg.papi.log_level or self._cfg.log_level
-            papi = PortPrivateApi(self._proto, logLevel=papill, debug=False)
-            self._papisrv = HttpServer(
-                papi,
-                host=self._cfg.papi.host,
-                port=self._cfg.papi.port,
-                timeout_keep_alive=self._cfg.papi.timeout_keep_alive,
-                ssl_ciphers='TLSv1.2',
-                ssl_keyfile=self._cfg.papi.tls_key,
-                ssl_certfile=self._cfg.papi.tls_cert ,
-                log_level=papill,
-                http='httptools'
-            )
+            self._init_papi()
 
         if self._cfg.api is None and self._cfg.papi is None:
             self._log.warning("Configured not to serve any API!")
@@ -149,8 +125,40 @@ class PortServer:
         self._log.debug('Finished maintenance job, next schedule at: %s',
             utils.time_now() + timedelta(seconds=self._cfg.job_interval))
 
-    def _init_proto(self, db: StorageAPI):
+    def _init_proto(self, db: StorageAPI) -> None:
         self._proto = PortProto(db, self._cfg.challenge_ttl)
+
+    def _init_api(self) -> None:
+        """ self._cfg.api is not None """
+        apill = self._cfg.api.log_level or self._cfg.log_level
+        api = PortApi(self._proto, logLevel=apill, debug=False)
+        self._apisrv = HttpServer(
+            api,
+            host=self._cfg.api.host,
+            port=self._cfg.api.port,
+            timeout_keep_alive=self._cfg.api.timeout_keep_alive,
+            ssl_ciphers='TLSv1.2',
+            ssl_keyfile=self._cfg.api.tls_key,
+            ssl_certfile=self._cfg.api.tls_cert,
+            log_level=apill,
+            http='httptools'
+        )
+
+    def _init_papi(self) -> None:
+        """ self._cfg.papi is not None """
+        papill = self._cfg.papi.log_level or self._cfg.log_level
+        papi = PortPrivateApi(self._proto, logLevel=papill, debug=False)
+        self._papisrv = HttpServer(
+            papi,
+            host=self._cfg.papi.host,
+            port=self._cfg.papi.port,
+            timeout_keep_alive=self._cfg.papi.timeout_keep_alive,
+            ssl_ciphers='TLSv1.2',
+            ssl_keyfile=self._cfg.papi.tls_key,
+            ssl_certfile=self._cfg.papi.tls_cert ,
+            log_level=papill,
+            http='httptools'
+        )
 
     def _load_pkd_to_db(self, pkdPath: Path, allowSelfIssuedCSCA: bool):
         # pylint: disable=too-many-locals
