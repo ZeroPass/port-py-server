@@ -13,7 +13,13 @@ _script_path = Path(os.path.dirname(sys.argv[0]))
 #sys.path.append(str(_script_path / Path("../../")))
 
 from port import log
-from port.config import ServerConfig, defaultArg, LogLevelValidator, ArgumentHelpFormatter
+from port.api import JsonRpcApi
+from port.config import (
+    ServerConfig,
+    defaultArg,
+    LogLevelValidator,
+    ArgumentHelpFormatter
+)
 from port.database import (
     AccountStorage,
     CertificateStorage,
@@ -68,6 +74,10 @@ class DevProto(PortProto):
             self._log.warning("Skipping verification of certificate trustchain")
 
 class ExamplePortServer(PortServer):
+    unregisterAPIMethods = False
+    unregisterPAPIMethods = False
+    __name__ = "example.port.server"
+
     def _init_proto(self, db: StorageAPI):
         if self._cfg.dev:
             self._proto = DevProto(db, self._cfg.challenge_ttl,
@@ -120,6 +130,27 @@ class ExamplePortServer(PortServer):
          }
         self._log.info("Register returned val=%s, changing to %s", args[0], success)
         return success
+
+    def _init_api(self):
+        super()._init_api()
+        # self._apisrv is never None at this point.
+        # Here we could unregister any API method
+        # that we don't want to serve.
+        if self.unregisterAPIMethods and \
+            isinstance(self._apisrv.app, JsonRpcApi): # Just sanity check, should always be true.
+            self._log.debug("Unregistering API methods...")
+            self._apisrv.app.unregister('cancel_challenge')
+            self._apisrv.app.unregister('get_assertion')
+
+    def _init_papi(self) -> None:
+        super()._init_papi()
+        # self._papisrv is never None at this point.
+        # Here we could unregister any PAPI method
+        # that we don't want to serve.
+        if self.unregisterPAPIMethods and \
+            isinstance(self._apisrv.app, JsonRpcApi): # Just sanity check, should always be true.
+            self._log.debug("Unregistering PAPI methods...")
+            self._papisrv.app.unregister('upload_certificate')
 
 def init_log(logLevel: log.LogLevelType):
     """
