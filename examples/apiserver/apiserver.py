@@ -227,8 +227,8 @@ def main():
         parser.add_argument('--config', type=Path, default='config.yaml', help='Config file.')
         args, leftovers = parser.parse_known_args()
         cfg: DevServerConfig = None
-        if args.config.exists():
-            with open(args.config, mode='r') as cf:
+        if args.config.is_file(): # checks also if file exists
+            with args.config.open(mode='r') as cf:
                 try:
                     jcfg = yaml.safe_load(cf)
                     cfg = DevServerConfig.fromJson(jcfg)
