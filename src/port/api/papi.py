@@ -5,6 +5,7 @@ from enum import IntFlag
 from port.proto import PeInvalidOrMissingParam, UserId
 from pymrtd.ef.dg import DataGroupNumber
 from pymrtd.pki import x509
+from pymrtd.pki.crl import CertificateRevocationList
 
 from .base import JsonRpcApi, portapi
 from .utils import SUCCESS, try_deserialize
@@ -138,4 +139,16 @@ class PortPrivateApi(JsonRpcApi):
             self._proto.addDscCertificate(cert)
         else:
             raise PeInvalidOrMissingParam("Unknown certificate type")
+        return SUCCESS
+
+    # API: port.upload_crl
+    @portapi
+    def upload_crl(self, crl: str):
+        """
+        Adds new or updates existing country CRL in DB.
+        :param `crl`: Base64 encoded CRL.
+        :return `str`: "success"
+        """
+        crl  = try_deserialize(lambda: CertificateRevocationList.load(b64decode(crl)))
+        self._proto.updateCRL(crl)
         return SUCCESS
