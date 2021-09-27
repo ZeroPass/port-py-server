@@ -161,7 +161,7 @@ class PortProto:
             if dg14.aaSignatureAlgo is None:
                 raise peEfDg14MissingAAInfo
             aaSigAlgo = dg14.aaSignatureAlgo
-        self._verify_challenge(cid, aaPubKey, csigs, aaSigAlgo)
+        self._verify_challenge(uid, cid, aaPubKey, csigs, aaSigAlgo)
 
         # 6. Check if matching EF.SOD exist in the DB
         self._log.debug("Searching for any EF.SOD track in DB which matches %s", sod)
@@ -297,7 +297,7 @@ class PortProto:
             raise peAttestationExpired
 
         # 3. Verify challenge
-        self._verify_challenge(cid, a.getAAPublicKey(), csigs, a.getAASigAlgo())
+        self._verify_challenge(uid, cid, a.getAAPublicKey(), csigs, a.getAASigAlgo())
 
         # 4. Verify account still has still valid attestation
         self._log.debug("Verifying account attestation is still valid for sodId=%s", a.sodId)
@@ -776,7 +776,7 @@ class PortProto:
             self._log.error("  e=%s", e)
             raise
 
-    def _verify_challenge(self, cid: CID, aaPubKey: AAPublicKey, csigs: List[bytes], aaSigAlgo: SignatureAlgorithm = None ) -> None:
+    def _verify_challenge(self, uid: UserId, cid: CID, aaPubKey: AAPublicKey, csigs: List[bytes], aaSigAlgo: SignatureAlgorithm = None ) -> None:
         """
         Check if signature is correct and the time frame is OK
         :raises `peChallengeExpired`: If challenge stored in db by cid has already expired
@@ -791,7 +791,7 @@ class PortProto:
                 raise peMissingParamAASigAlgo
 
             # Verify if challenge has expired expiration time
-            c, cct = self._db.getChallenge(cid)
+            c, cct = self._db.getChallenge(cid, uid)
             if self._has_challenge_expired(cct, utils.time_now()):
                 self._db.deleteChallenge(cid)
                 raise peChallengeExpired

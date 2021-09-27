@@ -64,12 +64,13 @@ class StorageAPI(ABC):
 
     # Proto challenge methods
     @abstractmethod
-    def getChallenge(self, cid: CID) -> Tuple[Challenge, datetime]:
+    def getChallenge(self, cid: CID, uid: UserId) -> Tuple[Challenge, datetime]:
         """
         Function fetches proto challenge from db and returns
         challenge and expiration time.
 
-        :param cid: Challenge id
+        :param cid: The challenge ID
+        :param uid: The User ID under which the challenge with `cid` is stored.
         :return: Tuple[Challenge, datetime]
         :raises seChallengeNotFound: If challenge is not found
         """
@@ -449,21 +450,24 @@ class DatabaseAPI(StorageAPI):
         self._log.exception(e)
         raise DatabaseAPIError(e) from None
 
-    def getChallenge(self, cid: CID) -> Tuple[Challenge, datetime]:
+    def getChallenge(self, cid: CID, uid: UserId) -> Tuple[Challenge, datetime]:
         """
-        Function fetches challenge from db and returns
+        Function fetches proto challenge from db and returns
         challenge and expiration time.
 
-        :param cid: Challenge id
+        :param cid: The challenge ID
+        :param uid: The User ID under which the challenge with `cid` is stored.
         :return: Tuple[Challenge, datetime]
         :raises seChallengeNotFound: If challenge is not found.
         :raises DatabaseAPIError: On DB connection errors.
         """
         assert isinstance(cid, CID)
+        assert isinstance(uid, UserId)
         try:
             cs = self.__db \
                .query(ChallengeStorage) \
-               .filter(ChallengeStorage.id == cid) \
+               .filter(ChallengeStorage.id == cid,
+                       ChallengeStorage.uid == uid) \
                .first()
 
             if cs is None:
@@ -1289,18 +1293,22 @@ class MemoryDB(StorageAPI):
             'pkidurl' : {}                 # <PkiDistributionUrl.id, LPkiDistributionUrl>
         }
 
-    def getChallenge(self, cid: CID) -> Tuple[Challenge, datetime]:
+    def getChallenge(self, cid: CID, uid: UserId) -> Tuple[Challenge, datetime]:
         """
-        Function fetches challenge from db and returns
+        Function fetches proto challenge from db and returns
         challenge and expiration time.
 
-        :param cid: Challenge id
+        :param cid: The challenge ID
+        :param uid: The User ID under which the challenge with `cid` is stored.
         :return: Tuple[Challenge, datetime]
         :raises seChallengeNotFound: If challenge is not found
         """
         assert isinstance(cid, CID)
+        assert isinstance(uid, UserId)
         try:
-            _, c, et = self._d['proto_challenge'][cid]
+            suid, c, et = self._d['proto_challenge'][cid]
+            if suid != uid:
+                raise seChallengeNotFound
             return (c, et)
         except Exception as e:
             raise seChallengeNotFound from e
