@@ -40,34 +40,49 @@ class PortPrivateApi(JsonRpcApi):
 
                 `country`:  The country which issued account's attestation passport.
                 `expires`:  The date when the account attestation expires.
-                `aa_count`: Optional, if `ActiveAuthentication` flag is set, this field has assigned the number of active authns performed by the account.
-                `aa_last_authn`: Optional, if `ActiveAuthentication` flag is set, this field has assigned the date of last successful active authn.
-                `ef`:       Optional, dictionary of data group hashes and files. The value of "hash" dictionary consist of pair `hash_algo : hash_value` as dictionary.
-                            If EF.DG1 file is present than the value of returned "file"  dictionary is MRZ in JSON format.
-                            IF EF.DG2 is present than the value of returned "file" dictionary is binary EF.DG2 encoded in Base64 format.
-                              e.g.:
-                                {
-                                  "ef" : {
-                                    "dg1" : {
-                                      "hash" : { "sha256", "ABC00975....11FF0099"},
-                                      "file" : { <MRZ dictionary>}
-                                    },
-                                    "dg2" : {
-                                      "hash" : { "sha256", "ABC00975....11FF0099"}
-                                    },
-                                    "dg14" : {
-                                      "hash" : { "sha256", "ABC00975....11FF0099"}
-                                    }
-                                  }
-                                }
+
+                `aa`: (Optional) if `ActiveAuthentication` flag is set, this field has assigned a dictionary with fields:
+
+                     - `count`: the number of successfull active authns performed by the account.
+
+                     - `last_authn`: the date of the last successful active authn.
+                     e.g.:
+
+                       {
+                         "aa": {
+                           "count":2,
+                           "last_authn":"2021-09-13T10:58:44.294755"
+                         }
+                       }
+
+                `ef`: (Optional) a dictionary of data group hashes and files. The value of "hash" dictionary consist of pair `hash_algo : hash_value` as dictionary.
+                       If EF.DG1 file is present than the value of returned "file"  dictionary is MRZ in JSON format.
+                       IF EF.DG2 is present than the value of returned "file" dictionary is binary EF.DG2 encoded in Base64 format.
+                        e.g.:
+                          {
+                            "ef" : {
+                              "dg1" : {
+                                "hash" : { "sha256", "ABC00975....11FF0099"},
+                                "file" : { <MRZ dictionary>}
+                              },
+                              "dg2" : {
+                                "hash" : { "sha256", "ABC00975....11FF0099"}
+                              },
+                              "dg14" : {
+                                "hash" : { "sha256", "ABC00975....11FF0099"}
+                              }
+                            }
+                          }
 
                 Example of returned data:
                    {
                       "attestation":3, // Passive | Active
                       "country":"SI",
                       "expires":"2021-09-16T10:58:44.294755",
-                      "aa_count":2,
-                      "aa_last_authn":"2021-09-13T10:58:44.294755"
+                      "aa": {
+                        "count":2,
+                        "last_authn":"2021-09-13T10:58:44.294755"
+                      },
                       "ef":{
                         "dg1":{
                           "hash":{"sha256":"0a0aa521cc643c0269e2c71205e3fe50c43ff9e6980f5bc745898c1a0795cea0"}
@@ -105,8 +120,10 @@ class PortPrivateApi(JsonRpcApi):
 
         # Add fields aa_count and DG1 & DG2 files
         if AttestationFlag.PassiveAuthn in attestation:
-            aai |= { "aa_count" : accnt.aaCount }
-            aai |= { "aa_last_authn" : accnt.aaLastAuthn }
+            aai['aa'] = {
+              "count" : accnt.aaCount,
+              "last_authn" : accnt.aaLastAuthn
+            }
         if accnt.dg1 is not None:
             aai['ef']['dg1']['file'] = accnt.getDG1().mrz.toJson()
         if accnt.dg2 is not None:
