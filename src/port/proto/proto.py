@@ -503,15 +503,18 @@ class PortProto:
         Adds new or update existing country CRL in DB.
         Before CRL is added to the DB, it is checked:
             - that is valid at present time i.e. crl.thisUpdate <= timeNow
+            - that existing or newer CRL already doesn't exists
             - that conforms to the ICAO 9303 standard.
-            - that the issuing CSCA certificate exists in the DB and it has issued dsc (signature check)
+            - that valid issuing CSCA certificate exists in the DB (signature check)
 
-        :param dsc: The DSC certificate to add.
-        :raises peCrlTooNew: If DSC is too new (i.e.: crl.thisUpdate > timeNow).
+        :param crl: The CRL object.
+        :raises peCrlTooNew: If CRL is too new (i.e.: crl.thisUpdate > timeNow).
         :raises peInvalidCrl: When CRL doesn't conform to the ICAO 9303 standard or
                               verification of the signature with the issuing CSCA certificate fails.
         :raises peCrlOld: When newer version of CRL for the country already exists.
         :raises peCscaNotFound: If the issuing CSCA certificate can't be found in the DB.
+        :raises peTrustchainCheckFailedExpiredCert: If CSCA has expired.
+        :raises peTrustchainCheckFailedRevokedCert: If CSCA is revoked.
         """
         if not utils.is_valid_alpha2(crl.issuerCountry):
             self._log.error("Trying to update CRL with no or invalid country code!")
@@ -526,7 +529,7 @@ class PortProto:
                     crl.issuer.human_friendly, crl.crlNumber, crl.thisUpdate, timeNow)
                 raise peCrlTooNew
 
-            # 2.) Check there is not already existing CRL in the DB
+            # 2.) Check there is not already existing or newer CRL in the DB
             crlInfo = self._db.findCrlInfoByIssuer(crl.issuer)
             if crlInfo is not None:
                 doUpdate = crl.thisUpdate > crlInfo.thisUpdate
