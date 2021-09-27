@@ -956,3 +956,206 @@ def test_register(datafiles):
     with open(datafiles / 'dsc_si_448833b8.cer', "rb") as dsc:
         dsc: DocumentSignerCertificate = DocumentSignerCertificate.load(dsc.read())
     _test_register_attestation(dg15, None, sod, dsc, csca, aa_sigs['ef.dg15_ef.sod_si_454CB206'])
+
+def _test_getAssertion(dg15: ef.DG15, dg14: Optional[ef.DG14], sod: ef.SOD, dsc: DocumentSignerCertificate, csca: CscaCertificate, aaSigs: dict):
+    assert isinstance(dg15, ef.DG15)
+    assert isinstance(dg14, (ef.DG14, type(None)))
+    assert isinstance(sod, ef.SOD)
+    assert isinstance(dsc, DocumentSignerCertificate)
+    assert isinstance(csca, CscaCertificate)
+    db    = testutils.getSQLiteDB()
+    proto = PortProto(db, cttl = 0)
+    uid   = UserId(os.urandom(UserId.max_size))
+    sodId = SodId.fromSOD(sod)
+    dscId = CertificateId.fromCertificate(dsc)
+    c     = Challenge.fromhex(aaSigs['challenge'])
+    cid   = c.id
+    csigs = [bytes.fromhex(sig) for sig in aaSigs['csigs']]
+
+    # Test getAssertion fails when account under uid doesn't exists
+    with pytest.raises(SeEntryNotFound, match="Account not found"):
+        proto.getAssertion(uid, cid, csigs)
+
+    # Test challenge signature related fail tests
+    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidBefore + timedelta(seconds=1)):
+        db.addCsca(csca)
+        db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=1))
+        proto.register(uid, sod, dg15, cid, csigs, dg14)
+
+        a = db.getAccount(uid)
+        assert a.aaCount     == 1
+        assert a.aaLastAuthn == utils.time_now()
+
+        # Test getAssertion fails when challenge doesn't exists
+        with pytest.raises(SeEntryNotFound, match="Challenge not found"):
+            proto.getAssertion(uid, cid, csigs)
+        a = db.getAccount(uid)
+        assert a.aaCount     == 1
+        assert a.aaLastAuthn == utils.time_now()
+
+        # Test getAssertion fails if challenge has expired
+        with pytest.raises(PeChallengeExpired, match="Challenge has expired"):
+            db.addChallenge(uid, c, utils.time_now() - timedelta(seconds=1))
+            proto.getAssertion(uid, cid, csigs)
+        a = db.getAccount(uid)
+        assert a.aaCount     == 1
+        assert a.aaLastAuthn == utils.time_now()
+
+        # Test getAssertion fails if invalid cid
+        with pytest.raises(SeEntryNotFound, match="Challenge not found"):
+            db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=30))
+            proto.getAssertion(uid, CID(1), csigs)
+        a = db.getAccount(uid)
+        assert a.aaCount     == 1
+        assert a.aaLastAuthn == utils.time_now()
+
+        # Test getAssertion fails when csigs is empty
+        with pytest.raises(PeSigVerifyFailed, match="Challenge signature verification failed"):
+            proto.getAssertion(uid, cid, [])
+
+        a = db.getAccount(uid)
+        assert a.aaCount     == 1
+        assert a.aaLastAuthn == utils.time_now()
+
+        # Test getAssertion fails when csigs is None
+        with pytest.raises(PeSigVerifyFailed, match="Challenge signature verification failed"):
+            proto.getAssertion(uid, cid, None)
+        a = db.getAccount(uid)
+        assert a.aaCount     == 1
+        assert a.aaLastAuthn == utils.time_now()
+
+        # Test getAssertion fails when csigs are shuffled
+        with pytest.raises(PeSigVerifyFailed, match="Challenge signature verification failed"):
+            csigsShuffled = copy.deepcopy(csigs)
+            random.Random(1).shuffle(csigsShuffled) # 1st element
+            proto.getAssertion(uid, cid, csigsShuffled)
+        with pytest.raises(PeSigVerifyFailed, match="Challenge signature verification failed"):
+            random.Random(2).shuffle(csigsShuffled) # 2nd element
+            proto.getAssertion(uid, cid, csigsShuffled)
+        with pytest.raises(PeSigVerifyFailed, match="Challenge signature verification failed"):
+            random.Random(8).shuffle(csigsShuffled) # 3rd element
+            proto.getAssertion(uid, cid, csigsShuffled)
+        a = db.getAccount(uid)
+        assert a.aaCount     == 1
+        assert a.aaLastAuthn == utils.time_now()
+
+        # Test getAssertion fails when csigs are altered
+        for i in range(0, len(csigs)):
+            with pytest.raises(PeSigVerifyFailed, match="Challenge signature verification failed"):
+                proto.getAssertion(uid, cid, alter_csigs(i, csigs))
+        a = db.getAccount(uid)
+        assert a.aaCount     == 1
+        assert a.aaLastAuthn == utils.time_now()
+
+    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidBefore + timedelta(days=244)):
+        # Test successful authorization
+        db.deleteChallenge(cid)
+        db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=30))
+        proto.getAssertion(uid, cid, csigs)
+        a = db.getAccount(uid)
+        assert a.aaCount     == 2
+        assert a.aaLastAuthn == utils.time_now()
+
+        # Test getAssertion when account is not attested
+        a.sodId = None
+        db.updateAccount(a)
+        with pytest.raises(PeUnauthorized, match="Account is not attested"):
+            db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=30))
+            proto.getAssertion(uid, cid, csigs)
+        a = db.getAccount(uid)
+        assert a.aaCount     == 2
+        assert a.aaLastAuthn == utils.time_now()
+        a.sodId = sodId
+        db.updateAccount(a)
+
+        # Test successful authorization
+        db.deleteChallenge(cid)
+        db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=30))
+        proto.getAssertion(uid, cid, csigs)
+        a = db.getAccount(uid)
+        assert a.aaCount     == 3
+        assert a.aaLastAuthn == utils.time_now()
+
+        # Test getAssertion fails when account attestation has revoked CSCA certificate
+        cscaCri = CertificateRevocationInfo(CountryCode(csca.issuerCountry), csca.serial_number, utils.time_now(), crlId = None)
+        db.revokeCertificate(cscaCri)
+        with pytest.raises(PeUnauthorized, match="Account is not attested"):
+            db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=30))
+            proto.getAssertion(uid, cid, csigs)
+        db.unrevokeCertificate(cscaCri)
+        a = db.getAccount(uid)
+        assert a.aaCount     == 3
+        assert a.aaLastAuthn == utils.time_now()
+
+        # Test successful authorization
+        db.deleteChallenge(cid)
+        db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=30))
+        proto.getAssertion(uid, cid, csigs)
+        a = db.getAccount(uid)
+        assert a.aaCount     == 4
+        assert a.aaLastAuthn == utils.time_now()
+
+        # Test getAssertion fails when account attestation has revoked DSC certificate
+        dscCri = CertificateRevocationInfo(CountryCode(sod.dscCertificates[0].issuerCountry),
+                 sod.dscCertificates[0].serial_number, utils.time_now(), crlId = None, certId=dscId)
+        db.revokeCertificate(dscCri)
+        with pytest.raises(PeUnauthorized, match="Account is not attested"):
+            db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=30))
+            proto.getAssertion(uid, cid, csigs)
+        db.unrevokeCertificate(dscCri)
+        a = db.getAccount(uid)
+        assert a.aaCount     == 4
+        assert a.aaLastAuthn == utils.time_now()
+
+        # Test successful authorization
+        db.deleteChallenge(cid)
+        db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=30))
+        proto.getAssertion(uid, cid, csigs)
+        a = db.getAccount(uid)
+        assert a.aaCount     == 5
+        assert a.aaLastAuthn == utils.time_now()
+
+        # Test getAssertion fails when account attestation SodTrack doesn't exists
+        db.deleteSodTrack(sodId)
+        with pytest.raises(PeUnauthorized, match="Account is not attested"):
+            db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=30))
+            proto.getAssertion(uid, cid, csigs)
+        a = db.getAccount(uid)
+        assert a.aaCount     == 5
+        assert a.aaLastAuthn == utils.time_now()
+
+        # Test getAssertion fails when account attestation has expired
+        a = db.getAccount(uid)
+        a.expires = utils.time_now() - timedelta(seconds=1)
+        with pytest.raises(PeAttestationExpired, match="Account attestation has expired"):
+            db.deleteChallenge(cid)
+            db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=30))
+            proto.getAssertion(uid, cid, csigs)
+        a = db.getAccount(uid)
+        assert a.aaCount     == 5
+        assert a.aaLastAuthn == utils.time_now()
+
+@pytest.mark.datafiles(
+    CERTS_DIR / 'csca_si_448831f1.cer',
+    CERTS_DIR / 'dsc_si_448833b8.cer',
+    LDS_DIR   / 'ef.sod_si_454CB206.bin',
+    LDS_DIR   / 'ef.dg15_ef.sod_si_454CB206.bin',
+    TV_DIR    / 'aa_sigs.json'
+)
+@pytest.mark.depends(on=[
+    'test_verify_sod_is_genuine',
+    'test_register'
+])
+def test_getAssertion(datafiles):
+    # Test vector taken from Slovenian passport
+    with open(datafiles / 'aa_sigs.json', "rb") as aa_sigs:
+        aa_sigs = json.loads(aa_sigs.read())
+    with open(datafiles / 'ef.dg15_ef.sod_si_454CB206.bin', "rb") as dg15:
+        dg15 = ef.DG15.load(dg15.read())
+    with open(datafiles / 'ef.sod_si_454CB206.bin', "rb") as sod:
+        sod = ef.SOD.load(sod.read())
+    with open(datafiles / 'csca_si_448831f1.cer', "rb") as csca:
+        csca:CscaCertificate = CscaCertificate.load(csca.read())
+    with open(datafiles / 'dsc_si_448833b8.cer', "rb") as dsc:
+        dsc: DocumentSignerCertificate = DocumentSignerCertificate.load(dsc.read())
+    _test_getAssertion(dg15, None, sod, dsc, csca, aa_sigs['ef.dg15_ef.sod_si_454CB206'])
