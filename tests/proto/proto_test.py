@@ -7,10 +7,17 @@ import pytest
 import random
 
 from datetime import timedelta
+from port.database import (
+    CertificateRevocationInfo,
+    DscStorage,
+    SeEntryAlreadyExists,
+    SeEntryNotFound
+)
 
 from port.proto import (
     CertificateId,
     Challenge,
+    CID,
     CountryCode,
     peAccountAlreadyRegistered,
     peAccountNotAttested,
@@ -55,8 +62,6 @@ from port.proto import (
     UserId,
     utils
 )
-
-from port.database import CertificateRevocationInfo, DscStorage, SeEntryAlreadyExists
 
 from pymrtd import ef
 from pymrtd.pki.x509 import CscaCertificate, DocumentSignerCertificate
@@ -478,6 +483,59 @@ def _test_register_attestation(dg15: ef.DG15, dg14: Optional[ef.DG14], sod: ef.S
         db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=30))
         with pytest.raises(PeUnauthorized, match="EF.SOD file not genuine"):
             proto.register(uid, alter_sod(sod), dg15, cid, csigs, dg14, allowSodOverride=False)
+        assert db.findAccount(uid)    is None
+        assert db.findSodTrack(sodId) is None
+
+        ds = db.findDsc(dscId)
+        assert ds is not None
+        check_ds_eq_dsc(ds, dsc, CertificateId.fromCertificate(csca))
+        db.deleteDsc(dscId)
+
+    # Test registration fails when challenge doesn't exists
+    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidBefore + timedelta(seconds=1)):
+        db.deleteChallenge(cid)
+        with pytest.raises(SeEntryNotFound, match="Challenge not found"):
+            proto.register(uid, sod, dg15, cid, [], dg14, allowSodOverride=False)
+        assert db.findAccount(uid)    is None
+        assert db.findSodTrack(sodId) is None
+
+        ds = db.findDsc(dscId)
+        assert ds is not None
+        check_ds_eq_dsc(ds, dsc, CertificateId.fromCertificate(csca))
+        db.deleteDsc(dscId)
+
+    # Test registration fails when challenge has expired
+    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidBefore + timedelta(seconds=1)):
+        db.addChallenge(uid, c, utils.time_now() - timedelta(seconds=1))
+        with pytest.raises(PeChallengeExpired, match="Challenge has expired"):
+            proto.register(uid, sod, dg15, cid, [], dg14, allowSodOverride=False)
+        assert db.findAccount(uid)    is None
+        assert db.findSodTrack(sodId) is None
+
+        ds = db.findDsc(dscId)
+        assert ds is not None
+        check_ds_eq_dsc(ds, dsc, CertificateId.fromCertificate(csca))
+        db.deleteDsc(dscId)
+
+    # Test registration fails if invalid cid
+    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidBefore + timedelta(seconds=1)):
+        db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=30))
+        with pytest.raises(SeEntryNotFound, match="Challenge not found"):
+            proto.register(uid, sod, dg15, CID(1), [], dg14, allowSodOverride=False)
+        assert db.findAccount(uid)    is None
+        assert db.findSodTrack(sodId) is None
+
+        ds = db.findDsc(dscId)
+        assert ds is not None
+        check_ds_eq_dsc(ds, dsc, CertificateId.fromCertificate(csca))
+        db.deleteDsc(dscId)
+
+    # Test registration fails if invalid cid
+    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidBefore + timedelta(seconds=1)):
+        db.deleteChallenge(cid)
+        db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=30))
+        with pytest.raises(SeEntryNotFound, match="Challenge not found"):
+            proto.register(UserId.fromhex("00"), sod, dg15, cid, [], dg14, allowSodOverride=False)
         assert db.findAccount(uid)    is None
         assert db.findSodTrack(sodId) is None
 
