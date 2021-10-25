@@ -147,6 +147,24 @@ class JsonRpcApi(IApi, Starlette):
         ]
         Starlette.__init__(self, debug=debug, routes=routes)
 
+    @property
+    def count(self):
+        """ Returns the number of registered API methods. """
+        return len(self._req_dispatcher)
+
+    def registerApiMethod(self, name, func):
+        """"
+        Registers new API method.
+        :param `name`: API method name.
+        :param `func`: API method function.
+        """
+        self._log.debug("Registering API method: '%s.%s'", self._api_method_prefix, name)
+        if name in self._req_dispatcher:
+            self._log.error("Can't register existing API method: '%s'", name)
+            raise JsonRpcApiError(f"Can't register existing API method: '{name}'")
+        self._req_dispatcher.add_method(func, \
+            f'{self._api_method_prefix}.{name}')
+
     def unregisterApiMethod(self, method: str):
         """
         Unregisters API `method`.
@@ -160,15 +178,7 @@ class JsonRpcApi(IApi, Starlette):
             self._log.info("API method '%s' was unregistered.", method)
 
     def _init_api(self):
-        def register_api_method(name, api_f):
-            self._log.debug("Registering API method: '%s.%s'", self._api_method_prefix, name)
-            if name in self._req_dispatcher:
-                self._log.error("Can't register existing API method: '%s'", name)
-                raise JsonRpcApiError(f"Can't register existing API method: '{name}'")
-            self._req_dispatcher.add_method(api_f, \
-                f'{self._api_method_prefix}.{name}')
-        self._build_api(register_api_method)
-        self._log.info("%s API methods registered.", len(self._req_dispatcher))
+        self._build_api(self.registerApiMethod)
 
     async def _handle_request(self, request: Request) -> Response:
         ct = request.headers['content-type'].split(';')
