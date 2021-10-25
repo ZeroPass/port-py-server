@@ -147,7 +147,7 @@ class JsonRpcApi(IApi, Starlette):
         ]
         Starlette.__init__(self, debug=debug, routes=routes)
 
-    def unregister(self, method: str):
+    def unregisterApiMethod(self, method: str):
         """
         Unregisters API `method`.
         :param `method`: The API method to unregister

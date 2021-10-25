@@ -139,8 +139,8 @@ class ExamplePortServer(PortServer):
         if self.unregisterAPIMethods and \
             isinstance(self._apisrv.app, JsonRpcApi): # Just sanity check, should always be true.
             self._log.debug("Unregistering API methods...")
-            self._apisrv.app.unregister('cancel_challenge')
-            self._apisrv.app.unregister('get_assertion')
+            self._apisrv.app.unregisterApiMethod('cancel_challenge')
+            self._apisrv.app.unregisterApiMethod('get_assertion')
 
     def _init_papi(self) -> None:
         super()._init_papi()
@@ -150,7 +150,7 @@ class ExamplePortServer(PortServer):
         if self.unregisterPAPIMethods and \
             isinstance(self._apisrv.app, JsonRpcApi): # Just sanity check, should always be true.
             self._log.debug("Unregistering PAPI methods...")
-            self._papisrv.app.unregister('upload_certificate')
+            self._papisrv.app.unregisterApiMethod('upload_certificate')
 
 def init_log(logLevel: log.LogLevelType):
     """
