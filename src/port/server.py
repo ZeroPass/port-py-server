@@ -69,10 +69,12 @@ class PortServer:
         # Init API server
         if self._cfg.api:
             self._init_api()
+            self._log.info("%s API methods registered.", self._apisrv.app.count)
 
         # Init PAPI server
         if self._cfg.papi:
             self._init_papi()
+            self._log.info("%s PAPI methods registered.", self._papisrv.app.count)
 
         if self._cfg.api is None and self._cfg.papi is None:
             self._log.warning("Configured not to serve any API!")

@@ -1,0 +1,48 @@
+ This is an example config for test apiserver.py.
+# For any section or config that is commented out the default cmd arguments will be used.
+# Uncomment any line that you wish for the config to be set.
+#
+# Note, that cmd arguments can override the options set in this config file.
+
+challenge_ttl: 60
+log_level: verbose # [verbose, debug, info, warning, error]
+job_interval: 36 # 36 secs
+
+# Database config
+# Here by default the in memory SQLite database is used
+database:
+  dialect: "sqlite" # mysql, posgresql... For supported dialects see https://docs.sqlalchemy.org/en/14/dialects/
+  #name: "port_dev.db" # uncomment to use database file
+  #url: <db_url>
+  #user: <db_user>
+  #password: <db_password>
+
+# Public API config
+api:
+#   log_level: None
+    host: "127.0.0.1"
+    port: 80 # default is 8080
+#   timeout_keep_alive: 10
+#   tls_cert: "tls/port_server.cer"
+#   tls_key: "tls/server_key.pem"
+#   tls_key: "None"
+#   log_level: None #[verbose, debug, info, warning, error]
+
+# Private API config
+# papi:
+#   log_level: None
+#   host: "127.0.0.1" # *WARNING* don't expose it to the internet
+#   port: 9090
+#   timeout_keep_alive: 10
+#   tls_cert: "tls\\port_server.cer"
+#   tls_key: "tls\\server_key.pem"
+#   tls_key: "None"
+#   log_level: None #[verbose, debug, info, warning, error]
+
+# mrtd_pkd: # ePassport trustchain certificates and CRLs t be loaded into DB when server starts
+#   path: <path_to_pkd_root>
+#   allow_self_issued_csca: True # allow selfsigned CSCA certificate when loading CSCAs from path
+
+# Development config (specific to apiserver.py)
+dev: True
+dev_fc: True
