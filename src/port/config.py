@@ -180,6 +180,11 @@ class DbConfig(IConfig):
     password: str = ''
     del _setdialect, _getdialect
 
+
+@dataclass
+class testte(IConfig):
+    host: str
+
 @dataclass
 class MrtdPkd(IConfig):
     path: Path
@@ -356,7 +361,7 @@ class ServerConfig(IConfig):
 
         # MRTD PKD
         pkd = parser.add_argument_group('MRTD PKD', 'MRTD PKI trustchain certificates & CRLs to load into DB at server start')
-        pkd.add_argument('--mrtd-pkd', type=Path,
+        pkd.add_argument('--mrtd-pkd', type=Path, default='null',
             help='A path to the PKD root folder.')
 
         pkd.add_argument('--mrtd-pkd-allow-self-issued-csca', type=bool, default=defaultArg(MrtdPkd.allow_self_issued_csca),

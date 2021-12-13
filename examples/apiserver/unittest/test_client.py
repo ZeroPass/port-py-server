@@ -141,27 +141,6 @@ def main():
             print(f'Server returned error: {e}\n')
             assert str(e) == f"{{'code': 401, 'message': '{tvUidDissallowedGetChl} is not allowed to call proto.get_challenge'}}"
 
-        print('Requesting challenge from server ...')
-        c, cet = requestChallenge(url, tvUid)
-        print(f'Server returned challenge={c.hex()} expires={cet}\n')
-        assert c == sigc
-
-        try:
-            print('Trying to register new user with altered EF.SOD file ...')
-            requestRegister(url, tvUid, alter_sod(sod), dg15, sigc.id, csigs)
-            raise AssertionError('Registration with altered EF.SOD file succeeded!')
-        except Exception as e:
-            print(f'Server returned error: {e}\n')
-            assert str(e) == "{'code': 401, 'message': 'EF.SOD file not genuine'}"
-
-        try:
-            print('Trying to register new user with altered EF.DG15 file ...')
-            requestRegister(url, tvUid, sod, alter_dg15(dg15), sigc.id, csigs)
-            raise AssertionError('Registration with altered EF.DG15 file succeeded!')
-        except Exception as e:
-            print(f'Server returned error: {e}\n')
-            assert str(e) == "{'code': 422, 'message': 'Invalid EF.DG15 file'}"
-
         try:
             print(f'Trying to register new user with disallowed user {tvUidDissallowedReg} ...')
             requestRegister(url, tvUidDissallowedReg, sod, dg15, sigc.id, csigs)
@@ -169,10 +148,10 @@ def main():
         except Exception as e:
             print(f'Server returned error: {e}\n')
             assert str(e) == f"{{'code': 401, 'message': '{tvUidDissallowedReg} is not allowed to register'}}"
-
+            
         print('Registering new user ...')
         result = requestRegister(url, tvUid, sod, dg15, sigc.id, csigs)
-        print(f'User was successfully registered!\n  result={result}\n')
+        print('User was successfully registered!\n  result={result}\n')
 
         print('Requesting new challenge from server for get_assertion ...')
         c, cet = requestChallenge(url, tvUid)
