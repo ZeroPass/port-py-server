@@ -361,7 +361,7 @@ class ServerConfig(IConfig):
 
         # MRTD PKD
         pkd = parser.add_argument_group('MRTD PKD', 'MRTD PKI trustchain certificates & CRLs to load into DB at server start')
-        pkd.add_argument('--mrtd-pkd', type=Path, default='null',
+        pkd.add_argument('--mrtd-pkd', type=Path,
             help='A path to the PKD root folder.')
 
         pkd.add_argument('--mrtd-pkd-allow-self-issued-csca', type=bool, default=defaultArg(MrtdPkd.allow_self_issued_csca),
@@ -427,7 +427,8 @@ class ServerConfig(IConfig):
                 jcfg[jf] = argv
 
         # Remove 'mrtd_pkd' if pkd path was not set
-        if 'mrtd_pkd' in jcfg and 'path' not in jcfg['mrtd_pkd']:
+        if 'mrtd_pkd' in jcfg \
+            and ('path' not in jcfg['mrtd_pkd'] or jcfg['mrtd_pkd']['path'] is None):
             del jcfg['mrtd_pkd']
         return jcfg
 
