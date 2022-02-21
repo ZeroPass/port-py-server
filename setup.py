@@ -3,7 +3,7 @@ import os
 import sys
 from setuptools import setup, find_packages
 __package_name__ = "port-py-server"
-__version__      = '0.15.0'
+__version__      = '0.15.1'
 __summery__      = 'Python implementation of Port server SDK'
 
 base_dir = os.path.dirname(__file__)
@@ -28,7 +28,7 @@ setup(
         'ldif3>=3.2.2',
         'orjson>=3.6.3',
         'pycountry>=20.7.3',
-        'pymrtd>=0.6.2',
+        'pymrtd>=0.6.3',
         'pywin32>=301;platform_system=="Windows"',
         'sqlalchemy>=1.4.23',
         'starlette>=0.16.0',
