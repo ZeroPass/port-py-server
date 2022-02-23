@@ -714,8 +714,8 @@ def _test_register_attestation(dg15: ef.DG15, dg14: Optional[ef.DG14], sod: ef.S
         assert st.dg16Hash  == dg16Hash
 
         # Check account has valid attestation
-        assert proto._is_account_attested(accnt)
-        assert proto._is_account_attested(accnt, st)
+        assert proto._is_account_pa_attested(accnt)
+        assert proto._is_account_pa_attested(accnt, st)
 
         # Test trying to register existing user fails
         with pytest.raises(PeConflict, match="Account already registered"):
@@ -854,7 +854,7 @@ def _test_register_attestation(dg15: ef.DG15, dg14: Optional[ef.DG14], sod: ef.S
 
         accnt = db.findAccount(accnt.uid)
         assert accnt                             is not None
-        assert proto._is_account_attested(accnt) == False
+        assert proto._is_account_pa_attested(accnt) == False
 
         db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=60))
 

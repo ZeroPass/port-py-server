@@ -244,10 +244,11 @@ class PortProto:
         """
         Returns attestation info for account under `uid`.
         :param `uid`: `UserId` of account.
-        :return: A tuple consisting of `database.AccountStorage` object,
-                 accounts `database.SodTrack`object,
-                 `datetime` when the account attestation expires and a `bool`
-                 denoting whether the account has valid passive attestation or not.
+        :return: A tuple consisting of
+                `database.AccountStorage` object,
+                 account's `database.SodTrack`object,
+                 `datetime` when the account attestation expires and
+                 `bool` denoting whether the account has valid passive attestation or not.
         :raises `seAccountNotFound`: If no account exists under provided `uid`.
         :raises `StorageAPIError`: On storage related errors.
         """
@@ -255,7 +256,7 @@ class PortProto:
         a = self._db.getAccount(uid)
         if a.sodId is not None:
             st = self._db.findSodTrack(a.sodId)
-        attested = self._is_account_attested(a, st)
+        pa_attested = self._is_account_pa_attested(a, st)
 
         expires = a.expires
         if expires is None:
@@ -264,7 +265,7 @@ class PortProto:
                 dsc = self._db.findDsc(st.dscId)
                 if dsc is not None:
                     expires = dsc.notValidAfter
-        return (a, st, expires, attested)
+        return (a, st, expires, pa_attested)
 
     @hook
     def getAssertion(self, uid: UserId, cid: CID, csigs: List[bytes]) -> dict:
@@ -292,20 +293,22 @@ class PortProto:
 
         # 2. Verify account hasn't expired (expired attestation)
         timeNow = utils.time_now()
-        if a.expires is not None \
-            and utils.has_expired(a.expires, timeNow):
-            raise peAttestationExpired
+        self._check_account_is_valid_on(a, timeNow)
+        # if a.expires is not None \
+        #     and utils.has_expired(a.expires, timeNow):
+        #     raise peAttestationExpired
 
         # 3. Verify challenge
         self._verify_challenge(uid, cid, a.getAAPublicKey(), csigs, a.getAASigAlgo())
 
         # 4. Verify account still has still valid attestation
         self._log.debug("Verifying account attestation is still valid for sodId=%s", a.sodId)
-        if a.sodId is None \
-            or ((sod := self._db.findSodTrack(a.sodId)) and sod is None) \
-            or not self._is_account_attested(a, sod):
-            self._log.error("Invalid account attestation at getAssertion, uid=%s", uid)
-            raise peAccountNotAttested
+        self._check_attestation(a)
+        # if a.sodId is None \
+        #     or ((sod := self._db.findSodTrack(a.sodId)) and sod is None) \
+        #     or not self._is_account_pa_attested(a, sod):
+        #     self._log.error("Invalid account attestation at getAssertion, uid=%s", uid)
+        #     raise peAccountNotAttested
 
         self._db.deleteChallenge(cid) # Verifying has succeeded, delete challenge from db
 
@@ -743,7 +746,7 @@ class PortProto:
             self._log.error("  e=%s", e)
             raise
 
-    def _is_account_attested(self, accnt: database.AccountStorage, st: Optional[database.SodTrack] = None) -> bool:
+    def _is_account_pa_attested(self, accnt: database.AccountStorage, st: Optional[database.SodTrack] = None) -> bool:
         """
         Checks if account is attested with valid eMRTD biometric passport.
         In short, verifies that account attestation has not expired and
@@ -775,6 +778,31 @@ class PortProto:
             self._log.error("A DB error was encountered while trying to checking if account is attested.")
             self._log.error("  e=%s", e)
             raise
+
+    def _check_account_is_valid_on(self, account: database.AccountStorage, time:datetime) -> None:
+        '''
+            Check if account registration is valid on `time` and raise `peAttestationExpired` if not.
+            :account AccountStorage: Account to verify expiry.
+            :time datetime: The date and time to check if account is valid at.
+            :raises `peAttestationExpired`: If account attestation has expired on specified `time`.
+        '''
+        if account.expires is not None \
+            and utils.has_expired(account.expires, time):
+            raise peAttestationExpired
+
+    def _check_attestation(self, account: database.AccountStorage) -> None:
+        '''
+            Verifies that account attestation is still valid and raises `peAccountNotAttested` id not.
+            :param account: Account storage to verify the attestation for.
+            :raises `peAccountNotAttested`: If previous account attestation is not valid anymore,
+                                        e.g.: accnt.sodId=None, accnt EF.SOD certificate trustchain is not valid anymore.
+        '''
+        self._log.debug("Verifying account attestation with uid=%s is still valid for sodId=%s", account.uid, account.sodId)
+        if account.sodId is None \
+            or ((sod := self._db.findSodTrack(account.sodId)) and sod is None) \
+            or not self._is_account_pa_attested(account, sod):
+            self._log.error("Account PA attestation not valid, uid=%s", account.uid)
+            raise peAccountNotAttested
 
     def _verify_challenge(self, uid: UserId, cid: CID, aaPubKey: AAPublicKey, csigs: List[bytes], aaSigAlgo: SignatureAlgorithm = None ) -> None:
         """
