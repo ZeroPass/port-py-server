@@ -35,6 +35,7 @@ from port.proto import (
     peCrlOld,
     peCrlTooNew,
     peEfDg14Required,
+    peEfDg15Required,
     peDscCantIssuePassport,
     peDscExists,
     peDscNotFound,
@@ -196,6 +197,9 @@ def test_proto_errors():
 
     assert isinstance(peEfDg14Required, PeInvalidOrMissingParam)
     assert str(peEfDg14Required) == "EF.DG14 file required"
+
+    assert isinstance(peEfDg15Required, PeInvalidOrMissingParam)
+    assert str(peEfDg15Required) == "EF.DG15 file required"
 
     assert isinstance(peDscCantIssuePassport, PeInvalidOrMissingParam)
     assert str(peDscCantIssuePassport) == "DSC certificate can't issue biometric passport"

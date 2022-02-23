@@ -63,6 +63,7 @@ peDscNotFound: Final                      = PeNotFound("DSC certificate not foun
 peDscTooNewOrExpired: Final               = PeInvalidOrMissingParam("DSC certificate is too new or has expired")
 peEfDg14MissingAAInfo: Final              = PePreconditionRequired("EF.DG14 file is missing ActiveAuthenticationInfo")
 peEfDg14Required: Final                   = PeInvalidOrMissingParam("EF.DG14 file required")
+peEfDg15Required: Final                   = PeInvalidOrMissingParam("EF.DG15 file required")
 peEfSodMatch: Final                       = PeConflict("Matching EF.SOD file already registered")
 peEfSodNotGenuine: Final                  = PeUnauthorized("EF.SOD file not genuine")
 peInvalidCsca: Final                      = PeInvalidOrMissingParam("Invalid CSCA certificate")
