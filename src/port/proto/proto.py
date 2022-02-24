@@ -76,35 +76,34 @@ class PortProto:
             return False
 
     @hook
-    def register(self, uid: UserId, sod: ef.SOD, dg15: ef.DG15, cid: CID, csigs: List[bytes], dg14: ef.DG14 = None, allowSodOverride: bool = False) \
+    def register(self, uid: UserId, sod: ef.SOD, dg15: Optional[ef.DG15] = None , dg14: Optional[ef.DG14] = None, allowSodOverride: bool = False) \
         -> dict:
         """
-        Register new user account with eMRTD attestation.
+        Register new user account with eMRTD attestation (Passive Authentication).
 
         Any existing account can be re-registered if `allowSodOverride`=True, or account has expired or has invalid attestation.
         By invalid attestation it means that the attested certificate trustchain is invalid or account doesn't have EF.SOD track assigned or can't be found in the DB.
 
         Note that account can be re-registered only with EF.SOD which issuing country matches the account's attestation country.
         The expiration time of existing account will be copied on re-registration in case it has not expired yet.
+        Also dg1 and dg2 will be copied to the new registration if their hashes matches hash stored in `sod`.
 
-        :param `dg15`: eMRTD DataGroup file 15
+        :param `uid`: User ID to register new account for.
         :param `sod`: eMRTD Data Security Object
-        :param `cid`: Challenge id
-        :param `csigs`: List of signatures made over challenge chunks
-        :param `dg14`: (Optional) eMRTD DataGroup file 14
+        :param `dg15`: (Optional) eMRTD DataGroup file 15. File is required if `sod` contains hash of EF.DG15.
+        :param `dg14`: (Optional) eMRTD DataGroup file 14. File is required if `dg15` contains EC public key.
         :param `allowSodOverride`: If True, override any existing attestation for account under `uid`.
                                    Previously EF.SOD will stay in DB for the 'sybil' protection and no account will be able to re-register it.
 
         :return: Empty dictionary
 
         :raises `peAccountAlreadyRegistered`: When account with `uid` already exist and has not expired yet.
-        :raises `peChallengeExpired`: If challenge has expired.
-        :raises `peChallengeVerificationFailed`: When challenge signature verification fails.
         :raises `peCountryCodeMismatch`: If an existing account tries to override attestation with EF.SOD issued by different country than
                                        previous attestation country country.
         :raises `peDscNotFound`: When no `sod` signing DSC certificate is found.
         :raises `peEfDg14MissingAAInfo`: If `dg14` is missing AAInfo data.
-        :raises `peEfDg14Required`: If EF.DG15 contains ECC public key and `dg14` is None.
+        :raises `peEfDg14Required`: If `dg15` contains ECC public key and `dg14` is None.
+        :raises `peEfDg15Required`: If `sod` contains hash of EF.DG15.
         :raises `peEfSodMatch`: If the same or matching EF.SOD already exists in the DB.
         :raises `peEfSodNotGenuine`: If `sod` verification with DSC certificate fails i.e. signature verification fails.
                                    E.g.: when EF.SOD was intentionally altered or is corrupted.
@@ -118,21 +117,34 @@ class PortProto:
         :raises `StorageApiError`: In any case when there is an error in connection to the DB storage
                                  or problem with storing object in storage.
         """
-        self._log.debug("register: uid=%s, %s %s %s cid=%s allowSodOverride=%s",
-            uid, sod, dg15, dg14 if dg14 is not None else "", cid, allowSodOverride)
+        self._log.debug("register: uid=%s, %s %s %s allowSodOverride=%s",
+            uid, sod, dg15 if dg15 is not None else "", dg14 if dg14 is not None else "", allowSodOverride)
 
-        # 1. Verify EF.SOD contains DG files
+        # 1. Verify we have all required DG files and are authenticated in EF.SOD
         #    Note: We do this first, since it should be cheap check.
-        if dg14 is not None:
+        aaSigAlgo = None
+        aaPubKey = None
+        if dg15 is not None:
+            self._verify_sod_contains_hash_of(sod, dg15)
+            aaPubKey = dg15.aaPublicKey
+            if aaPubKey.isEcKey():
+                if dg14 is None:
+                    raise peEfDg14Required
+                aaSigAlgo = dg14.aaSignatureAlgo
+                if aaSigAlgo is None:
+                    raise peEfDg14MissingAAInfo
+        elif sod.ldsSecurityObject.dgHashes.contains(ef.DataGroupNumber(15)): # EF.DG15 is required if present in EF.SOD
+            raise peEfDg15Required
+
+        if dg14 is not None: # check EF.SOD contains Ef.DG14 if provided
             self._verify_sod_contains_hash_of(sod, dg14)
-        self._verify_sod_contains_hash_of(sod, dg15)
 
         # 2. Verify if account already exists, and if it does
         #    check that it has expired already or allowSodOverride == True.
         accnt = self._db.findAccount(uid)
         if accnt is not None:
             if not allowSodOverride:
-                if self._is_account_attested(accnt): # Allow account re-attestation if not attested anymore.
+                if self._is_account_pa_attested(accnt): # Allow account re-attestation if PA attestation is invalid.
                     raise peAccountAlreadyRegistered
                 self._log.debug("Account attestation has expired or is invalid, registering new attestation")
             else:
@@ -153,15 +165,16 @@ class PortProto:
             raise peCountryCodeMismatch
 
         # 5 . Verify challenge authentication
-        aaSigAlgo = None
-        aaPubKey = dg15.aaPublicKey
-        if aaPubKey.isEcKey():
-            if dg14 is None:
-                raise peEfDg14Required
-            if dg14.aaSignatureAlgo is None:
-                raise peEfDg14MissingAAInfo
-            aaSigAlgo = dg14.aaSignatureAlgo
-        self._verify_challenge(uid, cid, aaPubKey, csigs, aaSigAlgo)
+
+        # aaSigAlgo = None
+        # aaPubKey = dg15.aaPublicKey
+        # if aaPubKey.isEcKey():
+        #     if dg14 is None:
+        #         raise peEfDg14Required
+        #     if dg14.aaSignatureAlgo is None:
+        #         raise peEfDg14MissingAAInfo
+        #     aaSigAlgo = dg14.aaSignatureAlgo
+        # self._verify_challenge(uid, cid, aaPubKey, csigs, aaSigAlgo)
 
         # 6. Check if matching EF.SOD exist in the DB
         self._log.debug("Searching for any EF.SOD track in DB which matches %s", sod)
@@ -185,9 +198,9 @@ class PortProto:
                 self._log.error("Found a valid matching EF.SOD track with sodId=%s for %s with sodId=%s", s.id, sod, st.id)
                 raise peEfSodMatch
 
-        # 7. Save EF.SOD track and delete challenge
+        # 7. Save EF.SOD track
         self._db.addSodTrack(st)
-        self._db.deleteChallenge(cid) # All checks have succeeded, delete challenge from db
+        #self._db.deleteChallenge(cid) # All checks have succeeded, delete challenge from db
 
         # 8. Insert account into db
 
@@ -219,7 +232,7 @@ class PortProto:
             expires=et,
             aaPublicKey=aaPubKey,
             aaSigAlgo=aaSigAlgo,
-            aaCount=1,
+            aaCount=0,
             aaLastAuthn=utils.time_now(),
             dg1=dg1,
             dg2=dg2
@@ -235,8 +248,8 @@ class PortProto:
         self._log.verbose("aaCount=%s", accnt.aaCount)
         self._log.verbose("dg1=%s"    , accnt.dg1.hex() if accnt.dg1 else None)
         self._log.verbose("dg2=%s"    , accnt.dg2.hex() if accnt.dg2 else None)
-        self._log.verbose("pubkey=%s" , accnt.aaPublicKey.hex())
-        self._log.verbose("sigAlgo=%s", "None" if aaSigAlgo is None else accnt.aaSigAlgo.hex())
+        self._log.verbose("pubkey=%s" , accnt.aaPublicKey.hex() if accnt.aaPublicKey else None)
+        self._log.verbose("sigAlgo=%s", accnt.aaSigAlgo.hex() if accnt.aaSigAlgo else None)
         return {}
 
     @hook

@@ -62,16 +62,14 @@ class PortApi(JsonRpcApi):
 
     # API: port.register
     @portapi
-    def register(self, uid: str, sod: str, dg15: str, cid: str, csigs: List[str], dg14: Optional[str] = None, override: Optional[bool] = None) -> dict:
+    def register(self, uid: str, sod: str, dg15: Optional[str] = None, dg14: Optional[str] = None, override: Optional[bool] = None) -> dict:
         """
         Register new user account with eMRTD attestation.
 
         :param `uid`:   Base64 encoded UserId.
         :param `sod`:   Base64 encoded eMRTD SOD file.
-        :param `dg15`:  Base64 encoded eMRTD DG15 file.
-        :param `cid`:   Hex encoded Challenge id.
-        :param `csigs`: Base64 encoded challenge signatures.
-        :param `dg14`:  Base64 encoded eMRTD DG14 file (optional).
+        :param `dg15`:  Base64 encoded eMRTD DG15 file (optional but required if passport supports AA).
+        :param `dg14`:  Base64 encoded eMRTD DG14 file (optional but required if pubkey in dg15 uses EC key).
         :param `override`: If True, override the existing attestation for `uid`.
         :return: Dictionary object, specific to the server implementation.
         """
@@ -79,12 +77,11 @@ class PortApi(JsonRpcApi):
             ProtoError("Registration override not supported")
         uid   = try_deserialize(lambda: UserId.fromBase64(uid))
         sod   = try_deserialize(lambda: ef.SOD.load(b64decode(sod)))
-        dg15  = try_deserialize(lambda: ef.DG15.load(b64decode(dg15)))
-        cid   = try_deserialize(lambda: CID.fromHex(cid))
-        csigs = try_deserialize_csig(csigs)
+        if dg15 is not None:
+            dg15  = try_deserialize(lambda: ef.DG15.load(b64decode(dg15)))
         if dg14 is not None:
             dg14 = try_deserialize(lambda: ef.DG14.load(b64decode(dg14)))
-        return self._proto.register(uid, sod, dg15, cid, csigs, dg14)
+        return self._proto.register(uid, sod, dg15, dg14, override if override is not None else False)
 
     # API: port.get_assertion
     @portapi

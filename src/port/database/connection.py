@@ -208,7 +208,7 @@ account: Final = Table('account', metadata,
     Column('sodId'       , SodIdSqlType            ,
         ForeignKey('sod.id', ondelete='SET NULL'), nullable=True, unique=True, index=True  ), # If null, the account is not attested
     Column('expires'     , DateTime(timezone=False), nullable=True                         ), # Usually set to DSC expiration time. If NULL, expires when EF.SOD TC expires
-    Column('aaPublicKey' , LargeBinary             , nullable=False                        ),
+    Column('aaPublicKey' , LargeBinary             , nullable=True                         ), # Optional, since not all passports supports active authentication
     Column('aaSigAlgo'   , LargeBinary             , nullable=True                         ),
     Column('aaCount'     , Integer                 , default=0                             ), # Counts number of successful Active Authentications. When greater than 0 account is ActiveAuthenticated.
     Column('aaLastAuthn' , DateTime(timezone=False), nullable=True                         ), # The date of last successful Active Authentication.
