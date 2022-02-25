@@ -32,24 +32,42 @@ class PortProto:
     @hook
     def createNewChallenge(self, uid: UserId, seed: Optional[bytes] = None) -> Tuple[Challenge, datetime]:
         """
-        Returns new proto challenge for user ID.
+        Returns new proto challenge for registered user user ID.
         If non-expired challenge is found in the db for the user, that challenge is returned instead.
-        :param uid: The user ID to generate the challenge for.
+        :param uid: The existing user ID to generate the challenge for.
         :return: Challenge and expiration time
+        :raises `peAccountNotAttested`: If previous account PA attestation is not valid anymore,
+                                        e.g.: accnt.sodId=None, accnt EF.SOD certificate trustchain is not valid anymore.
+        :raises `peAttestationExpired`: If account attestation has expired.
+        :raises `seAccountNotFound`: If no account exists under provided `uid`.
+        :raises `StorageAPIError`: On storage related errors.
         """
         self._log.debug("Generating challenge for uid=%s", uid)
-        now = utils.time_now()
+
+        # 1. Get account
+        a = self._db.getAccount(uid)
+
+        # 2. Verify account has valid PA attestation and has not expired.
+        timeNow = utils.time_now()
+        self._check_account_is_valid_on(a, timeNow)
+        # if a.expires is not None \
+        #     and utils.has_expired(a.expires, timeNow):
+        #     raise peAttestationExpired
+        self._check_attestation(a)
+
+        # 3. a) Find any existing challenge, if it does and is not expired return it
         cet = self._db.findChallengeByUID(uid)
         if cet is not None: # return found challenge if still valid
-            if self._has_challenge_expired(cet[1], now):
+            if self._has_challenge_expired(cet[1], timeNow):
                 self._log.debug("Deleting existing expired challenge from DB")
                 self._db.deleteChallenge(cet[0].id)
             else:
                 self._log.debug("Found existing challenge")
                 return cet
-        # Let's generate new challenge, as non was found or already expired.
-        c  = Challenge.generate(now, uid + (seed or b''))
-        et = self._get_challenge_expiration(now)
+
+        # 3. b) No challenge exitsts or has expired, let's generate a new one.
+        c  = Challenge.generate(timeNow, uid + (seed or b''))
+        et = self._get_challenge_expiration(timeNow)
         self._db.addChallenge(uid, c, et)
         self._log.debug("New challenge created cid=%s", c.id)
         return (c, et)
