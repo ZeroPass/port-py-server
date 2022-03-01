@@ -45,7 +45,7 @@ class PortApi(JsonRpcApi):
                 `expires`   - unix timestamp of time when challenge will expire.
         """
         uid = try_deserialize(lambda: UserId.fromBase64(uid))
-        c, cet = self._proto.createNewChallenge(uid)
+        c, cet = self._proto.getChallenge(uid)
         return { "challenge": c.toBase64(), "expires": int(cet.timestamp()) }
 
     # API: port.cancel_challenge
