@@ -169,10 +169,11 @@ mapper(CscaStorage, csca)
 
 # table for storing Port protocol challenges used for passport active authentication
 protoChallenge: Final = Table('proto_challenge', metadata,
-    Column('id'       , CidSqlType              , primary_key=True, autoincrement=False            ),
-    Column('uid'      , UserIdSqlType()         , nullable=False  , unique=True        , index=True), # ForeignKey('account.uid'). Note: must not be set to foregin key since the account might not exist yet
-    Column('challenge', ChallengeSqlType()      , nullable=False                                   ),
-    Column("expires"  , DateTime(timezone=False), nullable=False                                   )
+    Column('id'       , CidSqlType              , primary_key=True, autoincrement=False     ),
+    Column('uid'      , UserIdSqlType()         ,
+        ForeignKey('account.uid')               , nullable=False  , unique=True, index=True ),
+    Column('challenge', ChallengeSqlType()      , nullable=False                            ),
+    Column("expires"  , DateTime(timezone=False), nullable=False                            )
 )
 mapper(ChallengeStorage, protoChallenge)
 
