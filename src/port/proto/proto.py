@@ -251,7 +251,7 @@ class PortProto:
             aaPublicKey=aaPubKey,
             aaSigAlgo=aaSigAlgo,
             aaCount=0,
-            aaLastAuthn=utils.time_now(),
+            aaLastAuthn=None,
             dg1=dg1,
             dg2=dg2
         )
@@ -259,15 +259,15 @@ class PortProto:
 
         self._log.debug("New account created: uid=%s", uid)
         if len(sod.dscCertificates) > 0:
-            self._log.debug("Issuing country of account's eMRTD: %s",
+            self._log.debug("Account's eMRTD issuing country: %s",
                 utils.code_to_country_name(sod.dscCertificates[0].issuerCountry))
-        self._log.verbose("sodId=%s"  , accnt.sodId)
-        self._log.verbose("expires=%s", accnt.expires)
-        self._log.verbose("aaCount=%s", accnt.aaCount)
-        self._log.verbose("dg1=%s"    , accnt.dg1.hex() if accnt.dg1 else None)
-        self._log.verbose("dg2=%s"    , accnt.dg2.hex() if accnt.dg2 else None)
-        self._log.verbose("pubkey=%s" , accnt.aaPublicKey.hex() if accnt.aaPublicKey else None)
-        self._log.verbose("sigAlgo=%s", accnt.aaSigAlgo.hex() if accnt.aaSigAlgo else None)
+        self._log.debug("sodId=%s"  , accnt.sodId)
+        self._log.debug("expires=%s", accnt.expires)
+        self._log.debug("aaCount=%s", accnt.aaCount)
+        self._log.debug("dg1=%s"    , accnt.dg1.hex() if accnt.dg1 else None)
+        self._log.debug("dg2=%s"    , accnt.dg2.hex() if accnt.dg2 else None)
+        self._log.debug("pubkey=%s" , accnt.aaPublicKey.hex() if accnt.aaPublicKey else None)
+        self._log.debug("sigAlgo=%s", accnt.aaSigAlgo.hex() if accnt.aaSigAlgo else None)
         return {}
 
     @hook
@@ -279,7 +279,7 @@ class PortProto:
                 `database.AccountStorage` object,
                  account's `database.SodTrack`object,
                  `datetime` when the account attestation expires and
-                 `bool` denoting whether the account has valid passive attestation or not.
+                 `bool` If True account has valid passive attestation.
         :raises `seAccountNotFound`: If no account exists under provided `uid`.
         :raises `StorageAPIError`: On storage related errors.
         """

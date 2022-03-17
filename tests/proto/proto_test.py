@@ -647,14 +647,14 @@ def _test_getAssertion(dg15: ef.DG15, dg14: Optional[ef.DG14], sod: ef.SOD, dsc:
 
         a = db.getAccount(uid)
         assert a.aaCount     == 0
-        assert a.aaLastAuthn == utils.time_now()
+        assert a.aaLastAuthn == None
 
         # Test getAssertion fails when challenge doesn't exists
         with pytest.raises(SeEntryNotFound, match="Challenge not found"):
             proto.getAssertion(uid, cid, csigs)
         a = db.getAccount(uid)
         assert a.aaCount     == 0
-        assert a.aaLastAuthn == utils.time_now()
+        assert a.aaLastAuthn == None
 
         # Test getAssertion fails if challenge has expired
         with pytest.raises(PeChallengeExpired, match="Challenge has expired"):
@@ -662,7 +662,7 @@ def _test_getAssertion(dg15: ef.DG15, dg14: Optional[ef.DG14], sod: ef.SOD, dsc:
             proto.getAssertion(uid, cid, csigs)
         a = db.getAccount(uid)
         assert a.aaCount     == 0
-        assert a.aaLastAuthn == utils.time_now()
+        assert a.aaLastAuthn == None
 
         # Test getAssertion fails if invalid cid
         with pytest.raises(SeEntryNotFound, match="Challenge not found"):
@@ -670,7 +670,7 @@ def _test_getAssertion(dg15: ef.DG15, dg14: Optional[ef.DG14], sod: ef.SOD, dsc:
             proto.getAssertion(uid, CID(1), csigs)
         a = db.getAccount(uid)
         assert a.aaCount     == 0
-        assert a.aaLastAuthn == utils.time_now()
+        assert a.aaLastAuthn == None
 
         # Test getAssertion fails when csigs is empty
         with pytest.raises(PeSigVerifyFailed, match="Challenge signature verification failed"):
@@ -678,14 +678,14 @@ def _test_getAssertion(dg15: ef.DG15, dg14: Optional[ef.DG14], sod: ef.SOD, dsc:
 
         a = db.getAccount(uid)
         assert a.aaCount     == 0
-        assert a.aaLastAuthn == utils.time_now()
+        assert a.aaLastAuthn == None
 
         # Test getAssertion fails when csigs is None
         with pytest.raises(PeSigVerifyFailed, match="Challenge signature verification failed"):
             proto.getAssertion(uid, cid, None)
         a = db.getAccount(uid)
         assert a.aaCount     == 0
-        assert a.aaLastAuthn == utils.time_now()
+        assert a.aaLastAuthn == None
 
         # Test getAssertion fails when csigs are shuffled
         with pytest.raises(PeSigVerifyFailed, match="Challenge signature verification failed"):
@@ -700,7 +700,7 @@ def _test_getAssertion(dg15: ef.DG15, dg14: Optional[ef.DG14], sod: ef.SOD, dsc:
             proto.getAssertion(uid, cid, csigsShuffled)
         a = db.getAccount(uid)
         assert a.aaCount     == 0
-        assert a.aaLastAuthn == utils.time_now()
+        assert a.aaLastAuthn == None
 
         # Test getAssertion fails when csigs are altered
         for i in range(0, len(csigs)):
@@ -708,7 +708,7 @@ def _test_getAssertion(dg15: ef.DG15, dg14: Optional[ef.DG14], sod: ef.SOD, dsc:
                 proto.getAssertion(uid, cid, alter_csigs(i, csigs))
         a = db.getAccount(uid)
         assert a.aaCount     == 0
-        assert a.aaLastAuthn == utils.time_now()
+        assert a.aaLastAuthn == None
 
     with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidBefore + timedelta(days=244)):
         # Test successful authorization
