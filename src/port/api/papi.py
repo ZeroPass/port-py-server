@@ -41,7 +41,7 @@ class PortPrivateApi(JsonRpcApi):
                 `country`:  The country which issued account's attestation passport.
                 `expires`:  The date when the account attestation expires.
 
-                `aa`: (Optional) if `ActiveAuthentication` flag is set, this field has assigned a dictionary with fields:
+                `aa`: (Optional) if `PassiveAuthentication` and `ActiveAuthentication` flag is set, this field has assigned a dictionary with fields:
 
                      - `count`: the number of successfull active authns performed by the account.
 
@@ -55,7 +55,8 @@ class PortPrivateApi(JsonRpcApi):
                          }
                        }
 
-                `ef`: (Optional) a dictionary of data group hashes and files. The value of "hash" dictionary consist of pair `hash_algo : hash_value` as dictionary.
+                `ef`: (Optional) If `PassiveAuthentication` is set, a dictionary of data group hashes and files.
+                       The value of "hash" dictionary consist of pair `hash_algo : hash_value` as dictionary.
                        If EF.DG1 file is present than the value of returned "file"  dictionary is MRZ in JSON format.
                        IF EF.DG2 is present than the value of returned "file" dictionary is binary EF.DG2 encoded in Base64 format.
                         e.g.:
@@ -103,10 +104,10 @@ class PortPrivateApi(JsonRpcApi):
                     }
         """
         uid = try_deserialize(lambda: UserId.fromBase64(uid))
-        accnt, sod, expires, attested = self._proto.getAttestationInfo(uid)
+        accnt, sod, expires, pa_attested = self._proto.getAttestationInfo(uid)
 
         attestation = AttestationFlag.NotAttested
-        if attested:
+        if pa_attested:
             attestation |= AttestationFlag.PassiveAuthn
             if accnt.aaCount > 0:
                 attestation |= AttestationFlag.ActiveAuthn
@@ -118,22 +119,25 @@ class PortPrivateApi(JsonRpcApi):
             "expires"     : expires
         }
 
-        # Add fields aa_count and DG1 & DG2 files
         if AttestationFlag.PassiveAuthn in attestation:
-            aai['aa'] = {
-              "count" : accnt.aaCount,
-              "last_authn" : accnt.aaLastAuthn
-            }
-        if accnt.dg1 is not None:
-            aai['ef']['dg1']['file'] = accnt.getDG1().mrz.toJson()
-        if accnt.dg2 is not None:
-            aai['ef']['dg2']['file'] = b64encode(accnt.dg2)
+            # Add fields aa_count
+            if AttestationFlag.ActiveAuthn in attestation:
+                aai['aa'] = {
+                  "count" : accnt.aaCount,
+                  "last_authn" : accnt.aaLastAuthn
+                }
 
-        # Add dg hashes
-        for i in range(1, 17):
-            dghash = sod.dgHash(DataGroupNumber(i))
-            if dghash is not None:
-                aai['ef'][f'dg{i}']['hash'] = { sod.hashAlgo : dghash.hex() }
+            # Add DG1 & DG2 files
+            if accnt.dg1 is not None:
+                aai['ef']['dg1']['file'] = accnt.getDG1().mrz.toJson()
+            if accnt.dg2 is not None:
+                aai['ef']['dg2']['file'] = b64encode(accnt.dg2)
+
+            # Add dg hashes
+            for i in range(1, 17):
+                dghash = sod.dgHash(DataGroupNumber(i))
+                if dghash is not None:
+                    aai['ef'][f'dg{i}']['hash'] = { sod.hashAlgo : dghash.hex() }
 
         return aai
 
