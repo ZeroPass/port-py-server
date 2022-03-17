@@ -117,6 +117,687 @@ def check_ds_eq_dsc(ds: DscStorage, dsc: DocumentSignerCertificate, cscaId: Cert
     assert ds.isValidOn(dsc.notValidAfter - timedelta(seconds=1))
     assert ds.isSelfIssued() == False
 
+def verify_sod_is_genuine_test(sod: ef.SOD, csca: CscaCertificate, dsc: DocumentSignerCertificate):
+    """
+    Tests EF.SOD object
+    :param sod: The sod object to test.
+    :param csca: The `sod` issuing CSCA.
+    :param dsc: The DSC certificate which is inserted into DB when SOD is being verified by PortProto._verify_sod_is_genuine
+    """
+    db    = testutils.getSQLiteDB()
+    proto = PortProto(db, cttl = 0)
+
+    # Missing CSCA
+    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidBefore + timedelta(seconds=1)):
+        with pytest.raises(PeNotFound, match="CSCA certificate not found"):
+            proto._verify_sod_is_genuine(sod)
+
+    # Add CSCA to the DB
+    db.addCsca(csca)
+
+    # DSC is not valid yet
+    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidBefore - timedelta(seconds=1)):
+        with pytest.raises(ProtoError, match="DSC certificate is too new or has expired"):
+            proto._verify_sod_is_genuine(sod)
+
+    # DSC is expired
+    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidAfter + timedelta(seconds=1)):
+        with pytest.raises(ProtoError, match="DSC certificate is too new or has expired"):
+            proto._verify_sod_is_genuine(sod)
+
+    # Now do tests when DSC is valid at present time
+    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidBefore + timedelta(seconds=1)):
+        # Test verifying SOD fails when CSCA is revoked
+        with pytest.raises(PePreconditionFailed, match="Revoked certificate in the trustchain"):
+            cscaCri = CertificateRevocationInfo(CountryCode(csca.issuerCountry), csca.serial_number, utils.time_now(), crlId = None)
+            db.revokeCertificate(cscaCri)
+            try:
+                proto._verify_sod_is_genuine(sod)
+            except Exception as e:
+                db.unrevokeCertificate(cscaCri)
+                raise e
+
+        # Test verifying SOD fails when DSC is revoked
+        with pytest.raises(PePreconditionFailed, match="Revoked certificate in the trustchain"):
+            dscCri = CertificateRevocationInfo(CountryCode(sod.dscCertificates[0].issuerCountry),
+                 sod.dscCertificates[0].serial_number, utils.time_now(), crlId = None)
+            db.revokeCertificate(dscCri)
+            try:
+                proto._verify_sod_is_genuine(sod)
+            except Exception as e:
+                db.unrevokeCertificate(dscCri)
+                raise e
+
+        # Test EF.SOD verification succeeds
+        dscStorage = proto._verify_sod_is_genuine(sod)
+        assert dscStorage is not None
+
+        # Test DSC is in the database
+        ds = db.findDscBySubjectKey(dsc.subjectKey)
+        assert ds            is not None
+        assert ds.id         == CertificateId.fromCertificate(dsc)
+        assert dsc.dump()    == ds.getCertificate().dump()
+        assert dscStorage.id == ds.id
+        check_ds_eq_dsc(ds, dsc, CertificateId.fromCertificate(csca))
+
+         # Performe another check, now with DSC in DB
+        dscStorage = proto._verify_sod_is_genuine(sod)
+        assert dscStorage    is not None
+        assert dscStorage.id == ds.id
+
+        # Test altering SOD content results in error
+        with pytest.raises(PeUnauthorized, match="EF.SOD file not genuine"):
+            proto._verify_sod_is_genuine(alter_sod(sod))
+
+        # Test verifying SOD fails when CSCA is revoked
+        with pytest.raises(PePreconditionFailed, match="Revoked certificate in the trustchain"):
+            cscaCri = CertificateRevocationInfo(CountryCode(csca.issuerCountry), csca.serial_number, utils.time_now(), crlId = None)
+            db.revokeCertificate(cscaCri)
+            proto._verify_sod_is_genuine(sod)
+
+        # Test verifying SOD fails when DSC is revoked
+        with pytest.raises(PePreconditionFailed, match="Revoked certificate in the trustchain"):
+            dscCri = CertificateRevocationInfo(CountryCode(sod.dscCertificates[0].issuerCountry),
+                 sod.dscCertificates[0].serial_number, utils.time_now(), crlId = None)
+            db.revokeCertificate(dscCri)
+            proto._verify_sod_is_genuine(sod)
+
+def _test_register_attestation(dg15: Optional[ef.DG15], dg14: Optional[ef.DG14], sod: ef.SOD, dsc: DocumentSignerCertificate, csca: CscaCertificate):
+    assert isinstance(dg15, ef.DG15)
+    assert isinstance(dg14, (ef.DG14, type(None)))
+    assert isinstance(sod, ef.SOD)
+    assert isinstance(dsc, DocumentSignerCertificate)
+    assert isinstance(csca, CscaCertificate)
+    db    = testutils.getSQLiteDB()
+    proto = PortProto(db, cttl = 0)
+    uid   = UserId(os.urandom(UserId.max_size))
+    sodId = SodId.fromSOD(sod)
+    dscId = CertificateId.fromCertificate(dsc)
+
+    # Test registration fails when EF.FG15 file is required but not provided
+    if dg15 is not None:
+        with pytest.raises(ProtoError, match="EF.DG15 file required"):
+            proto.register(uid, sod, None, dg14, allowSodOverride=False)
+
+        assert db.findAccount(uid)    is None
+        assert db.findSodTrack(sodId) is None
+        assert db.findDsc(dscId)      is None
+
+        # Test registration fails when EF.FG15 is altered
+        with pytest.raises(ProtoError, match="Invalid EF.DG15 file"):
+            proto.register(uid, sod, alter_dg15(dg15), dg14, allowSodOverride=False)
+
+        assert db.findAccount(uid)    is None
+        assert db.findSodTrack(sodId) is None
+        assert db.findDsc(dscId)      is None
+
+    # Test registration fails when CSCA is not present
+    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidBefore + timedelta(seconds=1)):
+        with pytest.raises(ProtoError, match="CSCA certificate not found"):
+            proto.register(uid, sod, dg15, dg14, allowSodOverride=False)
+        assert db.findAccount(uid)    is None
+        assert db.findSodTrack(sodId) is None
+        assert db.findDsc(dscId)      is None
+
+    # Add CSCA to DB
+    db.addCsca(csca)
+
+    # Test registration fails when CSCA is not valid yet
+    with mock.patch('port.proto.utils.time_now', return_value=csca.notValidBefore - timedelta(seconds=1)):
+        with pytest.raises(ProtoError, match="DSC certificate is too new or has expired"):
+            proto.register(uid, sod, dg15, dg14, allowSodOverride=False)
+        assert db.findAccount(uid)    is None
+        assert db.findSodTrack(sodId) is None
+        assert db.findDsc(dscId)      is None
+
+    # Test registration fails when CSCA is expired
+    with mock.patch('port.proto.utils.time_now', return_value=csca.notValidAfter + timedelta(seconds=1)):
+        with pytest.raises(ProtoError, match="DSC certificate is too new or has expired"):
+            proto.register(uid, sod, dg15, dg14, allowSodOverride=False)
+
+        assert db.findAccount(uid)    is None
+        assert db.findSodTrack(sodId) is None
+        assert db.findDsc(dscId)      is None
+
+    # Test registration fails when CSCA is revoked
+    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidBefore + timedelta(seconds=1)):
+        cscaCri = CertificateRevocationInfo(CountryCode(csca.issuerCountry), csca.serial_number, utils.time_now(), crlId = None)
+        db.revokeCertificate(cscaCri)
+        with pytest.raises(PePreconditionFailed, match="Revoked certificate in the trustchain"):
+            proto.register(uid, sod, dg15, dg14, allowSodOverride=False)
+        db.unrevokeCertificate(cscaCri)
+
+        assert db.findAccount(uid)    is None
+        assert db.findSodTrack(sodId) is None
+        assert db.findDsc(dscId)      is None
+
+    # Test registration fails when DSC is not valid yet
+    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidAfter + timedelta(seconds=1)):
+        with pytest.raises(ProtoError, match="DSC certificate is too new or has expired"):
+            proto.register(uid, sod, dg15, dg14, allowSodOverride=False)
+        assert db.findAccount(uid)    is None
+        assert db.findSodTrack(sodId) is None
+        assert db.findDsc(dscId)      is None
+
+    # Test registration fails when DSC has expired
+    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidAfter + timedelta(seconds=1)):
+        with pytest.raises(ProtoError, match="DSC certificate is too new or has expired"):
+            proto.register(uid, sod, dg15, dg14, allowSodOverride=False)
+        assert db.findAccount(uid)    is None
+        assert db.findSodTrack(sodId) is None
+        assert db.findDsc(dscId)      is None
+
+    # Test registration fails when DSC is revoked
+    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidBefore + timedelta(seconds=1)):
+        dscCri = CertificateRevocationInfo(CountryCode(dsc.issuerCountry), dsc.serial_number, utils.time_now(), crlId = None)
+        db.revokeCertificate(dscCri)
+        with pytest.raises(PePreconditionFailed, match="Revoked certificate in the trustchain"):
+            proto.register(uid, sod, dg15, dg14, allowSodOverride=False)
+        db.unrevokeCertificate(dscCri)
+
+        assert db.findAccount(uid)    is None
+        assert db.findSodTrack(sodId) is None
+        assert db.findDsc(dscId)      is None
+
+    # Test registration fails when EF.SOD is not genuine
+    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidBefore + timedelta(seconds=1)):
+        with pytest.raises(PeUnauthorized, match="EF.SOD file not genuine"):
+            proto.register(uid, alter_sod(sod), dg15, dg14, allowSodOverride=False)
+        assert db.findAccount(uid)    is None
+        assert db.findSodTrack(sodId) is None
+
+        ds = db.findDsc(dscId)
+        assert ds is not None
+        check_ds_eq_dsc(ds, dsc, CertificateId.fromCertificate(csca))
+        db.deleteDsc(dscId)
+
+    # Test registration succeeds
+    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidBefore + timedelta(seconds=1)):
+        assert db.findAccount(uid)    is None
+        assert db.findSodTrack(sodId) is None
+        assert db.findDsc(dscId)      is None
+        proto.register(uid, sod, dg15, dg14, allowSodOverride=False)
+
+        # Check new DSC certificate was inserted into DB
+        ds = db.findDsc(dscId)
+        check_ds_eq_dsc(ds, dsc, CertificateId.fromCertificate(csca))
+
+        # Check new account is registered
+        accnt = db.getAccount(uid)
+        accnt = db.findAccount(uid)
+        assert accnt             is not None
+        assert accnt.uid         == uid
+        assert accnt.country     == ds.country
+        assert accnt.sodId       == sodId
+        assert accnt.expires     is None
+        assert accnt.aaPublicKey == dg15.aaPublicKey.dump()
+        assert accnt.aaSigAlgo   is None if dg14 is None else accnt.aaSigAlgo == dg14.aaSignatureAlgo.dump()
+        assert accnt.aaCount     == 0 # passive authentication
+        assert accnt.dg1         is None
+        assert accnt.dg2         is None
+
+        # Check new EF.SOD was inserted is registered
+        st = db.findSodTrack(sodId)
+        assert st          is not None
+        assert st.id       == sodId
+        assert st.dscId    == dscId
+        assert st.hashAlgo == sod.ldsSecurityObject.dgHashAlgo['algorithm'].native
+
+        dg1Hash = sod.ldsSecurityObject.find(DataGroupNumber(1))
+        dg1Hash = dg1Hash.hash if dg1Hash is not None else None
+        assert st.dg1Hash  == dg1Hash
+
+        dg2Hash = sod.ldsSecurityObject.find(DataGroupNumber(2))
+        dg2Hash = dg2Hash.hash if dg2Hash is not None else None
+        assert st.dg2Hash  == dg2Hash
+
+        dg3Hash = sod.ldsSecurityObject.find(DataGroupNumber(3))
+        dg3Hash = dg3Hash.hash if dg3Hash is not None else None
+        assert st.dg3Hash  == dg3Hash
+
+        dg4Hash = sod.ldsSecurityObject.find(DataGroupNumber(4))
+        dg4Hash = dg4Hash.hash if dg4Hash is not None else None
+        assert st.dg4Hash  == dg4Hash
+
+        dg5Hash = sod.ldsSecurityObject.find(DataGroupNumber(5))
+        dg5Hash = dg5Hash.hash if dg5Hash is not None else None
+        assert st.dg5Hash  == dg5Hash
+
+        dg6Hash = sod.ldsSecurityObject.find(DataGroupNumber(6))
+        dg6Hash = dg6Hash.hash if dg6Hash is not None else None
+        assert st.dg6Hash  == dg6Hash
+
+        dg7Hash = sod.ldsSecurityObject.find(DataGroupNumber(7))
+        dg7Hash = dg7Hash.hash if dg7Hash is not None else None
+        assert st.dg7Hash  == dg7Hash
+
+        dg8Hash = sod.ldsSecurityObject.find(DataGroupNumber(8))
+        dg8Hash = dg8Hash.hash if dg8Hash is not None else None
+        assert st.dg8Hash  == dg8Hash
+
+        dg9Hash = sod.ldsSecurityObject.find(DataGroupNumber(9))
+        dg9Hash = dg9Hash.hash if dg9Hash is not None else None
+        assert st.dg9Hash  == dg9Hash
+
+        dg10Hash = sod.ldsSecurityObject.find(DataGroupNumber(10))
+        dg10Hash = dg10Hash.hash if dg10Hash is not None else None
+        assert st.dg10Hash  == dg10Hash
+
+        dg11Hash = sod.ldsSecurityObject.find(DataGroupNumber(11))
+        dg11Hash = dg11Hash.hash if dg11Hash is not None else None
+        assert st.dg11Hash  == dg11Hash
+
+        dg12Hash = sod.ldsSecurityObject.find(DataGroupNumber(12))
+        dg12Hash = dg12Hash.hash if dg12Hash is not None else None
+        assert st.dg12Hash  == dg12Hash
+
+        dg13Hash = sod.ldsSecurityObject.find(DataGroupNumber(13))
+        dg13Hash = dg13Hash.hash if dg13Hash is not None else None
+        assert st.dg13Hash  == dg13Hash
+
+        dg14Hash = sod.ldsSecurityObject.find(DataGroupNumber(14))
+        dg14Hash = dg14Hash.hash if dg14Hash is not None else None
+        assert st.dg14Hash  == dg14Hash
+
+        dg15Hash = sod.ldsSecurityObject.find(DataGroupNumber(15))
+        dg15Hash = dg15Hash.hash if dg15Hash is not None else None
+        assert st.dg15Hash  == dg15Hash
+
+        dg16Hash = sod.ldsSecurityObject.find(DataGroupNumber(16))
+        dg16Hash = dg16Hash.hash if dg16Hash is not None else None
+        assert st.dg16Hash  == dg16Hash
+
+        # Check account has valid attestation
+        assert proto._is_account_pa_attested(accnt)
+        assert proto._is_account_pa_attested(accnt, st)
+
+        # Test trying to register existing user fails
+        with pytest.raises(PeConflict, match="Account already registered"):
+            proto.register(uid, sod, dg15, dg14, allowSodOverride=False)
+
+        # Set account expiration to DSC expiration and
+        # test that trying to register existing user fails
+        accnt.expires = dsc.notValidAfter
+        db.updateAccount(accnt)
+        with pytest.raises(PeConflict, match="Account already registered"):
+            proto.register(uid, sod, dg15, dg14, allowSodOverride=False)
+
+        # Expire account and test that re-register with the same EF.SOD succeeds
+        accnt = db.getAccount(uid)
+        accnt.expires = utils.time_now() - timedelta(seconds=1)
+        db.updateAccount(accnt)
+
+        proto.register(uid, sod, dg15, dg14, allowSodOverride=False)
+        accnt = db.getAccount(uid)
+        assert accnt             is not None
+        assert accnt.uid         == uid
+        assert accnt.country     == ds.country
+        assert accnt.sodId       == sodId
+        assert accnt.expires     is None
+        assert accnt.aaPublicKey == dg15.aaPublicKey.dump()
+        assert accnt.aaSigAlgo   is None if dg14 is None else accnt.aaSigAlgo == dg14.aaSignatureAlgo.dump()
+        assert accnt.aaCount     == 0 # passive authentication
+        assert accnt.dg1         is None
+        assert accnt.dg2         is None
+
+        # Expire account and test that re-register with new EF.SOD with different sodId succeeds
+        accnt = db.getAccount(uid)
+        accnt.expires = utils.time_now() - timedelta(seconds=1)
+        accnt.sodId = SodId(-1)
+        db.updateAccount(accnt)
+
+        db.deleteSodTrack(sodId)
+        assert db.findSodTrack(sodId)    is None
+        testutils.saMakeTransient(st)
+        assert db.findSodTrack(sodId)    is None
+        assert db.findAccount(accnt.uid) is not None
+        st.id = accnt.sodId
+        db.addSodTrack(st)
+
+        # Sanity check
+        with pytest.raises(SeEntryAlreadyExists, match="EF.SOD file already exists"):
+            db.addSodTrack(st)
+
+        proto.register(uid, sod, dg15, dg14, allowSodOverride=False)
+        accnt = db.getAccount(uid)
+        assert accnt             is not None
+        assert accnt.uid         == uid
+        assert accnt.country     == ds.country
+        assert accnt.sodId       == sodId
+        assert accnt.expires     is None
+        assert accnt.aaPublicKey == dg15.aaPublicKey.dump()
+        assert accnt.aaSigAlgo   is None if dg14 is None else accnt.aaSigAlgo == dg14.aaSignatureAlgo.dump()
+        assert accnt.aaCount     == 0 # passive authentication
+        assert accnt.dg1         is None
+        assert accnt.dg2         is None
+
+        st = db.findSodTrack(sodId)
+        assert st                         is not None
+        assert st.id                      != SodId(-1)
+        assert st.id                      == sodId
+        assert db.findSodTrack(SodId(-1)) is None # previous entry must not exists
+
+        # Test that re-register with allowSodOverride=True param succeeds
+        accnt = db.getAccount(uid)
+        accnt.expires = dsc.notValidAfter
+        db.updateAccount(accnt)
+
+        proto.register(uid, sod, dg15, dg14, allowSodOverride=True)
+        accnt = db.getAccount(uid)
+        assert accnt             is not None
+        assert accnt.uid         == uid
+        assert accnt.country     == ds.country
+        assert accnt.sodId       == sodId
+        assert accnt.expires     is not None
+        assert accnt.expires     == dsc.notValidAfter
+        assert accnt.aaPublicKey == dg15.aaPublicKey.dump()
+        assert accnt.aaSigAlgo   is None if dg14 is None else accnt.aaSigAlgo == dg14.aaSignatureAlgo.dump()
+        assert accnt.aaCount     == 0 # passive authentication
+        assert accnt.dg1         is None
+        assert accnt.dg2         is None
+
+        # Test that re-register with allowSodOverride=True param succeeds and new EF.SOD with different sodId succeeds
+        accnt = db.getAccount(uid)
+        accnt.expires = dsc.notValidAfter
+        accnt.sodId = SodId(-1)
+        db.updateAccount(accnt)
+
+        db.deleteSodTrack(sodId)
+        assert db.findSodTrack(sodId)    is None
+        testutils.saMakeTransient(st)
+        assert db.findSodTrack(sodId)    is None
+        assert db.findAccount(accnt.uid) is not None
+        st.id = accnt.sodId
+        db.addSodTrack(st)
+        # Sanity check
+        with pytest.raises(SeEntryAlreadyExists, match="EF.SOD file already exists"):
+            db.addSodTrack(st)
+
+        proto.register(uid, sod, dg15, dg14, allowSodOverride=True)
+        accnt = db.getAccount(uid)
+        assert accnt             is not None
+        assert accnt.uid         == uid
+        assert accnt.country     == ds.country
+        assert accnt.sodId       == sodId
+        assert accnt.expires     is not None
+        assert accnt.expires     == dsc.notValidAfter
+        assert accnt.aaPublicKey == dg15.aaPublicKey.dump()
+        assert accnt.aaSigAlgo   is None if dg14 is None else accnt.aaSigAlgo == dg14.aaSignatureAlgo.dump()
+        assert accnt.aaCount     == 0 # passive authentication
+        assert accnt.dg1         is None
+        assert accnt.dg2         is None
+
+        st = db.findSodTrack(sodId)
+        assert st                         is not None
+        assert st.id                      != SodId(-1)
+        assert st.id                      == sodId
+        assert db.findSodTrack(SodId(-1)) is None # previous entry must not exists
+
+        # Invalidate account attestation and check registering the new attestation succeeds
+        db.deleteSodTrack(sodId) # This should invalidate account attestation
+        assert db.findSodTrack(sodId) is None
+        testutils.saMakeTransient(st)
+        assert db.findSodTrack(sodId) is None
+
+        accnt = db.findAccount(accnt.uid)
+        assert accnt                             is not None
+        assert proto._is_account_pa_attested(accnt) == False
+
+        proto.register(uid, sod, dg15, dg14, allowSodOverride=False)
+        accnt = db.getAccount(uid)
+        assert accnt             is not None
+        assert accnt.uid         == uid
+        assert accnt.country     == ds.country
+        assert accnt.sodId       == sodId
+        assert accnt.expires     is not None
+        assert accnt.expires     == dsc.notValidAfter
+        assert accnt.aaPublicKey == dg15.aaPublicKey.dump()
+        assert accnt.aaSigAlgo   is None if dg14 is None else accnt.aaSigAlgo == dg14.aaSignatureAlgo.dump()
+        assert accnt.aaCount     == 0 # passive authentication
+        assert accnt.dg1         is None
+        assert accnt.dg2         is None
+
+        st = db.findSodTrack(sodId)
+        assert st                         is not None
+        assert st.id                      != SodId(-1)
+        assert st.id                      == sodId
+        assert db.findSodTrack(SodId(-1)) is None # previous entry must not exists
+
+        # Test re-register fails when expired account tries to register EF.SOD with different country
+        accnt = db.getAccount(uid)
+        accnt.country = CountryCode('YZ') # unassigned alpha-2 cc
+        accnt.expires = utils.time_now() - timedelta(seconds=1)
+        db.updateAccount(accnt)
+
+        with pytest.raises(PeConflict, match="Country code mismatch"):
+            proto.register(uid, sod, dg15, dg14, allowSodOverride=False)
+
+        # Test re-register fails when account tries to register EF.SOD with different country
+        accnt = db.getAccount(uid)
+        accnt.country = CountryCode('YZ') # unassigned alpha-2 cc
+        accnt.expires = dsc.notValidAfter
+        db.updateAccount(accnt)
+
+        with pytest.raises(PeConflict, match="Country code mismatch"):
+            proto.register(uid, sod, dg15, dg14, allowSodOverride=True)
+
+        # Restore account
+        accnt = db.getAccount(uid)
+        accnt.expires = dsc.notValidAfter
+        accnt.country = ds.country
+        db.updateAccount(accnt)
+
+        # Test registered account can't register existing EF.SOD
+        db.deleteSodTrack(st.id)
+        testutils.saMakeTransient(st)
+        st.id = SodId(-1)
+        db.addSodTrack(st)
+
+        with pytest.raises(PeConflict, match="Matching EF.SOD file already registered"):
+            proto.register(uid, sod, dg15, dg14, allowSodOverride=True)
+
+        # Test registered but not attested account can't register existing EF.SOD
+        db.deleteSodTrack(st.id)
+        testutils.saMakeTransient(st)
+        st.id = accnt.sodId
+        db.addSodTrack(st)
+
+        accnt.sodId = None
+        db.updateAccount(accnt)
+
+        with pytest.raises(PeConflict, match="Matching EF.SOD file already registered"):
+            proto.register(uid, sod, dg15, dg14, allowSodOverride=False)
+
+        # Test registered but not attested account can't register matching EF.SOD
+        db.deleteSodTrack(st.id)
+        testutils.saMakeTransient(st)
+        st.id = SodId(-1)
+        db.addSodTrack(st)
+
+        with pytest.raises(PeConflict, match="Matching EF.SOD file already registered"):
+            proto.register(uid, sod, dg15, dg14, allowSodOverride=False)
+
+        #TODO: Add tests for DatabaseAPI and DB errors
+        #TODO: Add tests for EF.DG1 & EF.DG2 files being transferred to the re-registered account
+        #      when new EF.SOD contains old DG hashes
+
+def _test_getAssertion(dg15: ef.DG15, dg14: Optional[ef.DG14], sod: ef.SOD, dsc: DocumentSignerCertificate, csca: CscaCertificate, aaSigs: dict):
+    assert isinstance(dg15, ef.DG15)
+    assert isinstance(dg14, (ef.DG14, type(None)))
+    assert isinstance(sod, ef.SOD)
+    assert isinstance(dsc, DocumentSignerCertificate)
+    assert isinstance(csca, CscaCertificate)
+    db    = testutils.getSQLiteDB()
+    proto = PortProto(db, cttl = 0)
+    uid   = UserId(os.urandom(UserId.max_size))
+    sodId = SodId.fromSOD(sod)
+    dscId = CertificateId.fromCertificate(dsc)
+    c     = Challenge.fromhex(aaSigs['challenge'])
+    cid   = c.id
+    csigs = [bytes.fromhex(sig) for sig in aaSigs['csigs']]
+
+    # Test getAssertion fails when account under uid doesn't exists
+    with pytest.raises(SeEntryNotFound, match="Account not found"):
+        proto.getAssertion(uid, cid, csigs)
+
+    # Test challenge signature related fail tests
+    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidBefore + timedelta(seconds=1)):
+        db.addCsca(csca)
+        proto.register(uid, sod, dg15, dg14)
+
+        a = db.getAccount(uid)
+        assert a.aaCount     == 0
+        assert a.aaLastAuthn == utils.time_now()
+
+        # Test getAssertion fails when challenge doesn't exists
+        with pytest.raises(SeEntryNotFound, match="Challenge not found"):
+            proto.getAssertion(uid, cid, csigs)
+        a = db.getAccount(uid)
+        assert a.aaCount     == 0
+        assert a.aaLastAuthn == utils.time_now()
+
+        # Test getAssertion fails if challenge has expired
+        with pytest.raises(PeChallengeExpired, match="Challenge has expired"):
+            db.addChallenge(uid, c, utils.time_now() - timedelta(seconds=1))
+            proto.getAssertion(uid, cid, csigs)
+        a = db.getAccount(uid)
+        assert a.aaCount     == 0
+        assert a.aaLastAuthn == utils.time_now()
+
+        # Test getAssertion fails if invalid cid
+        with pytest.raises(SeEntryNotFound, match="Challenge not found"):
+            db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=30))
+            proto.getAssertion(uid, CID(1), csigs)
+        a = db.getAccount(uid)
+        assert a.aaCount     == 0
+        assert a.aaLastAuthn == utils.time_now()
+
+        # Test getAssertion fails when csigs is empty
+        with pytest.raises(PeSigVerifyFailed, match="Challenge signature verification failed"):
+            proto.getAssertion(uid, cid, [])
+
+        a = db.getAccount(uid)
+        assert a.aaCount     == 0
+        assert a.aaLastAuthn == utils.time_now()
+
+        # Test getAssertion fails when csigs is None
+        with pytest.raises(PeSigVerifyFailed, match="Challenge signature verification failed"):
+            proto.getAssertion(uid, cid, None)
+        a = db.getAccount(uid)
+        assert a.aaCount     == 0
+        assert a.aaLastAuthn == utils.time_now()
+
+        # Test getAssertion fails when csigs are shuffled
+        with pytest.raises(PeSigVerifyFailed, match="Challenge signature verification failed"):
+            csigsShuffled = copy.deepcopy(csigs)
+            random.Random(1).shuffle(csigsShuffled) # 1st element
+            proto.getAssertion(uid, cid, csigsShuffled)
+        with pytest.raises(PeSigVerifyFailed, match="Challenge signature verification failed"):
+            random.Random(2).shuffle(csigsShuffled) # 2nd element
+            proto.getAssertion(uid, cid, csigsShuffled)
+        with pytest.raises(PeSigVerifyFailed, match="Challenge signature verification failed"):
+            random.Random(8).shuffle(csigsShuffled) # 3rd element
+            proto.getAssertion(uid, cid, csigsShuffled)
+        a = db.getAccount(uid)
+        assert a.aaCount     == 0
+        assert a.aaLastAuthn == utils.time_now()
+
+        # Test getAssertion fails when csigs are altered
+        for i in range(0, len(csigs)):
+            with pytest.raises(PeSigVerifyFailed, match="Challenge signature verification failed"):
+                proto.getAssertion(uid, cid, alter_csigs(i, csigs))
+        a = db.getAccount(uid)
+        assert a.aaCount     == 0
+        assert a.aaLastAuthn == utils.time_now()
+
+    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidBefore + timedelta(days=244)):
+        # Test successful authorization
+        db.deleteChallenge(cid)
+        db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=30))
+        proto.getAssertion(uid, cid, csigs)
+        a = db.getAccount(uid)
+        assert a.aaCount     == 1
+        assert a.aaLastAuthn == utils.time_now()
+
+        # Test getAssertion when account is not attested
+        a.sodId = None
+        db.updateAccount(a)
+        with pytest.raises(PeUnauthorized, match="Account is not attested"):
+            db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=30))
+            proto.getAssertion(uid, cid, csigs)
+        a = db.getAccount(uid)
+        assert a.aaCount     == 1
+        assert a.aaLastAuthn == utils.time_now()
+        a.sodId = sodId
+        db.updateAccount(a)
+
+        # Test another successful AA attestation
+        db.deleteChallenge(cid)
+        db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=30))
+        proto.getAssertion(uid, cid, csigs)
+        a = db.getAccount(uid)
+        assert a.aaCount     == 2
+        assert a.aaLastAuthn == utils.time_now()
+
+        # Test getAssertion fails when account attestation has revoked CSCA certificate
+        cscaCri = CertificateRevocationInfo(CountryCode(csca.issuerCountry), csca.serial_number, utils.time_now(), crlId = None)
+        db.revokeCertificate(cscaCri)
+        with pytest.raises(PeUnauthorized, match="Account is not attested"):
+            db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=30))
+            proto.getAssertion(uid, cid, csigs)
+        db.unrevokeCertificate(cscaCri)
+        a = db.getAccount(uid)
+        assert a.aaCount     == 2
+        assert a.aaLastAuthn == utils.time_now()
+
+        # Test another successful AA attestation
+        db.deleteChallenge(cid)
+        db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=30))
+        proto.getAssertion(uid, cid, csigs)
+        a = db.getAccount(uid)
+        assert a.aaCount     == 3
+        assert a.aaLastAuthn == utils.time_now()
+
+        # Test getAssertion fails when account attestation has revoked DSC certificate
+        dscCri = CertificateRevocationInfo(CountryCode(sod.dscCertificates[0].issuerCountry),
+                 sod.dscCertificates[0].serial_number, utils.time_now(), crlId = None, certId=dscId)
+        db.revokeCertificate(dscCri)
+        with pytest.raises(PeUnauthorized, match="Account is not attested"):
+            db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=30))
+            proto.getAssertion(uid, cid, csigs)
+        db.unrevokeCertificate(dscCri)
+        a = db.getAccount(uid)
+        assert a.aaCount     == 3
+        assert a.aaLastAuthn == utils.time_now()
+
+        # Test another successful AA attestation
+        db.deleteChallenge(cid)
+        db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=30))
+        proto.getAssertion(uid, cid, csigs)
+        a = db.getAccount(uid)
+        assert a.aaCount     == 4
+        assert a.aaLastAuthn == utils.time_now()
+
+        # Test getAssertion fails when account attestation SodTrack doesn't exists
+        db.deleteSodTrack(sodId)
+        with pytest.raises(PeUnauthorized, match="Account is not attested"):
+            db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=30))
+            proto.getAssertion(uid, cid, csigs)
+        a = db.getAccount(uid)
+        assert a.aaCount     == 4
+        assert a.aaLastAuthn == utils.time_now()
+
+        # Test getAssertion fails when account attestation has expired
+        a = db.getAccount(uid)
+        a.expires = utils.time_now() - timedelta(seconds=1)
+        with pytest.raises(PeAttestationExpired, match="Account attestation has expired"):
+            db.deleteChallenge(cid)
+            db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=30))
+            proto.getAssertion(uid, cid, csigs)
+        a = db.getAccount(uid)
+        assert a.aaCount     == 4
+        assert a.aaLastAuthn == utils.time_now()
+
 def test_proto_errors():
     # Test PE exception classes
     pe = ProtoError()
@@ -246,91 +927,6 @@ def test_proto_errors():
     assert isinstance(peTrustchainCheckFailedRevokedCert, PePreconditionFailed)
     assert str(peTrustchainCheckFailedRevokedCert) == "Revoked certificate in the trustchain"
 
-def verify_sod_is_genuine_test(sod: ef.SOD, csca: CscaCertificate, dsc: DocumentSignerCertificate):
-    """
-    Tests EF.SOD object
-    :param sod: The sod object to test.
-    :param csca: The `sod` issuing CSCA.
-    :param dsc: The DSC certificate which is inserted into DB when SOD is being verified by PortProto._verify_sod_is_genuine
-    """
-    db    = testutils.getSQLiteDB()
-    proto = PortProto(db, cttl = 0)
-
-    # Missing CSCA
-    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidBefore + timedelta(seconds=1)):
-        with pytest.raises(PeNotFound, match="CSCA certificate not found"):
-            proto._verify_sod_is_genuine(sod)
-
-    # Add CSCA to the DB
-    db.addCsca(csca)
-
-    # DSC is not valid yet
-    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidBefore - timedelta(seconds=1)):
-        with pytest.raises(ProtoError, match="DSC certificate is too new or has expired"):
-            proto._verify_sod_is_genuine(sod)
-
-    # DSC is expired
-    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidAfter + timedelta(seconds=1)):
-        with pytest.raises(ProtoError, match="DSC certificate is too new or has expired"):
-            proto._verify_sod_is_genuine(sod)
-
-    # Now do tests when DSC is valid at present time
-    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidBefore + timedelta(seconds=1)):
-        # Test verifying SOD fails when CSCA is revoked
-        with pytest.raises(PePreconditionFailed, match="Revoked certificate in the trustchain"):
-            cscaCri = CertificateRevocationInfo(CountryCode(csca.issuerCountry), csca.serial_number, utils.time_now(), crlId = None)
-            db.revokeCertificate(cscaCri)
-            try:
-                proto._verify_sod_is_genuine(sod)
-            except Exception as e:
-                db.unrevokeCertificate(cscaCri)
-                raise e
-
-        # Test verifying SOD fails when DSC is revoked
-        with pytest.raises(PePreconditionFailed, match="Revoked certificate in the trustchain"):
-            dscCri = CertificateRevocationInfo(CountryCode(sod.dscCertificates[0].issuerCountry),
-                 sod.dscCertificates[0].serial_number, utils.time_now(), crlId = None)
-            db.revokeCertificate(dscCri)
-            try:
-                proto._verify_sod_is_genuine(sod)
-            except Exception as e:
-                db.unrevokeCertificate(dscCri)
-                raise e
-
-        # Test EF.SOD verification succeeds
-        dscStorage = proto._verify_sod_is_genuine(sod)
-        assert dscStorage is not None
-
-        # Test DSC is in the database
-        ds = db.findDscBySubjectKey(dsc.subjectKey)
-        assert ds            is not None
-        assert ds.id         == CertificateId.fromCertificate(dsc)
-        assert dsc.dump()    == ds.getCertificate().dump()
-        assert dscStorage.id == ds.id
-        check_ds_eq_dsc(ds, dsc, CertificateId.fromCertificate(csca))
-
-         # Performe another check, now with DSC in DB
-        dscStorage = proto._verify_sod_is_genuine(sod)
-        assert dscStorage    is not None
-        assert dscStorage.id == ds.id
-
-        # Test altering SOD content results in error
-        with pytest.raises(PeUnauthorized, match="EF.SOD file not genuine"):
-            proto._verify_sod_is_genuine(alter_sod(sod))
-
-        # Test verifying SOD fails when CSCA is revoked
-        with pytest.raises(PePreconditionFailed, match="Revoked certificate in the trustchain"):
-            cscaCri = CertificateRevocationInfo(CountryCode(csca.issuerCountry), csca.serial_number, utils.time_now(), crlId = None)
-            db.revokeCertificate(cscaCri)
-            proto._verify_sod_is_genuine(sod)
-
-        # Test verifying SOD fails when DSC is revoked
-        with pytest.raises(PePreconditionFailed, match="Revoked certificate in the trustchain"):
-            dscCri = CertificateRevocationInfo(CountryCode(sod.dscCertificates[0].issuerCountry),
-                 sod.dscCertificates[0].serial_number, utils.time_now(), crlId = None)
-            db.revokeCertificate(dscCri)
-            proto._verify_sod_is_genuine(sod)
-
 @pytest.mark.datafiles(
     CERTS_DIR / 'csca_de_0130846f22c2.der',
     CERTS_DIR / 'dsc_de_0130846f2b3e.cer',
@@ -377,566 +973,6 @@ def test_verify_sod_is_genuine(datafiles):
         with pytest.raises(PeNotFound, match="CSCA certificate not found"):
             proto._verify_sod_is_genuine(sod)
 
-def _test_register_attestation(dg15: ef.DG15, dg14: Optional[ef.DG14], sod: ef.SOD, dsc: DocumentSignerCertificate, csca: CscaCertificate, aaSigs: dict):
-    assert isinstance(dg15, ef.DG15)
-    assert isinstance(dg14, (ef.DG14, type(None)))
-    assert isinstance(sod, ef.SOD)
-    assert isinstance(dsc, DocumentSignerCertificate)
-    assert isinstance(csca, CscaCertificate)
-    db    = testutils.getSQLiteDB()
-    proto = PortProto(db, cttl = 0)
-    uid   = UserId(os.urandom(UserId.max_size))
-    sodId = SodId.fromSOD(sod)
-    dscId = CertificateId.fromCertificate(dsc)
-    c     = Challenge.fromhex(aaSigs['challenge'])
-    cid   = c.id
-    csigs = [bytes.fromhex(sig) for sig in aaSigs['csigs']]
-
-    # Test registration fails when EF.FG15 is altered
-    with pytest.raises(ProtoError, match="Invalid EF.DG15 file"):
-        proto.register(uid, sod, alter_dg15(dg15), cid, csigs, dg14, allowSodOverride=False)
-
-    assert db.findAccount(uid)    is None
-    assert db.findSodTrack(sodId) is None
-    assert db.findDsc(dscId)      is None
-
-    # Test registration fails when CSCA is not present
-    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidBefore + timedelta(seconds=1)):
-        db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=30))
-        with pytest.raises(ProtoError, match="CSCA certificate not found"):
-            proto.register(uid, sod, dg15, cid, csigs, dg14, allowSodOverride=False)
-        assert db.findAccount(uid)    is None
-        assert db.findSodTrack(sodId) is None
-        assert db.findDsc(dscId)      is None
-
-    # Add CSCA to DB
-    db.addCsca(csca)
-
-    # Test registration fails when CSCA is not valid yet
-    with mock.patch('port.proto.utils.time_now', return_value=csca.notValidBefore - timedelta(seconds=1)):
-        db.deleteChallenge(cid)
-        db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=30))
-        with pytest.raises(ProtoError, match="DSC certificate is too new or has expired"):
-            proto.register(uid, sod, dg15, cid, csigs, dg14, allowSodOverride=False)
-        assert db.findAccount(uid)    is None
-        assert db.findSodTrack(sodId) is None
-        assert db.findDsc(dscId)      is None
-
-    # Test registration fails when CSCA is expired
-    with mock.patch('port.proto.utils.time_now', return_value=csca.notValidAfter + timedelta(seconds=1)):
-        db.deleteChallenge(cid)
-        db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=30))
-        with pytest.raises(ProtoError, match="DSC certificate is too new or has expired"):
-            proto.register(uid, sod, dg15, cid, csigs, dg14, allowSodOverride=False)
-
-        assert db.findAccount(uid)    is None
-        assert db.findSodTrack(sodId) is None
-        assert db.findDsc(dscId)      is None
-
-    # Test registration fails when CSCA is revoked
-    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidBefore + timedelta(seconds=1)):
-        db.deleteChallenge(cid)
-        db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=30))
-        cscaCri = CertificateRevocationInfo(CountryCode(csca.issuerCountry), csca.serial_number, utils.time_now(), crlId = None)
-        db.revokeCertificate(cscaCri)
-        with pytest.raises(PePreconditionFailed, match="Revoked certificate in the trustchain"):
-            proto.register(uid, sod, dg15, cid, csigs, dg14, allowSodOverride=False)
-        db.unrevokeCertificate(cscaCri)
-
-        assert db.findAccount(uid)    is None
-        assert db.findSodTrack(sodId) is None
-        assert db.findDsc(dscId)      is None
-
-    # Test registration fails when DSC is not valid yet
-    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidAfter + timedelta(seconds=1)):
-        db.deleteChallenge(cid)
-        db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=30))
-        with pytest.raises(ProtoError, match="DSC certificate is too new or has expired"):
-            proto.register(uid, sod, dg15, cid, csigs, dg14, allowSodOverride=False)
-        assert db.findAccount(uid)    is None
-        assert db.findSodTrack(sodId) is None
-        assert db.findDsc(dscId)      is None
-
-    # Test registration fails when DSC has expired
-    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidAfter + timedelta(seconds=1)):
-        db.deleteChallenge(cid)
-        db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=30))
-        with pytest.raises(ProtoError, match="DSC certificate is too new or has expired"):
-            proto.register(uid, sod, dg15, cid, csigs, dg14, allowSodOverride=False)
-        assert db.findAccount(uid)    is None
-        assert db.findSodTrack(sodId) is None
-        assert db.findDsc(dscId)      is None
-
-    # Test registration fails when DSC is revoked
-    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidBefore + timedelta(seconds=1)):
-        db.deleteChallenge(cid)
-        db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=30))
-        dscCri = CertificateRevocationInfo(CountryCode(dsc.issuerCountry), dsc.serial_number, utils.time_now(), crlId = None)
-        db.revokeCertificate(dscCri)
-        with pytest.raises(PePreconditionFailed, match="Revoked certificate in the trustchain"):
-            proto.register(uid, sod, dg15, cid, csigs, dg14, allowSodOverride=False)
-        db.unrevokeCertificate(dscCri)
-
-        assert db.findAccount(uid)    is None
-        assert db.findSodTrack(sodId) is None
-        assert db.findDsc(dscId)      is None
-
-    # Test registration fails when EF.SOD is not genuine
-    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidBefore + timedelta(seconds=1)):
-        db.deleteChallenge(cid)
-        db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=30))
-        with pytest.raises(PeUnauthorized, match="EF.SOD file not genuine"):
-            proto.register(uid, alter_sod(sod), dg15, cid, csigs, dg14, allowSodOverride=False)
-        assert db.findAccount(uid)    is None
-        assert db.findSodTrack(sodId) is None
-
-        ds = db.findDsc(dscId)
-        assert ds is not None
-        check_ds_eq_dsc(ds, dsc, CertificateId.fromCertificate(csca))
-        db.deleteDsc(dscId)
-
-    # Test registration fails when challenge doesn't exists
-    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidBefore + timedelta(seconds=1)):
-        db.deleteChallenge(cid)
-        with pytest.raises(SeEntryNotFound, match="Challenge not found"):
-            proto.register(uid, sod, dg15, cid, [], dg14, allowSodOverride=False)
-        assert db.findAccount(uid)    is None
-        assert db.findSodTrack(sodId) is None
-
-        ds = db.findDsc(dscId)
-        assert ds is not None
-        check_ds_eq_dsc(ds, dsc, CertificateId.fromCertificate(csca))
-        db.deleteDsc(dscId)
-
-    # Test registration fails when challenge has expired
-    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidBefore + timedelta(seconds=1)):
-        db.addChallenge(uid, c, utils.time_now() - timedelta(seconds=1))
-        with pytest.raises(PeChallengeExpired, match="Challenge has expired"):
-            proto.register(uid, sod, dg15, cid, [], dg14, allowSodOverride=False)
-        assert db.findAccount(uid)    is None
-        assert db.findSodTrack(sodId) is None
-
-        ds = db.findDsc(dscId)
-        assert ds is not None
-        check_ds_eq_dsc(ds, dsc, CertificateId.fromCertificate(csca))
-        db.deleteDsc(dscId)
-
-    # Test registration fails if invalid cid
-    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidBefore + timedelta(seconds=1)):
-        db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=30))
-        with pytest.raises(SeEntryNotFound, match="Challenge not found"):
-            proto.register(uid, sod, dg15, CID(1), [], dg14, allowSodOverride=False)
-        assert db.findAccount(uid)    is None
-        assert db.findSodTrack(sodId) is None
-
-        ds = db.findDsc(dscId)
-        assert ds is not None
-        check_ds_eq_dsc(ds, dsc, CertificateId.fromCertificate(csca))
-        db.deleteDsc(dscId)
-
-    # Test registration fails if invalid cid
-    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidBefore + timedelta(seconds=1)):
-        db.deleteChallenge(cid)
-        db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=30))
-        with pytest.raises(SeEntryNotFound, match="Challenge not found"):
-            proto.register(UserId.fromhex("00"), sod, dg15, cid, [], dg14, allowSodOverride=False)
-        assert db.findAccount(uid)    is None
-        assert db.findSodTrack(sodId) is None
-
-        ds = db.findDsc(dscId)
-        assert ds is not None
-        check_ds_eq_dsc(ds, dsc, CertificateId.fromCertificate(csca))
-        db.deleteDsc(dscId)
-
-    # Test registration fails when csigs is empty
-    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidBefore + timedelta(seconds=1)):
-        db.deleteChallenge(cid)
-        db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=30))
-        with pytest.raises(PeSigVerifyFailed, match="Challenge signature verification failed"):
-            proto.register(uid, sod, dg15, cid, [], dg14, allowSodOverride=False)
-        assert db.findAccount(uid)    is None
-        assert db.findSodTrack(sodId) is None
-
-        ds = db.findDsc(dscId)
-        assert ds is not None
-        check_ds_eq_dsc(ds, dsc, CertificateId.fromCertificate(csca))
-        db.deleteDsc(dscId)
-
-    # Test registration fails when csigs is None
-    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidBefore + timedelta(seconds=1)):
-        db.deleteChallenge(cid)
-        db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=30))
-        with pytest.raises(PeSigVerifyFailed, match="Challenge signature verification failed"):
-            proto.register(uid, sod, dg15, cid, None, dg14, allowSodOverride=False)
-        assert db.findAccount(uid)    is None
-        assert db.findSodTrack(sodId) is None
-
-        ds = db.findDsc(dscId)
-        assert ds is not None
-        check_ds_eq_dsc(ds, dsc, CertificateId.fromCertificate(csca))
-        db.deleteDsc(dscId)
-
-    # Test registration fails when csigs are shuffled
-    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidBefore + timedelta(seconds=1)):
-        db.deleteChallenge(cid)
-        db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=30))
-        with pytest.raises(PeSigVerifyFailed, match="Challenge signature verification failed"):
-            csigsShuffled = copy.deepcopy(csigs)
-            random.Random(1).shuffle(csigsShuffled) # 1st element
-            proto.register(uid, sod, dg15, cid, csigsShuffled, dg14, allowSodOverride=False)
-        with pytest.raises(PeSigVerifyFailed, match="Challenge signature verification failed"):
-            random.Random(2).shuffle(csigsShuffled) # 2nd element
-            proto.register(uid, sod, dg15, cid, csigsShuffled, dg14, allowSodOverride=False)
-        with pytest.raises(PeSigVerifyFailed, match="Challenge signature verification failed"):
-            random.Random(8).shuffle(csigsShuffled) # 3rd element
-            proto.register(uid, sod, dg15, cid, csigsShuffled, dg14, allowSodOverride=False)
-
-        assert db.findAccount(uid)    is None
-        assert db.findSodTrack(sodId) is None
-
-        ds = db.findDsc(dscId)
-        assert ds is not None
-        check_ds_eq_dsc(ds, dsc, CertificateId.fromCertificate(csca))
-        db.deleteDsc(dscId)
-
-    # Test registration fails when csigs are altered
-    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidBefore + timedelta(seconds=1)):
-        db.deleteChallenge(cid)
-        db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=30))
-        for i in range(0, len(csigs)):
-            with pytest.raises(PeSigVerifyFailed, match="Challenge signature verification failed"):
-                proto.register(uid, sod, dg15, cid, alter_csigs(i, csigs), dg14, allowSodOverride=False)
-        assert db.findAccount(uid)    is None
-        assert db.findSodTrack(sodId) is None
-
-        ds = db.findDsc(dscId)
-        assert ds is not None
-        check_ds_eq_dsc(ds, dsc, CertificateId.fromCertificate(csca))
-        db.deleteDsc(dscId)
-
-    # Test registration succeeds
-    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidBefore + timedelta(seconds=1)):
-        db.deleteChallenge(cid)
-        db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=30))
-
-        assert db.findAccount(uid)    is None
-        assert db.findSodTrack(sodId) is None
-        assert db.findDsc(dscId)      is None
-        proto.register(uid, sod, dg15, cid, csigs, dg14, allowSodOverride=False)
-
-        # Check new DSC certificate was inserted into DB
-        ds = db.findDsc(dscId)
-        check_ds_eq_dsc(ds, dsc, CertificateId.fromCertificate(csca))
-
-        # Check new account is registered
-        accnt = db.getAccount(uid)
-        accnt = db.findAccount(uid)
-        assert accnt             is not None
-        assert accnt.uid         == uid
-        assert accnt.country     == ds.country
-        assert accnt.sodId       == sodId
-        assert accnt.expires     is None
-        assert accnt.aaPublicKey == dg15.aaPublicKey.dump()
-        assert accnt.aaSigAlgo   is None if dg14 is None else accnt.aaSigAlgo == dg14.aaSignatureAlgo.dump()
-        assert accnt.aaCount     == 1
-        assert accnt.dg1         is None
-        assert accnt.dg2         is None
-
-        # Check new EF.SOD was inserted is registered
-        st = db.findSodTrack(sodId)
-        assert st          is not None
-        assert st.id       == sodId
-        assert st.dscId    == dscId
-        assert st.hashAlgo == sod.ldsSecurityObject.dgHashAlgo['algorithm'].native
-
-        dg1Hash = sod.ldsSecurityObject.find(DataGroupNumber(1))
-        dg1Hash = dg1Hash.hash if dg1Hash is not None else None
-        assert st.dg1Hash  == dg1Hash
-
-        dg2Hash = sod.ldsSecurityObject.find(DataGroupNumber(2))
-        dg2Hash = dg2Hash.hash if dg2Hash is not None else None
-        assert st.dg2Hash  == dg2Hash
-
-        dg3Hash = sod.ldsSecurityObject.find(DataGroupNumber(3))
-        dg3Hash = dg3Hash.hash if dg3Hash is not None else None
-        assert st.dg3Hash  == dg3Hash
-
-        dg4Hash = sod.ldsSecurityObject.find(DataGroupNumber(4))
-        dg4Hash = dg4Hash.hash if dg4Hash is not None else None
-        assert st.dg4Hash  == dg4Hash
-
-        dg5Hash = sod.ldsSecurityObject.find(DataGroupNumber(5))
-        dg5Hash = dg5Hash.hash if dg5Hash is not None else None
-        assert st.dg5Hash  == dg5Hash
-
-        dg6Hash = sod.ldsSecurityObject.find(DataGroupNumber(6))
-        dg6Hash = dg6Hash.hash if dg6Hash is not None else None
-        assert st.dg6Hash  == dg6Hash
-
-        dg7Hash = sod.ldsSecurityObject.find(DataGroupNumber(7))
-        dg7Hash = dg7Hash.hash if dg7Hash is not None else None
-        assert st.dg7Hash  == dg7Hash
-
-        dg8Hash = sod.ldsSecurityObject.find(DataGroupNumber(8))
-        dg8Hash = dg8Hash.hash if dg8Hash is not None else None
-        assert st.dg8Hash  == dg8Hash
-
-        dg9Hash = sod.ldsSecurityObject.find(DataGroupNumber(9))
-        dg9Hash = dg9Hash.hash if dg9Hash is not None else None
-        assert st.dg9Hash  == dg9Hash
-
-        dg10Hash = sod.ldsSecurityObject.find(DataGroupNumber(10))
-        dg10Hash = dg10Hash.hash if dg10Hash is not None else None
-        assert st.dg10Hash  == dg10Hash
-
-        dg11Hash = sod.ldsSecurityObject.find(DataGroupNumber(11))
-        dg11Hash = dg11Hash.hash if dg11Hash is not None else None
-        assert st.dg11Hash  == dg11Hash
-
-        dg12Hash = sod.ldsSecurityObject.find(DataGroupNumber(12))
-        dg12Hash = dg12Hash.hash if dg12Hash is not None else None
-        assert st.dg12Hash  == dg12Hash
-
-        dg13Hash = sod.ldsSecurityObject.find(DataGroupNumber(13))
-        dg13Hash = dg13Hash.hash if dg13Hash is not None else None
-        assert st.dg13Hash  == dg13Hash
-
-        dg14Hash = sod.ldsSecurityObject.find(DataGroupNumber(14))
-        dg14Hash = dg14Hash.hash if dg14Hash is not None else None
-        assert st.dg14Hash  == dg14Hash
-
-        dg15Hash = sod.ldsSecurityObject.find(DataGroupNumber(15))
-        dg15Hash = dg15Hash.hash if dg15Hash is not None else None
-        assert st.dg15Hash  == dg15Hash
-
-        dg16Hash = sod.ldsSecurityObject.find(DataGroupNumber(16))
-        dg16Hash = dg16Hash.hash if dg16Hash is not None else None
-        assert st.dg16Hash  == dg16Hash
-
-        # Check account has valid attestation
-        assert proto._is_account_pa_attested(accnt)
-        assert proto._is_account_pa_attested(accnt, st)
-
-        # Test trying to register existing user fails
-        with pytest.raises(PeConflict, match="Account already registered"):
-            proto.register(uid, sod, dg15, cid, csigs, dg14, allowSodOverride=False)
-
-        # Set account expiration to DSC expiration and
-        # test that trying to register existing user fails
-        accnt.expires = dsc.notValidAfter
-        db.updateAccount(accnt)
-        with pytest.raises(PeConflict, match="Account already registered"):
-            proto.register(uid, sod, dg15, cid, csigs, dg14, allowSodOverride=False)
-
-        # Expire account and test that re-register with the same EF.SOD succeeds
-        accnt = db.getAccount(uid)
-        accnt.expires = utils.time_now() - timedelta(seconds=1)
-        db.updateAccount(accnt)
-
-        db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=60))
-
-        proto.register(uid, sod, dg15, cid, csigs, dg14, allowSodOverride=False)
-        accnt = db.getAccount(uid)
-        assert accnt             is not None
-        assert accnt.uid         == uid
-        assert accnt.country     == ds.country
-        assert accnt.sodId       == sodId
-        assert accnt.expires     is None
-        assert accnt.aaPublicKey == dg15.aaPublicKey.dump()
-        assert accnt.aaSigAlgo   is None if dg14 is None else accnt.aaSigAlgo == dg14.aaSignatureAlgo.dump()
-        assert accnt.aaCount     == 1
-        assert accnt.dg1         is None
-        assert accnt.dg2         is None
-
-        # Expire account and test that re-register with new EF.SOD with different sodId succeeds
-        accnt = db.getAccount(uid)
-        accnt.expires = utils.time_now() - timedelta(seconds=1)
-        accnt.sodId = SodId(-1)
-        db.updateAccount(accnt)
-
-        db.deleteSodTrack(sodId)
-        assert db.findSodTrack(sodId)    is None
-        testutils.saMakeTransient(st)
-        assert db.findSodTrack(sodId)    is None
-        assert db.findAccount(accnt.uid) is not None
-        st.id = accnt.sodId
-        db.addSodTrack(st)
-        # Sanity check
-        with pytest.raises(SeEntryAlreadyExists, match="EF.SOD file already exists"):
-            db.addSodTrack(st)
-
-        db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=60))
-
-        proto.register(uid, sod, dg15, cid, csigs, dg14, allowSodOverride=False)
-        accnt = db.getAccount(uid)
-        assert accnt             is not None
-        assert accnt.uid         == uid
-        assert accnt.country     == ds.country
-        assert accnt.sodId       == sodId
-        assert accnt.expires     is None
-        assert accnt.aaPublicKey == dg15.aaPublicKey.dump()
-        assert accnt.aaSigAlgo   is None if dg14 is None else accnt.aaSigAlgo == dg14.aaSignatureAlgo.dump()
-        assert accnt.aaCount     == 1
-        assert accnt.dg1         is None
-        assert accnt.dg2         is None
-
-        st = db.findSodTrack(sodId)
-        assert st                         is not None
-        assert st.id                      != SodId(-1)
-        assert st.id                      == sodId
-        assert db.findSodTrack(SodId(-1)) is None # previous entry must not exists
-
-        # Test that re-register with allowSodOverride=True param succeeds
-        accnt = db.getAccount(uid)
-        accnt.expires = dsc.notValidAfter
-        db.updateAccount(accnt)
-
-        db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=60))
-
-        proto.register(uid, sod, dg15, cid, csigs, dg14, allowSodOverride=True)
-        accnt = db.getAccount(uid)
-        assert accnt             is not None
-        assert accnt.uid         == uid
-        assert accnt.country     == ds.country
-        assert accnt.sodId       == sodId
-        assert accnt.expires     is not None
-        assert accnt.expires     == dsc.notValidAfter
-        assert accnt.aaPublicKey == dg15.aaPublicKey.dump()
-        assert accnt.aaSigAlgo   is None if dg14 is None else accnt.aaSigAlgo == dg14.aaSignatureAlgo.dump()
-        assert accnt.aaCount     == 1
-        assert accnt.dg1         is None
-        assert accnt.dg2         is None
-
-        # Test that re-register with allowSodOverride=True param succeeds and new EF.SOD with different sodId succeeds
-        accnt = db.getAccount(uid)
-        accnt.expires = dsc.notValidAfter
-        accnt.sodId = SodId(-1)
-        db.updateAccount(accnt)
-
-        db.deleteSodTrack(sodId)
-        assert db.findSodTrack(sodId)    is None
-        testutils.saMakeTransient(st)
-        assert db.findSodTrack(sodId)    is None
-        assert db.findAccount(accnt.uid) is not None
-        st.id = accnt.sodId
-        db.addSodTrack(st)
-        # Sanity check
-        with pytest.raises(SeEntryAlreadyExists, match="EF.SOD file already exists"):
-            db.addSodTrack(st)
-
-        db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=60))
-
-        proto.register(uid, sod, dg15, cid, csigs, dg14, allowSodOverride=True)
-        accnt = db.getAccount(uid)
-        assert accnt             is not None
-        assert accnt.uid         == uid
-        assert accnt.country     == ds.country
-        assert accnt.sodId       == sodId
-        assert accnt.expires     is not None
-        assert accnt.expires     == dsc.notValidAfter
-        assert accnt.aaPublicKey == dg15.aaPublicKey.dump()
-        assert accnt.aaSigAlgo   is None if dg14 is None else accnt.aaSigAlgo == dg14.aaSignatureAlgo.dump()
-        assert accnt.aaCount     == 1
-        assert accnt.dg1         is None
-        assert accnt.dg2         is None
-
-        st = db.findSodTrack(sodId)
-        assert st                         is not None
-        assert st.id                      != SodId(-1)
-        assert st.id                      == sodId
-        assert db.findSodTrack(SodId(-1)) is None # previous entry must not exists
-
-        # Invalidate account attestation and check registering the new attestation succeeds
-        db.deleteSodTrack(sodId) # This should invalidate account attestation
-        assert db.findSodTrack(sodId) is None
-        testutils.saMakeTransient(st)
-        assert db.findSodTrack(sodId) is None
-
-        accnt = db.findAccount(accnt.uid)
-        assert accnt                             is not None
-        assert proto._is_account_pa_attested(accnt) == False
-
-        db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=60))
-
-        proto.register(uid, sod, dg15, cid, csigs, dg14, allowSodOverride=False)
-        accnt = db.getAccount(uid)
-        assert accnt             is not None
-        assert accnt.uid         == uid
-        assert accnt.country     == ds.country
-        assert accnt.sodId       == sodId
-        assert accnt.expires     is not None
-        assert accnt.expires     == dsc.notValidAfter
-        assert accnt.aaPublicKey == dg15.aaPublicKey.dump()
-        assert accnt.aaSigAlgo   is None if dg14 is None else accnt.aaSigAlgo == dg14.aaSignatureAlgo.dump()
-        assert accnt.aaCount     == 1
-        assert accnt.dg1         is None
-        assert accnt.dg2         is None
-
-        st = db.findSodTrack(sodId)
-        assert st                         is not None
-        assert st.id                      != SodId(-1)
-        assert st.id                      == sodId
-        assert db.findSodTrack(SodId(-1)) is None # previous entry must not exists
-
-        # Test re-register fails when expired account tries to register EF.SOD with different country
-        accnt = db.getAccount(uid)
-        accnt.country = CountryCode('YZ') # unassigned alpha-2 cc
-        accnt.expires = utils.time_now() - timedelta(seconds=1)
-        db.updateAccount(accnt)
-        db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=60))
-
-        with pytest.raises(PeConflict, match="Country code mismatch"):
-            proto.register(uid, sod, dg15, cid, csigs, dg14, allowSodOverride=False)
-
-        # Test re-register fails when account tries to register EF.SOD with different country
-        accnt = db.getAccount(uid)
-        accnt.country = CountryCode('YZ') # unassigned alpha-2 cc
-        accnt.expires = dsc.notValidAfter
-        db.updateAccount(accnt)
-
-        with pytest.raises(PeConflict, match="Country code mismatch"):
-            proto.register(uid, sod, dg15, cid, csigs, dg14, allowSodOverride=True)
-
-        # Restore account
-        accnt = db.getAccount(uid)
-        accnt.expires = dsc.notValidAfter
-        accnt.country = ds.country
-        db.updateAccount(accnt)
-
-        # Test registered account can't register existing EF.SOD
-        db.deleteSodTrack(st.id)
-        testutils.saMakeTransient(st)
-        st.id = SodId(-1)
-        db.addSodTrack(st)
-
-        with pytest.raises(PeConflict, match="Matching EF.SOD file already registered"):
-            proto.register(uid, sod, dg15, cid, csigs, dg14, allowSodOverride=True)
-
-        # Test registered but not attested account can't register existing EF.SOD
-        db.deleteSodTrack(st.id)
-        testutils.saMakeTransient(st)
-        st.id = accnt.sodId
-        db.addSodTrack(st)
-
-        accnt.sodId = None
-        db.updateAccount(accnt)
-
-        with pytest.raises(PeConflict, match="Matching EF.SOD file already registered"):
-            proto.register(uid, sod, dg15, cid, csigs, dg14, allowSodOverride=False)
-
-        # Test registered but not attested account can't register matching EF.SOD
-        db.deleteSodTrack(st.id)
-        testutils.saMakeTransient(st)
-        st.id = SodId(-1)
-        db.addSodTrack(st)
-
-        with pytest.raises(PeConflict, match="Matching EF.SOD file already registered"):
-            proto.register(uid, sod, dg15, cid, csigs, dg14, allowSodOverride=False)
-
-        #TODO: Add tests for DatabaseAPI and DB errors
-        #TODO: Add tests for EF.DG1 & EF.DG2 files being transferred to the re-registered account
-        #      when new EF.SOD contains old DG hashes
-
 @pytest.mark.datafiles(
     CERTS_DIR / 'csca_si_448831f1.cer',
     CERTS_DIR / 'dsc_si_448833b8.cer',
@@ -949,8 +985,6 @@ def _test_register_attestation(dg15: ef.DG15, dg14: Optional[ef.DG14], sod: ef.S
 ])
 def test_register(datafiles):
     # Test vector taken from Slovenian passport
-    with open(datafiles / 'aa_sigs.json', "rb") as aa_sigs:
-        aa_sigs = json.loads(aa_sigs.read())
     with open(datafiles / 'ef.dg15_ef.sod_si_454CB206.bin', "rb") as dg15:
         dg15 = ef.DG15.load(dg15.read())
     with open(datafiles / 'ef.sod_si_454CB206.bin', "rb") as sod:
@@ -959,185 +993,91 @@ def test_register(datafiles):
         csca:CscaCertificate = CscaCertificate.load(csca.read())
     with open(datafiles / 'dsc_si_448833b8.cer', "rb") as dsc:
         dsc: DocumentSignerCertificate = DocumentSignerCertificate.load(dsc.read())
-    _test_register_attestation(dg15, None, sod, dsc, csca, aa_sigs['ef.dg15_ef.sod_si_454CB206'])
+    _test_register_attestation(dg15, None, sod, dsc, csca)
 
-def _test_getAssertion(dg15: ef.DG15, dg14: Optional[ef.DG14], sod: ef.SOD, dsc: DocumentSignerCertificate, csca: CscaCertificate, aaSigs: dict):
-    assert isinstance(dg15, ef.DG15)
-    assert isinstance(dg14, (ef.DG14, type(None)))
-    assert isinstance(sod, ef.SOD)
-    assert isinstance(dsc, DocumentSignerCertificate)
-    assert isinstance(csca, CscaCertificate)
+@pytest.mark.datafiles(
+    CERTS_DIR / 'csca_si_448831f1.cer',
+    CERTS_DIR / 'dsc_si_448833b8.cer',
+    LDS_DIR   / 'ef.sod_si_454CB206.bin',
+    LDS_DIR   / 'ef.dg15_ef.sod_si_454CB206.bin',
+)
+@pytest.mark.depends(on=[
+    'test_verify_sod_is_genuine',
+    'test_register'
+])
+def test_getChallenge(datafiles):
+    with open(datafiles / 'ef.dg15_ef.sod_si_454CB206.bin', "rb") as dg15:
+        dg15 = ef.DG15.load(dg15.read())
+    with open(datafiles / 'ef.sod_si_454CB206.bin', "rb") as sod:
+        sod = ef.SOD.load(sod.read())
+    with open(datafiles / 'csca_si_448831f1.cer', "rb") as csca:
+        csca:CscaCertificate = CscaCertificate.load(csca.read())
+    with open(datafiles / 'dsc_si_448833b8.cer', "rb") as dsc:
+        dsc: DocumentSignerCertificate = DocumentSignerCertificate.load(dsc.read())
+
+    uid   = UserId(os.urandom(UserId.max_size))
     db    = testutils.getSQLiteDB()
     proto = PortProto(db, cttl = 0)
-    uid   = UserId(os.urandom(UserId.max_size))
-    sodId = SodId.fromSOD(sod)
-    dscId = CertificateId.fromCertificate(dsc)
-    c     = Challenge.fromhex(aaSigs['challenge'])
-    cid   = c.id
-    csigs = [bytes.fromhex(sig) for sig in aaSigs['csigs']]
 
-    # Test getAssertion fails when account under uid doesn't exists
+    # getChallenge should fail when account is not registered yet
     with pytest.raises(SeEntryNotFound, match="Account not found"):
-        proto.getAssertion(uid, cid, csigs)
+        proto.getChallenge(uid)
 
-    # Test challenge signature related fail tests
+    # getChallenge should succeed when user has valid registration
     with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidBefore + timedelta(seconds=1)):
         db.addCsca(csca)
-        db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=1))
-        proto.register(uid, sod, dg15, cid, csigs, dg14)
+        proto.register(uid, sod, dg15, None)
+        ch = proto.getChallenge(uid)
 
-        a = db.getAccount(uid)
-        assert a.aaCount     == 1
-        assert a.aaLastAuthn == utils.time_now()
+        # Test the same challenge is returned when calling getChallenge before challenge expires
+        assert proto.getChallenge(uid) == ch
 
-        # Test getAssertion fails when challenge doesn't exists
-        with pytest.raises(SeEntryNotFound, match="Challenge not found"):
-            proto.getAssertion(uid, cid, csigs)
-        a = db.getAccount(uid)
-        assert a.aaCount     == 1
-        assert a.aaLastAuthn == utils.time_now()
+        # Test the new challenge is returned when calling getChallenge after challenge expires
+        with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidBefore + timedelta(seconds=2)):
+            assert proto.getChallenge(uid) != ch
 
-        # Test getAssertion fails if challenge has expired
-        with pytest.raises(PeChallengeExpired, match="Challenge has expired"):
-            db.addChallenge(uid, c, utils.time_now() - timedelta(seconds=1))
-            proto.getAssertion(uid, cid, csigs)
-        a = db.getAccount(uid)
-        assert a.aaCount     == 1
-        assert a.aaLastAuthn == utils.time_now()
+    # Test getChallenge fails when account attestation has expired
+    accnt = db.getAccount(uid)
+    accnt.expires = csca.notValidBefore
+    with pytest.raises(PeAttestationExpired, match="Account attestation has expired"):
+        proto.getChallenge(uid)
+    accnt.expires = None
 
-        # Test getAssertion fails if invalid cid
-        with pytest.raises(SeEntryNotFound, match="Challenge not found"):
-            db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=30))
-            proto.getAssertion(uid, CID(1), csigs)
-        a = db.getAccount(uid)
-        assert a.aaCount     == 1
-        assert a.aaLastAuthn == utils.time_now()
-
-        # Test getAssertion fails when csigs is empty
-        with pytest.raises(PeSigVerifyFailed, match="Challenge signature verification failed"):
-            proto.getAssertion(uid, cid, [])
-
-        a = db.getAccount(uid)
-        assert a.aaCount     == 1
-        assert a.aaLastAuthn == utils.time_now()
-
-        # Test getAssertion fails when csigs is None
-        with pytest.raises(PeSigVerifyFailed, match="Challenge signature verification failed"):
-            proto.getAssertion(uid, cid, None)
-        a = db.getAccount(uid)
-        assert a.aaCount     == 1
-        assert a.aaLastAuthn == utils.time_now()
-
-        # Test getAssertion fails when csigs are shuffled
-        with pytest.raises(PeSigVerifyFailed, match="Challenge signature verification failed"):
-            csigsShuffled = copy.deepcopy(csigs)
-            random.Random(1).shuffle(csigsShuffled) # 1st element
-            proto.getAssertion(uid, cid, csigsShuffled)
-        with pytest.raises(PeSigVerifyFailed, match="Challenge signature verification failed"):
-            random.Random(2).shuffle(csigsShuffled) # 2nd element
-            proto.getAssertion(uid, cid, csigsShuffled)
-        with pytest.raises(PeSigVerifyFailed, match="Challenge signature verification failed"):
-            random.Random(8).shuffle(csigsShuffled) # 3rd element
-            proto.getAssertion(uid, cid, csigsShuffled)
-        a = db.getAccount(uid)
-        assert a.aaCount     == 1
-        assert a.aaLastAuthn == utils.time_now()
-
-        # Test getAssertion fails when csigs are altered
-        for i in range(0, len(csigs)):
-            with pytest.raises(PeSigVerifyFailed, match="Challenge signature verification failed"):
-                proto.getAssertion(uid, cid, alter_csigs(i, csigs))
-        a = db.getAccount(uid)
-        assert a.aaCount     == 1
-        assert a.aaLastAuthn == utils.time_now()
-
-    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidBefore + timedelta(days=244)):
-        # Test successful authorization
-        db.deleteChallenge(cid)
-        db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=30))
-        proto.getAssertion(uid, cid, csigs)
-        a = db.getAccount(uid)
-        assert a.aaCount     == 2
-        assert a.aaLastAuthn == utils.time_now()
-
-        # Test getAssertion when account is not attested
-        a.sodId = None
-        db.updateAccount(a)
+    # Test getChallenge fails when CSCA has expired
+    proto.getChallenge(uid) # First test getChallenge challenge succeeds
+    with mock.patch('port.proto.utils.time_now', return_value=csca.notValidAfter + timedelta(seconds=1)):
         with pytest.raises(PeUnauthorized, match="Account is not attested"):
-            db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=30))
-            proto.getAssertion(uid, cid, csigs)
-        a = db.getAccount(uid)
-        assert a.aaCount     == 2
-        assert a.aaLastAuthn == utils.time_now()
-        a.sodId = sodId
-        db.updateAccount(a)
+            proto.getChallenge(uid)
 
-        # Test successful authorization
-        db.deleteChallenge(cid)
-        db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=30))
-        proto.getAssertion(uid, cid, csigs)
-        a = db.getAccount(uid)
-        assert a.aaCount     == 3
-        assert a.aaLastAuthn == utils.time_now()
-
-        # Test getAssertion fails when account attestation has revoked CSCA certificate
-        cscaCri = CertificateRevocationInfo(CountryCode(csca.issuerCountry), csca.serial_number, utils.time_now(), crlId = None)
-        db.revokeCertificate(cscaCri)
+    # Test getChallenge fails when CSCA is revoked
+    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidBefore + timedelta(seconds=1)):
+        proto.getChallenge(uid) # First test getChallenge challenge succeeds
         with pytest.raises(PeUnauthorized, match="Account is not attested"):
-            db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=30))
-            proto.getAssertion(uid, cid, csigs)
-        db.unrevokeCertificate(cscaCri)
-        a = db.getAccount(uid)
-        assert a.aaCount     == 3
-        assert a.aaLastAuthn == utils.time_now()
+            cscaCri = CertificateRevocationInfo(CountryCode(csca.issuerCountry), csca.serial_number, utils.time_now(), crlId = None)
+            db.revokeCertificate(cscaCri)
+            try:
+                proto.getChallenge(uid)
+            except Exception as e:
+                db.unrevokeCertificate(cscaCri)
+                raise e
 
-        # Test successful authorization
-        db.deleteChallenge(cid)
-        db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=30))
-        proto.getAssertion(uid, cid, csigs)
-        a = db.getAccount(uid)
-        assert a.aaCount     == 4
-        assert a.aaLastAuthn == utils.time_now()
-
-        # Test getAssertion fails when account attestation has revoked DSC certificate
-        dscCri = CertificateRevocationInfo(CountryCode(sod.dscCertificates[0].issuerCountry),
-                 sod.dscCertificates[0].serial_number, utils.time_now(), crlId = None, certId=dscId)
-        db.revokeCertificate(dscCri)
+    # Test getChallenge fails when DSC has expired
+    proto.getChallenge(uid) # First test getChallenge challenge succeeds
+    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidAfter + timedelta(seconds=1)):
         with pytest.raises(PeUnauthorized, match="Account is not attested"):
-            db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=30))
-            proto.getAssertion(uid, cid, csigs)
-        db.unrevokeCertificate(dscCri)
-        a = db.getAccount(uid)
-        assert a.aaCount     == 4
-        assert a.aaLastAuthn == utils.time_now()
+            proto.getChallenge(uid)
 
-        # Test successful authorization
-        db.deleteChallenge(cid)
-        db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=30))
-        proto.getAssertion(uid, cid, csigs)
-        a = db.getAccount(uid)
-        assert a.aaCount     == 5
-        assert a.aaLastAuthn == utils.time_now()
-
-        # Test getAssertion fails when account attestation SodTrack doesn't exists
-        db.deleteSodTrack(sodId)
+    # Test getChallenge fails when DSC is revoked
+    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidBefore + timedelta(seconds=1)):
+        proto.getChallenge(uid) # First test getChallenge challenge succeeds
         with pytest.raises(PeUnauthorized, match="Account is not attested"):
-            db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=30))
-            proto.getAssertion(uid, cid, csigs)
-        a = db.getAccount(uid)
-        assert a.aaCount     == 5
-        assert a.aaLastAuthn == utils.time_now()
-
-        # Test getAssertion fails when account attestation has expired
-        a = db.getAccount(uid)
-        a.expires = utils.time_now() - timedelta(seconds=1)
-        with pytest.raises(PeAttestationExpired, match="Account attestation has expired"):
-            db.deleteChallenge(cid)
-            db.addChallenge(uid, c, utils.time_now() + timedelta(seconds=30))
-            proto.getAssertion(uid, cid, csigs)
-        a = db.getAccount(uid)
-        assert a.aaCount     == 5
-        assert a.aaLastAuthn == utils.time_now()
+            dscCri = CertificateRevocationInfo(CountryCode(dsc.issuerCountry), dsc.serial_number, utils.time_now(), crlId = None)
+            db.revokeCertificate(dscCri)
+            try:
+                proto.getChallenge(uid)
+            except Exception as e:
+                db.unrevokeCertificate(dscCri)
+                raise e
 
 @pytest.mark.datafiles(
     CERTS_DIR / 'csca_si_448831f1.cer',
@@ -1148,7 +1088,8 @@ def _test_getAssertion(dg15: ef.DG15, dg14: Optional[ef.DG14], sod: ef.SOD, dsc:
 )
 @pytest.mark.depends(on=[
     'test_verify_sod_is_genuine',
-    'test_register'
+    'test_register',
+    'test_getChallenge'
 ])
 def test_getAssertion(datafiles):
     # Test vector taken from Slovenian passport
