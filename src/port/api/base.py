@@ -23,6 +23,8 @@ from port.proto import (
 )
 
 from starlette.applications import Starlette
+from starlette.middleware import Middleware
+from starlette.middleware.cors import CORSMiddleware
 from starlette.concurrency import run_in_threadpool
 from starlette.responses import JSONResponse, Response
 from starlette.requests import Request
@@ -145,7 +147,14 @@ class JsonRpcApi(IApi, Starlette):
         routes = [
             Route("/", endpoint=self._handle_request, methods=["POST"])
         ]
-        Starlette.__init__(self, debug=debug, routes=routes)
+
+        middleware = [
+            Middleware(CORSMiddleware,
+                       allow_methods=['*'],
+                       allow_origins=['*'],
+                       allow_credentials=True)
+        ]
+        Starlette.__init__(self, debug=debug, routes=routes,  middleware=middleware)
 
     @property
     def count(self):
