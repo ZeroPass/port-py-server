@@ -44,16 +44,17 @@ class PortProto:
         """
         self._log.debug("Generating challenge for uid=%s", uid)
 
-        # 1. Get account
-        a = self._db.getAccount(uid)
+        # TODO: Uncomment below code to limit function to register accounts
+        # # 1. Get account
+        # a = self._db.getAccount(uid)
 
-        # 2. Verify account has valid PA attestation and has not expired.
+        # # 2. Verify account has valid PA attestation and has not expired.
         timeNow = utils.time_now()
-        self._check_account_is_valid_on(a, timeNow)
-        # if a.expires is not None \
-        #     and utils.has_expired(a.expires, timeNow):
-        #     raise peAttestationExpired
-        self._check_attestation(a)
+        # self._check_account_is_valid_on(a, timeNow)
+        # # if a.expires is not None \
+        # #     and utils.has_expired(a.expires, timeNow):
+        # #     raise peAttestationExpired
+        # self._check_attestation(a)
 
         # 3. a) Find any existing challenge, if it does and is not expired return it
         cet = self._db.findChallengeByUID(uid)
