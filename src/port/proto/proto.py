@@ -183,19 +183,7 @@ class PortProto:
         if accnt is not None and accnt.country != dsc.country:
             raise peCountryCodeMismatch
 
-        # 5 . Verify challenge authentication
-
-        # aaSigAlgo = None
-        # aaPubKey = dg15.aaPublicKey
-        # if aaPubKey.isEcKey():
-        #     if dg14 is None:
-        #         raise peEfDg14Required
-        #     if dg14.aaSignatureAlgo is None:
-        #         raise peEfDg14MissingAAInfo
-        #     aaSigAlgo = dg14.aaSignatureAlgo
-        # self._verify_challenge(uid, cid, aaPubKey, csigs, aaSigAlgo)
-
-        # 6. Check if matching EF.SOD exist in the DB
+        # 5. Check if matching EF.SOD exist in the DB
         self._log.debug("Searching for any EF.SOD track in DB which matches %s", sod)
         st = database.SodTrack.fromSOD(sod, dscId=dsc.id)
         if self._log.level <= log.DEBUG:
@@ -217,11 +205,10 @@ class PortProto:
                 self._log.error("Found a valid matching EF.SOD track with sodId=%s for %s with sodId=%s", s.id, sod, st.id)
                 raise peEfSodMatch
 
-        # 7. Save EF.SOD track
+        # 6. Save EF.SOD track
         self._db.addSodTrack(st)
-        #self._db.deleteChallenge(cid) # All checks have succeeded, delete challenge from db
 
-        # 8. Insert account into db
+        # 7. Insert account into db
 
         # Set previous registered EF.DG1 & EF.DG2 files
         # if hashes match with the hashes stored in the
@@ -326,9 +313,6 @@ class PortProto:
         # 2. Verify account hasn't expired (expired attestation)
         timeNow = utils.time_now()
         self._check_account_is_valid_on(a, timeNow)
-        # if a.expires is not None \
-        #     and utils.has_expired(a.expires, timeNow):
-        #     raise peAttestationExpired
 
         # 3. Verify challenge
         self._verify_challenge(uid, cid, a.getAAPublicKey(), csigs, a.getAASigAlgo())
@@ -336,11 +320,6 @@ class PortProto:
         # 4. Verify account still has still valid attestation
         self._log.debug("Verifying account attestation is still valid for sodId=%s", a.sodId)
         self._check_attestation(a)
-        # if a.sodId is None \
-        #     or ((sod := self._db.findSodTrack(a.sodId)) and sod is None) \
-        #     or not self._is_account_pa_attested(a, sod):
-        #     self._log.error("Invalid account attestation at getAssertion, uid=%s", uid)
-        #     raise peAccountNotAttested
 
         self._db.deleteChallenge(cid) # Verifying has succeeded, delete challenge from db
 
