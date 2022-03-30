@@ -24,7 +24,7 @@ setup(
     install_requires=[
         'coloredlogs>=15.0.1',
         'json-rpc>=1.13.0',
-        'ldif3>=3.2.2',
+        'ldif>=4.1.2',
         'orjson>=3.6.7',
         'pycountry>=22.3.5',
         'pymrtd>=0.6.4',
