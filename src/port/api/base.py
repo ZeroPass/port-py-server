@@ -194,9 +194,9 @@ class JsonRpcApi(IApi, Starlette):
         if len(ct) == 0 or ct[0].strip() != 'application/json':
             return Response('Invalid content type. API only supports application/json.',
                 status_code=415, media_type='text/plain')
-        return await self._dispatch_request(request)
+        return self._make_response(await self._dispatch_request(request))
 
-    async def _dispatch_request(self, request: Request) -> ORJSONResponse:
+    async def _dispatch_request(self, request: Request) -> Optional[JSONRPC20Response]:
         try:
             data = orjson.loads(await request.body()) # pylint: disable=no-member
         except (orjson.JSONDecodeError, ValueError): # pylint: disable=no-member
@@ -206,12 +206,13 @@ class JsonRpcApi(IApi, Starlette):
         except JSONRPCInvalidRequestException:
             return JSONRPC20Response(error=JSONRPCInvalidRequest()._data) # pylint: disable=protected-access
 
-        response = await run_in_threadpool(
+        return await run_in_threadpool(
             JSONRPCResponseManager.handle_request, request, self._req_dispatcher
         )
-        if response is not None:
-            return ORJSONResponse(response.data, media_type='application/json')
-        return ORJSONResponse()
+
+    @staticmethod
+    def _make_response(jrpcResponse: Optional[JSONRPC20Response]) -> Response:
+        return ORJSONResponse(jrpcResponse.data if jrpcResponse else None, media_type='application/json')
 
     def _raise_api_exception(self, code: int, msg: str, e: Optional[Exception]) -> NoReturn:
         raise JSONRPCDispatchException(code, msg) from e
