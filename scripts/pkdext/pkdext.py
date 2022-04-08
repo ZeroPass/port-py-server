@@ -1,6 +1,6 @@
 #!/usr/bin/python
-
-import sys, os
+import sys
+from hashlib import sha256
 from pathlib import Path
 from typing import Dict
 from datetime import datetime
@@ -92,9 +92,7 @@ def get_issuer_cert(issued_cert: Certificate, root_certs: Dict[bytes, Certificat
         for skid, rc in root_certs.items():
             if rc.subject == issuer:
                 return rc
-
     return None
-
 
 def verify_and_write_csca(csca: CscaCertificate, issuing_cert: CscaCertificate, out_dir: Path):
     try:
@@ -164,12 +162,6 @@ def verify_and_extract_masterlist(ml: CscaMasterList, out_dir: Path):
                 print_warning("Failed to verify master list signer C={} Ml-Sig-SerNo={}\n\treason: {}".format(mlsig_cert.subject.native['country_name'],format_cert_sn(mlsig_cert), str(e)))
 
 
-
-
-
-
-
-
 if __name__ == "__main__":
     valid_ext            = set([".ml", ".ldif"])
     default_out_dir_csca = Path("csca")
@@ -224,3 +216,21 @@ if __name__ == "__main__":
                         f.write(crl.dump())
                 except Exception as err:
                     print(f"Error extracting cert '{dn}': {err}")
+                    h = sha256()
+                    if 'CscaMasterListData' in entry:
+                        data = entry['CscaMasterListData'][0]
+                        h.update(data)
+                        out_dir = Path('ml_broken') / dn['c'].lower() / (h.digest()[0:8].hex() + '.bin')
+                    elif 'userCertificate' in entry or 'userCertificate;binary' in entry:
+                        data = entry['userCertificate;binary'][0]
+                        h.update(data)
+                        out_dir = Path('dsc_broken') / dn['c'].lower() / (h.digest()[0:8].hex() + '.cer')
+                    elif 'certificateRevocationList' in entry or 'certificateRevocationList;binary' in entry:
+                        data = entry['certificateRevocationList;binary'][0]
+                        h.update(data)
+                        out_dir = Path('crl_broken') / dn['c'].lower() / (h.digest()[0:8].hex() + '.crl')
+
+                    if out_dir:
+                        out_dir.parent.mkdir(parents=True, exist_ok=True)
+                        f = out_dir.open('wb')
+                        f.write(data)
