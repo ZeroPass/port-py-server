@@ -1,2 +1,0 @@
-recursive-include src py.typed *.pyi
-graft src

@@ -1,2 +1,1 @@
--e src/pymrtd[tests]
 -e .[examples,mysql,postgresql,sqlite,tests]

@@ -1,4 +1,0 @@
-[bandit]
-#skip assert_used
-skips: B101
-exclude: "./tests/*"

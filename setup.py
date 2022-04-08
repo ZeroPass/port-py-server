@@ -27,7 +27,7 @@ setup(
         'ldif>=4.1.2',
         'orjson>=3.6.7',
         'pycountry>=22.3.5',
-        'pymrtd>=0.6.4',
+        'pymrtd@git+https://github.com/ZeroPass/pymrtd.git@master',
         'pywin32>=303;platform_system=="Windows"',
         'sqlalchemy>=1.4.32',
         'starlette>=0.19.0',
