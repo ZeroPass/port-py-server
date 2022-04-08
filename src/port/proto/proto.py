@@ -425,8 +425,13 @@ class PortProto:
         except ProtoError:
             raise
         except CertificateVerificationError as e: # Conformance check failed or signature verification failed
-            self._log.error("Certificate conformance check or signature verification has failed for the CSCA to be added! C=%s serial=%s",
+            self._log.error("Certificate conformance check or signature verification has failed while trying to add new CSCA certificate! C=%s serial=%s",
                 csca.issuerCountry, database.CscaStorage.makeSerial(csca.serial_number).hex())
+            self._log.error("  e=%s", e)
+            raise peInvalidCsca from None
+        except ValueError as e: # possible ans1crypto encountered parse error
+            self._log.error("A parse error was encountered while trying to add new CSCA certificate! C=%s serial=%s",
+                 csca.issuerCountry, database.CscaStorage.makeSerial(csca.serial_number).hex())
             self._log.error("  e=%s", e)
             raise peInvalidCsca from None
         except Exception as e:
@@ -501,7 +506,12 @@ class PortProto:
         except ProtoError:
             raise
         except CertificateVerificationError as e: # Conformance check failed or signature verification failed
-            self._log.error("Certificate conformance check or signature verification has failed for the DSC to be added! C=%s serial=%s",
+            self._log.error("Certificate conformance check or signature verification has failed while trying to add new DSC certificate! C=%s serial=%s",
+                dsc.issuerCountry, database.DscStorage.makeSerial(dsc.serial_number).hex())
+            self._log.error("  e=%s", e)
+            raise peInvalidDsc from None
+        except ValueError as e: # possible ans1crypto encountered parse error
+            self._log.error("A parse error was encountered while trying to add new DSC certificate! C=%s serial=%s",
                 dsc.issuerCountry, database.DscStorage.makeSerial(dsc.serial_number).hex())
             self._log.error("  e=%s", e)
             raise peInvalidDsc from None
@@ -581,12 +591,17 @@ class PortProto:
         except ProtoError:
             raise
         except CertificateVerificationError as e: # Conformance check failed or signature verification failed
-            self._log.error("The conformance check or signature verification has failed for the country CRL to be updated! issuer='%s' crlNumber=%s ",
+            self._log.error("The conformance check or signature verification has failed while trying to update CRL! issuer='%s' crlNumber=%s ",
+                crl.issuer.human_friendly, crl.crlNumber)
+            self._log.error("  e=%s", e)
+            raise peInvalidCrl from None
+        except ValueError as e: # possible ans1crypto encountered parse error
+            self._log.error("A parse error was encountered while trying while trying to update CRL! issuer='%s' crlNumber=%s ",
                 crl.issuer.human_friendly, crl.crlNumber)
             self._log.error("  e=%s", e)
             raise peInvalidCrl from None
         except Exception as e:
-            self._log.error("An exception was encountered while trying to add new CRL! issuer='%s' crlNumber=%s ",
+            self._log.error("An exception was encountered while trying to update CRL! issuer='%s' crlNumber=%s ",
                 crl.issuer.human_friendly, crl.crlNumber)
             self._log.error("  e=%s", e)
             raise
