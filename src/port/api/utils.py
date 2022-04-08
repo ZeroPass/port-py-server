@@ -1,18 +1,21 @@
 from base64 import b64decode
+from logging import Logger
 from port.proto import PeInvalidOrMissingParam
-from typing import Final, List
+from typing import Final, List, Optional
 
 SUCCESS: Final = 'success'
 
-def try_deserialize(f):
+def try_deserialize(f, errorLog: Optional[Logger] = None):
     try:
         return f()
-    except:
+    except Exception as e:
+        if errorLog:
+            errorLog.error("An error has occurred while deserializing data: %s", e)
         raise PeInvalidOrMissingParam("Bad parameter") from None
 
-def try_deserialize_csig(str_csigs: List[str]) -> List[bytes]:
+def try_deserialize_csig(str_csigs: List[str], errorLog: Optional[Logger] = None) -> List[bytes]:
     """ Convert list of base64 encoded signatures to list of byte signatures """
     csigs = []
     for scsig in str_csigs:
-        csigs.append(try_deserialize(lambda sig=scsig: b64decode(sig)))
+        csigs.append(try_deserialize(lambda sig=scsig: b64decode(sig), errorLog))
     return csigs

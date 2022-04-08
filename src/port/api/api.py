@@ -44,7 +44,7 @@ class PortApi(JsonRpcApi):
                 `challenge` - base64 encoded challenge.
                 `expires`   - unix timestamp of time when challenge will expire.
         """
-        uid = try_deserialize(lambda: UserId.fromBase64(uid))
+        uid = try_deserialize(lambda: UserId.fromBase64(uid), self._log)
         c, cet = self._proto.getChallenge(uid)
         return { "challenge": c.toBase64(), "expires": int(cet.timestamp()) }
 
@@ -57,7 +57,7 @@ class PortApi(JsonRpcApi):
         :return:
                  Nothing if success, else error
         """
-        challenge = try_deserialize(lambda: Challenge.fromBase64(challenge))
+        challenge = try_deserialize(lambda: Challenge.fromBase64(challenge), self._log)
         self._proto.cancelChallenge(challenge.id)
 
     # API: port.register
@@ -75,12 +75,12 @@ class PortApi(JsonRpcApi):
         """
         if override:
             ProtoError("Registration override not supported")
-        uid   = try_deserialize(lambda: UserId.fromBase64(uid))
-        sod   = try_deserialize(lambda: ef.SOD.load(b64decode(sod)))
+        uid   = try_deserialize(lambda: UserId.fromBase64(uid), self._log)
+        sod   = try_deserialize(lambda: ef.SOD.load(b64decode(sod)), self._log)
         if dg15 is not None:
-            dg15  = try_deserialize(lambda: ef.DG15.load(b64decode(dg15)))
+            dg15  = try_deserialize(lambda: ef.DG15.load(b64decode(dg15)), self._log)
         if dg14 is not None:
-            dg14 = try_deserialize(lambda: ef.DG14.load(b64decode(dg14)))
+            dg14 = try_deserialize(lambda: ef.DG14.load(b64decode(dg14)), self._log)
         return self._proto.register(uid, sod, dg15, dg14, override if override is not None else False)
 
     # API: port.get_assertion
@@ -93,7 +93,7 @@ class PortApi(JsonRpcApi):
         :param `csigs`: Base64 encoded challenge signatures.
         :return: Dictionary object, specific to the server implementation
         """
-        uid = try_deserialize(lambda: UserId.fromBase64(uid))
+        uid = try_deserialize(lambda: UserId.fromBase64(uid), self._log)
         cid = try_deserialize(lambda: CID.fromHex(cid))
-        csigs = try_deserialize_csig(csigs)
+        csigs = try_deserialize_csig(csigs, self._log)
         return self._proto.getAssertion(uid, cid, csigs)

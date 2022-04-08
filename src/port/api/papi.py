@@ -103,7 +103,7 @@ class PortPrivateApi(JsonRpcApi):
                       }
                     }
         """
-        uid = try_deserialize(lambda: UserId.fromBase64(uid))
+        uid = try_deserialize(lambda: UserId.fromBase64(uid), self._log)
         accnt, sod, expires, pa_attested = self._proto.getAttestationInfo(uid)
 
         attestation = AttestationFlag.NotAttested
@@ -150,7 +150,7 @@ class PortPrivateApi(JsonRpcApi):
         :param `allow_self_issued_csca`: If True self-signed CSCA certificates will be also accepted.
         :return `str`: "success"
         """
-        cert  = try_deserialize(lambda: x509.Certificate.load(b64decode(cert)))
+        cert  = try_deserialize(lambda: x509.Certificate.load(b64decode(cert)), self._log)
         ku = cert.key_usage_value.native
         if cert.ca:
             cert.__class__ = x509.CscaCertificate
@@ -170,6 +170,6 @@ class PortPrivateApi(JsonRpcApi):
         :param `crl`: Base64 encoded CRL.
         :return `str`: "success"
         """
-        crl  = try_deserialize(lambda: CertificateRevocationList.load(b64decode(crl)))
+        crl  = try_deserialize(lambda: CertificateRevocationList.load(b64decode(crl)), self._log)
         self._proto.updateCRL(crl)
         return SUCCESS
