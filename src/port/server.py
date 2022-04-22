@@ -183,20 +183,19 @@ class PortServer:
                         CountryCode(cert.issuerCountry), CertificateStorage.makeSerial(cert.serial_number).hex(), keyid2str(cert))
                     continue
 
-                ku = cert.key_usage_value.native
+                ku = cert.key_usage_value
                 if cert.ca:
-                    if 'key_cert_sign' not in ku:
+                    if not ku or 'key_cert_sign' not in ku.native:
                         self._log.warning("CSCA doesn't have key_cert_sign constrain. C=%s serial=%s key_id=%s",
                             CountryCode(cert.issuerCountry), CertificateStorage.makeSerial(cert.serial_number).hex(), keyid2str(cert))
-                    cert.__class__ = x509.CscaCertificate
+                    cert = x509.CscaCertificate.load(cert.dump())
                     if cert.self_signed == 'maybe':
                         cscas[cert.issuerCountry][cert.serial_number] = cert
                     else:
                         lcscas[cert.issuerCountry][cert.serial_number] = cert
-                elif 'digital_signature' in ku and 'key_cert_sign' not in ku:
-                    cert.__class__ = x509.DocumentSignerCertificate
+                elif ku and 'digital_signature' in ku.native and 'key_cert_sign' not in ku.native:
+                    cert = x509.DocumentSignerCertificate.load(cert.dump())
                     dscs[cert.issuerCountry][cert.serial_number] = cert
-
                 else:
                     self._log.warning("Skipping certificate because it is not CA but has key_cert_sign constrain. C=%s serial=%s key_id=%s",
                         CountryCode(cert.issuerCountry), CertificateStorage.makeSerial(cert.serial_number).hex(), keyid2str(cert))
@@ -220,30 +219,38 @@ class PortServer:
             for _, cd in certs.items():
                 for _, cert in cd.items():
                     try:
-                        insertIntoDB(cert)
-                        cert_count += 1
-                    except SeEntryAlreadyExists:
-                        self._log.info("Skipping %s certificate because it already exists. C=%s serial=%s key_id=%s",
-                            certType, CountryCode(cert.issuerCountry), CertificateStorage.makeSerial(cert.serial_number).hex(), keyid2str(cert))
+                        try:
+                            insertIntoDB(cert)
+                            cert_count += 1
+                        except SeEntryAlreadyExists:
+                            self._log.info("Skipping %s certificate because it already exists. C=%s serial=%s key_id=%s",
+                                certType, CountryCode(cert.issuerCountry), CertificateStorage.makeSerial(cert.serial_number).hex(), keyid2str(cert))
+                        except Exception as e:
+                            self._log.warning("Could not insert %s certificate into DB. C=%s serial=%s key_id=%s",
+                                certType, CountryCode(cert.issuerCountry), CertificateStorage.makeSerial(cert.serial_number).hex(), keyid2str(cert))
+                            if isinstance(e, ProtoError):
+                                self._log.warning(" e=%s", e)
                     except Exception as e:
-                        self._log.warning("Could not add %s certificate into DB. C=%s serial=%s key_id=%s",
-                            certType, CountryCode(cert.issuerCountry), CertificateStorage.makeSerial(cert.serial_number).hex(), keyid2str(cert))
-                        if isinstance(e, ProtoError):
-                            self._log.warning(" e=%s", e)
+                        self._log.error('Encountered new exception while handling previous exception!')
+                        self._log.exception(e)
             return cert_count
 
         def insert_crls(crls: dict[str, CertificateRevocationList]) -> int:
             crl_count = 0
             for issuer, crl in crls.items():
                 try:
-                    self._proto.updateCRL(crl)
-                    crl_count += 1
-                except SeEntryAlreadyExists:
-                    self._log.info("Skipping CRL because it already exists. issuer='%s' crlNumber=%s", issuer, crl.crlNumber)
+                    try:
+                        self._proto.updateCRL(crl)
+                        crl_count += 1
+                    except SeEntryAlreadyExists:
+                        self._log.info("Skipping CRL because it already exists. issuer='%s' crlNumber=%s", issuer, crl.crlNumber)
+                    except Exception as e:
+                        self._log.warning("Could not insert CRL into DB. issuer='%s' crlNumber=%s", issuer, crl.crlNumber)
+                        if isinstance(e, ProtoError):
+                            self._log.warning(" e=%s", e)
                 except Exception as e:
-                    self._log.warning("Could not add CRL into DB. issuer='%s' crlNumber=%s", issuer, crl.crlNumber)
-                    if isinstance(e, ProtoError):
-                        self._log.warning(" e=%s", e)
+                    self._log.error('Encountered new exception while handling previous exception!')
+                    self._log.exception(e)
             return crl_count
 
         cert_count  = insert_certs(cscas, 'CSCA', lambda csca: self._proto.addCscaCertificate(csca, allowSelfIssued=allowSelfIssuedCSCA))
