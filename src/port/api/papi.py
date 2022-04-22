@@ -153,10 +153,10 @@ class PortPrivateApi(JsonRpcApi):
         cert  = try_deserialize(lambda: x509.Certificate.load(b64decode(cert)), self._log)
         ku = cert.key_usage_value.native
         if cert.ca:
-            cert.__class__ = x509.CscaCertificate
+            cert = x509.CscaCertificate.load(cert.dump())
             self._proto.addCscaCertificate(cert, allowSelfIssued=allow_self_issued_csca)
         elif 'digital_signature' in ku and 'key_cert_sign' not in ku:
-            cert.__class__ = x509.DocumentSignerCertificate
+            cert = x509.DocumentSignerCertificate.load(cert.dump())
             self._proto.addDscCertificate(cert)
         else:
             raise PeInvalidOrMissingParam("Unknown certificate type")
