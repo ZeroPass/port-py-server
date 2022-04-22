@@ -19,3 +19,10 @@ def try_deserialize_csig(str_csigs: List[str], errorLog: Optional[Logger] = None
     for scsig in str_csigs:
         csigs.append(try_deserialize(lambda sig=scsig: b64decode(sig), errorLog))
     return csigs
+
+def get_invalid_func_param_msg(e: TypeError) -> Optional[str]:
+    msg = str(e)
+    if 'got an unexpected keyword argument' in msg or \
+       'positional arguments but' in msg or \
+       'required positional argument:' in msg:
+        return msg.split(' ', 1)[1]

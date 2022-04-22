@@ -17,6 +17,7 @@ from port import log
 from port.database import SeEntryAlreadyExists, SeEntryNotFound
 from port.proto import (
     PeConflict,
+    PeInvalidOrMissingParam,
     PeNotFound,
     PortProto,
     ProtoError
@@ -31,6 +32,8 @@ from starlette.requests import Request
 from starlette.routing import Route
 
 from typing import Any, Callable, NoReturn, Optional
+
+from .utils import get_invalid_func_param_msg
 
 class JsonRpcApiError(Exception):
     pass
@@ -83,7 +86,14 @@ class IApi:
             self._log.warning("Request storage error: %s", e)
             self._raise_api_exception(PeConflict.code, str(e), e)
 
+        if isinstance(e, TypeError):
+            msg = get_invalid_func_param_msg(e)
+            if msg:
+                self._log.warning("Invalid parameters: %s", e)
+                self._raise_api_exception(PeInvalidOrMissingParam.code, 'Invalid params: ' + msg, e)
+
         self._log.error("Unhandled exception encountered, e='%s'", e)
+        self._log.exception(e)
         self._raise_api_exception(500, 'Internal Server Error', e)
 
     def _build_api(self, register_api: Callable[[str, Callable], None]):
