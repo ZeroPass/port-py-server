@@ -202,6 +202,11 @@ def verify_sod_is_genuine_test(sod: ef.SOD, csca: CscaCertificate, dsc: Document
             db.revokeCertificate(dscCri)
             proto._verify_sod_is_genuine(sod)
 
+        # Test verifying SOD fails if there are no signers:
+        with pytest.raises(type(peInvalidEfSod), match=str(peInvalidEfSod)):
+            sod = testutils.sodStripSigners(sod)
+            proto._verify_sod_is_genuine(sod)
+
 def _test_register_attestation(dg15: Optional[ef.DG15], dg14: Optional[ef.DG14], sod: ef.SOD, dsc: DocumentSignerCertificate, csca: CscaCertificate):
     assert isinstance(dg15, ef.DG15)
     assert isinstance(dg14, (ef.DG14, type(None)))
