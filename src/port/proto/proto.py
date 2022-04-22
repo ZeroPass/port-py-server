@@ -432,12 +432,12 @@ class PortProto:
         except ValueError as e: # possible ans1crypto encountered parse error
             self._log.error("A parse error was encountered while trying to add new CSCA certificate! C=%s serial=%s",
                  csca.issuerCountry, database.CscaStorage.makeSerial(csca.serial_number).hex())
-            self._log.error("  e=%s", e)
+            self._log.exception(e)
             raise peInvalidCsca from None
         except Exception as e:
             self._log.error("An exception was encountered while trying to add new CSCA certificate! C=%s serial=%s",
                 csca.issuerCountry, database.CscaStorage.makeSerial(csca.serial_number).hex())
-            self._log.error("  e=%s", e)
+            self._log.exception(e)
             raise
 
     @hook
@@ -513,12 +513,12 @@ class PortProto:
         except ValueError as e: # possible ans1crypto encountered parse error
             self._log.error("A parse error was encountered while trying to add new DSC certificate! C=%s serial=%s",
                 dsc.issuerCountry, database.DscStorage.makeSerial(dsc.serial_number).hex())
-            self._log.error("  e=%s", e)
+            self._log.exception(e)
             raise peInvalidDsc from None
         except Exception as e:
             self._log.error("An exception was encountered while trying to add new DSC certificate! C=%s serial=%s",
                 dsc.issuerCountry, database.DscStorage.makeSerial(dsc.serial_number).hex())
-            self._log.error("  e=%s", e)
+            self._log.exception(e)
             raise
 
     @hook
@@ -598,12 +598,12 @@ class PortProto:
         except ValueError as e: # possible ans1crypto encountered parse error
             self._log.error("A parse error was encountered while trying while trying to update CRL! issuer='%s' crlNumber=%s ",
                 crl.issuer.human_friendly, crl.crlNumber)
-            self._log.error("  e=%s", e)
+            self._log.exception(e)
             raise peInvalidCrl from None
         except Exception as e:
             self._log.error("An exception was encountered while trying to update CRL! issuer='%s' crlNumber=%s ",
                 crl.issuer.human_friendly, crl.crlNumber)
-            self._log.error("  e=%s", e)
+            self._log.exception(e)
             raise
 
     def _find_first_csca_for_dsc(self, dsc: DocumentSignerCertificate) -> Optional[database.CscaStorage]:
@@ -686,7 +686,7 @@ class PortProto:
         :raises `ProtoError`: any exception which is risen from `addDscCertificate` method when new DSC is added or
                               risen from _verify_cert_trustchain method.
         """
-        self._log.debug("_verify_sod_is_genuine: %s", sod)
+        self._log.verbose("_verify_sod_is_genuine: %s", sod)
         lastException = None
         si: SignerInfo
         for si in sod.signers:
@@ -727,15 +727,18 @@ class PortProto:
                 lastException = e
 
         if isinstance(lastException, ef.SODError):
-            self._log.error("Failed to validate authenticity of file %s: %s", sod, lastException)
+            self._log.error("Failed to verify authenticity of file %s: %s", sod, lastException)
             raise peEfSodNotGenuine from lastException
         if isinstance(lastException, ProtoError):
             self._log.error("Failed to verify certificate trust chain for file %s: %s", sod, lastException)
             raise lastException
-        self._log.error("Failed to validate authenticity of file %s! e=%s", sod, lastException)
+
         if lastException is not None:
+            self._log.error("Failed to verify authenticity of file %s! e=%s", sod, lastException)
             self._log.exception(lastException)
             raise lastException
+
+        self._log.error("Failed to verify authenticity of file %s. No signers found!", sod)
         raise peInvalidEfSod
 
     def _is_sod_track_valid(self, st: database.SodTrack) -> bool:
