@@ -3,6 +3,7 @@ from __future__ import annotations
 from asn1crypto.cms import IssuerAndSerialNumber
 from datetime import datetime, timedelta
 from port import database, log as log
+from port.database.sod import SodTrack
 
 from pymrtd import ef
 from pymrtd.ef.sod import DataGroupHash
@@ -15,6 +16,7 @@ from typing import List, Optional, Tuple, Union
 
 from . import utils
 from .error import * # pylint: disable=unused-wildcard-import, wildcard-import
+from .lds_filterlist import ldsMatchWhitelist, LdsHashFilterList, FilterListHash
 from .types import Challenge, CID, CountryCode, hook, UserId
 
 class PortProto:
@@ -162,10 +164,11 @@ class PortProto:
         #    check that it has expired already or allowSodOverride == True.
         accnt = self._db.findAccount(uid)
         if accnt is not None:
+            self._log.debug("Found existing account uid=%s in the DB", uid)
             if not allowSodOverride:
                 if self._is_account_pa_attested(accnt): # Allow account re-attestation if PA attestation is invalid.
                     raise peAccountAlreadyRegistered
-                self._log.debug("Account attestation has expired or is invalid, registering new attestation")
+                self._log.debug("Account attestation has expired or is invalid, registering new attestation ...")
             else:
                 self._log.debug("allowSodOverride=True, registering new attestation")
 
@@ -183,26 +186,21 @@ class PortProto:
         if accnt is not None and accnt.country != dsc.country:
             raise peCountryCodeMismatch
 
-        # 5. Check if matching EF.SOD exist in the DB
-        self._log.debug("Searching for any EF.SOD track in DB which matches %s", sod)
+        # 5. Check there doesn't already exit any similar EF.SOD duplicate in the DB
         st = database.SodTrack.fromSOD(sod, dscId=dsc.id)
-        if self._log.level <= log.DEBUG:
-            self._log.debug("  sodId=%s", st.id)
-            self._log.debug("  hashAlgo=%s", sod.ldsSecurityObject.dgHashAlgo['algorithm'].native)
-            dgh: DataGroupHash
-            for dgh in sod.ldsSecurityObject.dgHashes:
-                self._log.debug("  %s=%s", dgh.number.native, dgh.hash.hex())
-
-        sods = self._db.findMatchingSodTracks(st)
+        self._log.debug("%s => sodId=%s", sod, st.id)
+        self._log.debug("Searching for any EF.SOD track in DB which matches sodId=%s", st.id)
+        sods = self._find_sod_match(dsc.country, st)
         if sods is not None:
             self._log.debug("Found %s matching track(s) in the DB.", len(sods))
-            for s in sods: # Should be only 1
-                # Allow registering of matching EF.SOD only if `s`
-                # belongs to existing account under `uid`
-                if accnt is not None and s.id == accnt.sodId:
-                    self._db.deleteSodTrack(s.id)
+            for mst in sods:
+                if accnt is not None and mst.id == accnt.sodId:
+                    # Allow registering of matching EF.SOD only if `mst`
+                    # belongs to `accnt`.
+                    self._log.info(" Removing matched EF.SOD track sodId=%s from DB due to match with account's sodId.", mst.id)
+                    self._db.deleteSodTrack(mst.id)
                     continue
-                self._log.error("Found a valid matching EF.SOD track with sodId=%s for %s with sodId=%s", s.id, sod, st.id)
+                self._log.error("Found a valid matching EF.SOD track with sodId=%s for sodId=%s", mst.id, st.id)
                 raise peEfSodMatch
 
         # 6. Save EF.SOD track
@@ -248,7 +246,7 @@ class PortProto:
         self._log.debug("New account created: uid=%s", uid)
         if len(sod.dscCertificates) > 0:
             self._log.debug("Account's eMRTD issuing country: %s",
-                utils.code_to_country_name(sod.dscCertificates[0].issuerCountry))
+                utils.code_to_country_name(dsc.country))
         self._log.debug("sodId=%s"  , accnt.sodId)
         self._log.debug("expires=%s", accnt.expires)
         self._log.debug("aaCount=%s", accnt.aaCount)
@@ -605,6 +603,40 @@ class PortProto:
                 crl.issuer.human_friendly, crl.crlNumber)
             self._log.exception(e)
             raise
+
+    @staticmethod
+    def _filter_lds_hashes(st: SodTrack, whitelist: LdsHashFilterList) -> dict[ef.DataGroupNumber, bytes]:
+        """"
+        Function returns not-whitelisted LDS hashes mapped to data group number
+        """
+        dgHashes = {}
+        for i in range(ef.DataGroupNumber.min, ef.DataGroupNumber.max + 1):
+            dg = ef.DataGroupNumber(i)
+            h = FilterListHash(st.hashAlgo, st.dgHash(dg))
+            if h.hash is not None and not whitelist.contains(dg, h):
+                dgHashes[dg] = h.hash
+        return dgHashes
+
+    def _find_sod_match(self, country: CountryCode, st: SodTrack) -> Optional[List[SodTrack]]:
+        """
+        Function returns list of SodTracks in database which matches the `st` SodID or
+        there is LDS hash which matches the hash in `st`'s LDS hash list.
+        """
+        def log_lds_hashes(get_hash):
+            if self._log.level <= log.DEBUG:
+                self._log.debug("  hashAlgo=%s", st.hashAlgo)
+                for i in range(ef.DataGroupNumber.min, ef.DataGroupNumber.max + 1):
+                    dg = ef.DataGroupNumber(i)
+                    h = get_hash(dg)
+                    if h:
+                        self._log.debug("  %s=%s", dg.native, h.hex())
+
+        self._log.debug("EF.SOD LDS hashes: ")
+        log_lds_hashes(st.dgHash)
+        dgHashes = self._filter_lds_hashes(st, ldsMatchWhitelist[country])
+        self._log.debug("LDS hashes to match in database: ")
+        log_lds_hashes(lambda dgn: dgHashes[dgn] if dgn in dgHashes else None)
+        return self._db.findSodTrackMatch(st.id, st.hashAlgo, dgHashes)
 
     def _find_first_csca_for_dsc(self, dsc: DocumentSignerCertificate) -> Optional[database.CscaStorage]:
         """

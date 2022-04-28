@@ -1,5 +1,6 @@
 from __future__ import annotations
 import logging
+import pymrtd.ef as ef
 
 from abc import ABC, abstractmethod
 from asn1crypto import x509
@@ -177,12 +178,24 @@ class StorageAPI(ABC):
         """
 
     @abstractmethod
+    # TODO: deprecated remove
     def findMatchingSodTracks(self, sod: SodTrack) -> Optional[List[SodTrack]]:
         """
         Returns list of EF.SOD track from database that matches part of content of `sod`.
         The query is pulled over either the matching SodId, or hashAlgo and any of the dg hashes match.
         :param sod: The EF.SOD track to match content of.
         :return: list of SodTrack or None if no matching SodTrack is found.
+        """
+
+    @abstractmethod
+    def findSodTrackMatch(self, sodId: SodId, hashAlgo: str, hashes: dict[ef.DataGroupNumber, bytes]) -> Optional[List[SodTrack]]:
+        """
+        Returns list of EF.SOD tracks from database which match either `sodId` or `hashAlgo` and any hash in `hashes`.
+        :param `sodId`: The SodId to find matching SodTrack.
+        :param `hashAlgo`: The has algorithm of hashes in `hashes` dictionary.
+        :param `hashAlgo`: The list of hashes mapped to data group number.
+        :return: list of SodTrack or None if no matching SodTrack is found.
+        :raises DatabaseAPIError: On DB connection errors.
         """
 
     @abstractmethod
@@ -658,8 +671,8 @@ class DatabaseAPI(StorageAPI):
         assert isinstance(sod, SodTrack)
         self._log.debug("Inserting new EF.SOD track into DB, sodId=%s", sod.id)
         try:
-            if self.sodTrackMatches(sod):
-                raise seEfSodExists
+            # if self.sodTrackMatches(sod):
+            #     raise seEfSodExists
             self.__db.add(sod)
             self.__db.commit()
         except Exception as e:
@@ -698,6 +711,7 @@ class DatabaseAPI(StorageAPI):
         except Exception as e:
             self.__handle_exception(e)
 
+    # TODO: deprecated remove
     def findMatchingSodTracks(self, sod: SodTrack) -> Optional[List[SodTrack]]:
         """
         Returns list of EF.SOD track from database that matches part of content of `sod`.
@@ -732,6 +746,47 @@ class DatabaseAPI(StorageAPI):
             l = self.__db \
                 .query(SodTrack) \
                 .filter(or_(SodTrack.id == sod.id, filterByHashes is not None and filterByHashes)) \
+                .all()
+            return l if len(l) > 0 else None
+        except Exception as e:
+            self.__handle_exception(e)
+
+    def findSodTrackMatch(self, sodId: SodId, hashAlgo: str, hashes: dict[ef.DataGroupNumber, bytes]) -> Optional[List[SodTrack]]:
+        """
+        Returns list of EF.SOD tracks from database which match either `sodId` or `hashAlgo` and any hash in `hashes`.
+        :param `sodId`: The SodId to find matching SodTrack.
+        :param `hashAlgo`: The has algorithm of hashes in `hashes` dictionary.
+        :param `hashAlgo`: The list of hashes mapped to data group number.
+        :return: list of SodTrack or None if no matching SodTrack is found.
+        :raises DatabaseAPIError: On DB connection errors.
+        """
+        assert isinstance(sodId, SodId)
+        assert isinstance(hashAlgo, str)
+        try:
+            # Check if sodId exist in db or (hashAlgo is same and one of dgHashes exists in DB)
+            filterByHashes = None
+            if len(hashAlgo) > 0:
+                filterByHashes = and_(SodTrack.hashAlgo == hashAlgo, \
+                    or_(ef.DataGroupNumber(1) in hashes and SodTrack.dg1Hash == hashes[ef.DataGroupNumber(1)], \
+                        ef.DataGroupNumber(2) in hashes and SodTrack.dg2Hash == hashes[ef.DataGroupNumber(2)], \
+                        ef.DataGroupNumber(3) in hashes and SodTrack.dg3Hash == hashes[ef.DataGroupNumber(3)], \
+                        ef.DataGroupNumber(4) in hashes and SodTrack.dg4Hash == hashes[ef.DataGroupNumber(4)], \
+                        ef.DataGroupNumber(5) in hashes and SodTrack.dg5Hash == hashes[ef.DataGroupNumber(5)], \
+                        ef.DataGroupNumber(6) in hashes and SodTrack.dg6Hash == hashes[ef.DataGroupNumber(6)], \
+                        ef.DataGroupNumber(7) in hashes and SodTrack.dg7Hash == hashes[ef.DataGroupNumber(7)], \
+                        ef.DataGroupNumber(8) in hashes and SodTrack.dg8Hash == hashes[ef.DataGroupNumber(8)], \
+                        ef.DataGroupNumber(9) in hashes and SodTrack.dg9Hash == hashes[ef.DataGroupNumber(9)], \
+                        ef.DataGroupNumber(10) in hashes and SodTrack.dg10Hash == hashes[ef.DataGroupNumber(10)], \
+                        ef.DataGroupNumber(11) in hashes and SodTrack.dg11Hash == hashes[ef.DataGroupNumber(11)], \
+                        ef.DataGroupNumber(12) in hashes and SodTrack.dg12Hash == hashes[ef.DataGroupNumber(12)], \
+                        ef.DataGroupNumber(13) in hashes and SodTrack.dg13Hash == hashes[ef.DataGroupNumber(13)], \
+                        ef.DataGroupNumber(14) in hashes and SodTrack.dg14Hash == hashes[ef.DataGroupNumber(14)], \
+                        ef.DataGroupNumber(15) in hashes and SodTrack.dg15Hash == hashes[ef.DataGroupNumber(15)], \
+                        ef.DataGroupNumber(16) in hashes and SodTrack.dg16Hash == hashes[ef.DataGroupNumber(16)]  \
+                )).self_group()
+            l = self.__db \
+                .query(SodTrack) \
+                .filter(or_(SodTrack.id == sodId, filterByHashes is not None and filterByHashes)) \
                 .all()
             return l if len(l) > 0 else None
         except Exception as e:
@@ -1429,8 +1484,8 @@ class MemoryDB(StorageAPI):
         """
         assert isinstance(sod, SodTrack)
         self._log.debug("Inserting new EF.SOD track into DB, sodId=%s", sod.id)
-        if self.sodTrackMatches(sod):
-            raise seEfSodExists
+        # if self.sodTrackMatches(sod):
+        #     raise seEfSodExists
         self._d['sod'][sod.id] = sod
 
     def deleteSodTrack(self, sodId: SodId) -> None:
@@ -1474,6 +1529,7 @@ class MemoryDB(StorageAPI):
             (l.dg15Hash is not None and r.dg15Hash == l.dg15Hash) or \
             (l.dg16Hash is not None and r.dg16Hash == l.dg16Hash)
 
+    # TODO: deprecated remove
     def findMatchingSodTracks(self, sod: SodTrack) -> Optional[List[SodTrack]]:
         """
         Returns list of EF.SOD track from database that matches part of content of `sod`.
@@ -1487,6 +1543,42 @@ class MemoryDB(StorageAPI):
         for s in self._d['sod'].values():
             if s.id != sod.id and s.hashAlgo == sod.hashAlgo \
                 and MemoryDB._anyOfDgHash(sod, s):
+                l.append(s)
+        return l if len(l) > 0 else None
+
+    def findSodTrackMatch(self, sodId: SodId, hashAlgo: str, hashes: dict[ef.DataGroupNumber, bytes]) -> Optional[List[SodTrack]]:
+        """
+        Returns list of EF.SOD tracks from database which match either `sodId` or `hashAlgo` and any hash in `hashes`.
+        :param `sodId`: The SodId to find matching SodTrack.
+        :param `hashAlgo`: The has algorithm of hashes in `hashes` dictionary.
+        :param `hashAlgo`: The list of hashes mapped to data group number.
+        :return: list of SodTrack or None if no matching SodTrack is found.
+        :raises DatabaseAPIError: On DB connection errors.
+        """
+        def _sod_match(s):
+            return  (ef.DataGroupNumber(1) in hashes and s.dg1Hash and s.dg1Hash == hashes[ef.DataGroupNumber(1)]) or \
+                    (ef.DataGroupNumber(2) in hashes and s.dg2Hash and s.dg2Hash == hashes[ef.DataGroupNumber(2)]) or \
+                    (ef.DataGroupNumber(3) in hashes and s.dg3Hash and s.dg3Hash == hashes[ef.DataGroupNumber(3)]) or \
+                    (ef.DataGroupNumber(4) in hashes and s.dg4Hash and s.dg4Hash == hashes[ef.DataGroupNumber(4)]) or \
+                    (ef.DataGroupNumber(5) in hashes and s.dg5Hash and s.dg5Hash == hashes[ef.DataGroupNumber(5)]) or \
+                    (ef.DataGroupNumber(6) in hashes and s.dg6Hash and s.dg6Hash == hashes[ef.DataGroupNumber(6)]) or \
+                    (ef.DataGroupNumber(7) in hashes and s.dg7Hash and s.dg7Hash == hashes[ef.DataGroupNumber(7)]) or \
+                    (ef.DataGroupNumber(8) in hashes and s.dg8Hash and s.dg8Hash == hashes[ef.DataGroupNumber(8)]) or \
+                    (ef.DataGroupNumber(9) in hashes and s.dg9Hash and s.dg9Hash == hashes[ef.DataGroupNumber(9)]) or \
+                    (ef.DataGroupNumber(10) in hashes and s.dg10Hash and s.dg10Hash == hashes[ef.DataGroupNumber(10)]) or \
+                    (ef.DataGroupNumber(11) in hashes and s.dg11Hash and s.dg11Hash == hashes[ef.DataGroupNumber(11)]) or \
+                    (ef.DataGroupNumber(12) in hashes and s.dg12Hash and s.dg12Hash == hashes[ef.DataGroupNumber(12)]) or \
+                    (ef.DataGroupNumber(13) in hashes and s.dg13Hash and s.dg13Hash == hashes[ef.DataGroupNumber(13)]) or \
+                    (ef.DataGroupNumber(14) in hashes and s.dg14Hash and s.dg14Hash == hashes[ef.DataGroupNumber(14)]) or \
+                    (ef.DataGroupNumber(15) in hashes and s.dg15Hash and s.dg15Hash == hashes[ef.DataGroupNumber(15)]) or \
+                    (ef.DataGroupNumber(16) in hashes and s.dg16Hash and s.dg16Hash == hashes[ef.DataGroupNumber(16)])
+
+        l: List[SodTrack] = []
+        if sodId in self._d['sod']:
+            l.append(self._d['sod'][sodId])
+        for s in self._d['sod'].values():
+            if s.id != sodId and s.hashAlgo == hashAlgo \
+                and _sod_match(s):
                 l.append(s)
         return l if len(l) > 0 else None
 
