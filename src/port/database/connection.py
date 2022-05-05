@@ -179,9 +179,9 @@ mapper(ChallengeStorage, protoChallenge)
 
 # table contais info about MRTD EF.SOD files which were used to attest accounts
 sod: Final = Table('sod', metadata,
-    Column('id'       , SodIdSqlType    , primary_key=True, autoincrement=False                          ),
-    Column('dscId'    , CertIdSqlType() , ForeignKey('dsc.id'), nullable=False, unique=False, index=True ),
-    Column('hashAlgo' , String(256)     , nullable=False, unique=False, index=True                       ),
+    Column('id'       , SodIdSqlType    , primary_key=True, autoincrement=False                           ),
+    Column('dscId'    , CertIdSqlType() , ForeignKey('dsc.id'), nullable=False, unique=False, index=True  ),
+    Column('hashAlgo' , String(256)     , nullable=False, unique=False, index=True                        ),
     Column('dg1Hash'  , VARBINARY(256)  , nullable=True , unique=False, index=True                        ),
     Column('dg2Hash'  , VARBINARY(256)  , nullable=True , unique=False, index=True                        ),
     Column('dg3Hash'  , VARBINARY(256)  , nullable=True , unique=False, index=True                        ),
@@ -281,7 +281,7 @@ class PortDatabaseConnection:
                     'connect_args' : {'check_same_thread':False}
                 }
 
-            url = PortDatabaseConnection.__buildUrl(dialect, host, db, username, password)
+            url = self.__buildUrl(dialect, host, db, username, password)
             self._engine = sqlalchemy.create_engine(
                 url,
                 encoding     = 'utf-8',
