@@ -17,7 +17,7 @@ from typing import List, Optional, Tuple, Union
 from . import utils
 from .error import * # pylint: disable=unused-wildcard-import, wildcard-import
 from .lds_filterlist import ldsMatchWhitelist, LdsHashFilterList, FilterListHash
-from .types import Challenge, CID, CountryCode, hook, UserId
+from .types import Challenge, CID, CountryCode, SodId, hook, UserId
 
 class PortProto:
 
@@ -27,9 +27,17 @@ class PortProto:
         :param storage: database storage to use
         :param cttl: Challenge expiration time in seconds (time-to-live)
         """
-        self.cttl = cttl
-        self._db  = storage
-        self._log = log.getLogger("port.proto")
+        self.cttl  = cttl
+        self._db   = storage
+        self._log  = log.getLogger("port.proto")
+        self.blsod = set() # EF.SOD blacklist
+
+    def blacklistSod(self, sodId: SodId):
+        self.blsod.add(sodId)
+
+    def whitelistSod(self, sodId: SodId):
+        if sodId in self.blsod:
+            self.blsod.remove(sodId)
 
     @hook
     def getChallenge(self, uid: UserId, seed: Optional[bytes] = None) -> Tuple[Challenge, datetime]:
@@ -186,9 +194,12 @@ class PortProto:
         if accnt is not None and accnt.country != dsc.country:
             raise peCountryCodeMismatch
 
-        # 5. Check there doesn't already exit any similar EF.SOD duplicate in the DB
+        # 5. Check EF.SOD is not blacklisted or there doesn't already exit any similar EF.SOD duplicate in the DB
         st = database.SodTrack.fromSOD(sod, dscId=dsc.id)
         self._log.debug("%s => sodId=%s", sod, st.id)
+        if st.id in self.blsod:
+            raise peEfSodNotAllowed
+
         self._log.debug("Searching for any EF.SOD track in DB which matches sodId=%s", st.id)
         sods = self._find_sod_match(dsc.country, st)
         if sods is not None:

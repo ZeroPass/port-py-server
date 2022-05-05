@@ -11,6 +11,10 @@ class PeUnauthorized(ProtoError):
 class PeSigVerifyFailed(PeUnauthorized):
     """ Challenge signature verification error """
 
+class PeForbbidden(ProtoError):
+    """ Forbbiden actions, elements e.g. blacklisted elements """
+    code = 403
+
 class PeNotFound(ProtoError):
     """ Non existing elements error (e.g.: account doesn't exist, CSCA can't be found etc...) """
     code = 404
@@ -64,6 +68,7 @@ peDscTooNewOrExpired: Final               = PeInvalidOrMissingParam("DSC certifi
 peEfDg14MissingAAInfo: Final              = PePreconditionRequired("EF.DG14 file is missing ActiveAuthenticationInfo")
 peEfDg14Required: Final                   = PeInvalidOrMissingParam("EF.DG14 file required")
 peEfDg15Required: Final                   = PeInvalidOrMissingParam("EF.DG15 file required")
+peEfSodNotAllowed: Final                  = PeForbbidden("EF.SOD file not allowed to be used in attestation")
 peEfSodMatch: Final                       = PeConflict("Matching EF.SOD file already registered")
 peEfSodNotGenuine: Final                  = PeUnauthorized("EF.SOD file not genuine")
 peInvalidCsca: Final                      = PeInvalidOrMissingParam("Invalid CSCA certificate")

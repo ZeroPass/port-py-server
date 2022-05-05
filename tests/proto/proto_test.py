@@ -2,6 +2,7 @@
 import copy
 import json
 import os
+from port.database.sod import SodTrack
 import py
 import pytest
 import random
@@ -34,20 +35,22 @@ from port.proto import (
     peCscaTooNewOrExpired,
     peCrlOld,
     peCrlTooNew,
-    peEfDg14Required,
-    peEfDg15Required,
     peDscCantIssuePassport,
     peDscExists,
     peDscNotFound,
     peDscTooNewOrExpired,
+    peEfDg14MissingAAInfo,
+    peEfDg14Required,
+    peEfDg15Required,
+    peEfSodNotAllowed,
     peEfSodNotGenuine,
+    peEfSodMatch,
+    PeForbbidden,
     peInvalidCsca,
     peInvalidCrl,
     peInvalidDsc,
     peInvalidEfSod,
     PeInvalidOrMissingParam,
-    peEfSodMatch,
-    peEfDg14MissingAAInfo,
     peMissingParamAASigAlgo,
     PeNotFound,
     PePreconditionFailed,
@@ -316,6 +319,21 @@ def _test_register_attestation(dg15: Optional[ef.DG15], dg14: Optional[ef.DG14],
         check_ds_eq_dsc(ds, dsc, CertificateId.fromCertificate(csca))
         db.deleteDsc(dscId)
 
+    # Test registration fails whe EF.SOD is blacklisted
+    with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidBefore + timedelta(seconds=1)):
+        with pytest.raises(PeForbbidden, match=str(peEfSodNotAllowed)):
+            proto.blacklistSod(sodId)
+            proto.register(uid, sod, dg15, dg14, allowSodOverride=False)
+        proto.whitelistSod(sodId) # allow later registration
+
+        assert db.findAccount(uid)    is None
+        assert db.findSodTrack(sodId) is None
+
+        ds = db.findDsc(dscId)
+        assert ds is not None
+        check_ds_eq_dsc(ds, dsc, CertificateId.fromCertificate(csca))
+        db.deleteDsc(dscId)
+
     # Test registration succeeds
     with mock.patch('port.proto.utils.time_now', return_value=dsc.notValidBefore + timedelta(seconds=1)):
         assert db.findAccount(uid)    is None
@@ -460,8 +478,13 @@ def _test_register_attestation(dg15: Optional[ef.DG15], dg14: Optional[ef.DG14],
         db.addSodTrack(st)
 
         # Sanity check
-        with pytest.raises(SeEntryAlreadyExists, match="EF.SOD file already exists"):
-            db.addSodTrack(st)
+        # st = SodTrack(st.id, st.dscId, st.hashAlgo, None)
+        # with pytest.raises(SeEntryAlreadyExists, match="EF.SOD file already exists"):
+        #     db.addSodTrack(st)
+        #     db.addSodTrack(st)
+        #     db.addSodTrack(st)
+        #     db.addSodTrack(st)
+        #     db.findSodTrack(st.id)
 
         proto.register(uid, sod, dg15, dg14, allowSodOverride=False)
         accnt = db.getAccount(uid)
@@ -514,9 +537,9 @@ def _test_register_attestation(dg15: Optional[ef.DG15], dg14: Optional[ef.DG14],
         assert db.findAccount(accnt.uid) is not None
         st.id = accnt.sodId
         db.addSodTrack(st)
-        # Sanity check
-        with pytest.raises(SeEntryAlreadyExists, match="EF.SOD file already exists"):
-            db.addSodTrack(st)
+        # # Sanity check
+        # with pytest.raises(SeEntryAlreadyExists, match="EF.SOD file already exists"):
+        #     db.addSodTrack(st)
 
         proto.register(uid, sod, dg15, dg14, allowSodOverride=True)
         accnt = db.getAccount(uid)
@@ -816,6 +839,10 @@ def test_proto_errors():
     assert pesvf.code == 401
     assert issubclass(PeSigVerifyFailed, PeUnauthorized)
 
+    penf = PeForbbidden()
+    assert penf.code == 403
+    assert issubclass(PeForbbidden, ProtoError)
+
     penf = PeNotFound()
     assert penf.code == 404
     assert issubclass(PeNotFound, ProtoError)
@@ -881,12 +908,6 @@ def test_proto_errors():
     assert isinstance(peCrlTooNew, PeInvalidOrMissingParam)
     assert str(peCrlTooNew) == "Can't add future CRL"
 
-    assert isinstance(peEfDg14Required, PeInvalidOrMissingParam)
-    assert str(peEfDg14Required) == "EF.DG14 file required"
-
-    assert isinstance(peEfDg15Required, PeInvalidOrMissingParam)
-    assert str(peEfDg15Required) == "EF.DG15 file required"
-
     assert isinstance(peDscCantIssuePassport, PeInvalidOrMissingParam)
     assert str(peDscCantIssuePassport) == "DSC certificate can't issue biometric passport"
 
@@ -898,6 +919,21 @@ def test_proto_errors():
 
     assert isinstance(peDscTooNewOrExpired, ProtoError)
     assert str(peDscTooNewOrExpired) == "DSC certificate is too new or has expired"
+
+    assert isinstance(peEfDg14MissingAAInfo, PePreconditionRequired)
+    assert str(peEfDg14MissingAAInfo) == "EF.DG14 file is missing ActiveAuthenticationInfo"
+
+    assert isinstance(peEfDg14Required, PeInvalidOrMissingParam)
+    assert str(peEfDg14Required) == "EF.DG14 file required"
+
+    assert isinstance(peEfDg15Required, PeInvalidOrMissingParam)
+    assert str(peEfDg15Required) == "EF.DG15 file required"
+
+    assert isinstance(peEfSodMatch, PeConflict)
+    assert str(peEfSodMatch) == "Matching EF.SOD file already registered"
+
+    assert isinstance(peEfSodNotAllowed, PeForbbidden)
+    assert str(peEfSodNotAllowed) == "EF.SOD file not allowed to be used in attestation"
 
     assert isinstance(peEfSodNotGenuine, PeUnauthorized)
     assert str(peEfSodNotGenuine) == "EF.SOD file not genuine"
@@ -913,12 +949,6 @@ def test_proto_errors():
 
     assert isinstance(peInvalidEfSod, PeInvalidOrMissingParam)
     assert str(peInvalidEfSod) == "Invalid EF.SOD file"
-
-    assert isinstance(peEfSodMatch, PeConflict)
-    assert str(peEfSodMatch) == "Matching EF.SOD file already registered"
-
-    assert isinstance(peEfDg14MissingAAInfo, PePreconditionRequired)
-    assert str(peEfDg14MissingAAInfo) == "EF.DG14 file is missing ActiveAuthenticationInfo"
 
     assert isinstance(peMissingParamAASigAlgo, PeInvalidOrMissingParam)
     assert str(peMissingParamAASigAlgo) == "Missing param aaSigAlgo"
