@@ -127,18 +127,30 @@ def verify_and_extract_masterlist(ml: CscaMasterList, out_dir: Path):
     cscas = {}
     skipped_cscas = []
     for csca in ml.cscaList:
-        if csca.key_identifier not in cscas:
-            cscas[csca.key_identifier] = csca
+        try:
+            if csca.key_identifier not in cscas:
+                cscas[csca.key_identifier] = csca
 
-        if csca.self_signed != 'maybe':
-            if csca.authority_key_identifier not in cscas:
-                skipped_cscas.append(csca)
-                continue
-            issuing_cert = cscas[csca.authority_key_identifier]
-        else:
-            issuing_cert = csca
+            if csca.self_signed != 'maybe':
+                if csca.authority_key_identifier not in cscas:
+                    skipped_cscas.append(csca)
+                    continue
+                issuing_cert = cscas[csca.authority_key_identifier]
+            else:
+                issuing_cert = csca
 
-        verify_and_write_csca(csca, issuing_cert, out_dir)
+            verify_and_write_csca(csca, issuing_cert, out_dir)
+        except Exception as e:
+            raw_csca = csca.dump()
+            h = sha256()
+            csca_fp = h.digest()[0:8].hex()
+            print_warning(f"Couldn't parse CSCA {csca_fp}: {e}")
+
+            h.update(raw_csca)
+            out_file = Path('csca_broken') / (csca_fp + '.cer')
+            out_file.parent.mkdir(parents=True, exist_ok=True)
+            f = out_file.open('wb')
+            f.write(raw_csca)
 
     for csca in skipped_cscas:
         issuer_cert = get_issuer_cert(csca, cscas)
@@ -215,20 +227,30 @@ if __name__ == "__main__":
                         f = get_ofile_for_crl(crl, default_out_dir_crl / dn['c'].lower() / 'unverified')
                         f.write(crl.dump())
                 except Exception as err:
-                    print(f"Error extracting cert '{dn}': {err}")
+                    print(f"Error extracting '{dn}': {err}")
+                    country = 'unknown'
+                    if isinstance(dn, str):
+                        cpos = dn.find('c=')
+                        if cpos == -1:
+                            cpos = dn.find('C=')
+                        if cpos != -1:
+                            country = dn[cpos + 2 : dn.find(',', cpos)].lower()
+                    else:
+                        country = dn['c'].lower()
+
                     h = sha256()
                     if 'CscaMasterListData' in entry:
                         data = entry['CscaMasterListData'][0]
                         h.update(data)
-                        out_dir = Path('ml_broken') / dn['c'].lower() / (h.digest()[0:8].hex() + '.bin')
+                        out_dir = Path('ml_broken') / country / (h.digest()[0:8].hex() + '.bin')
                     elif 'userCertificate' in entry or 'userCertificate;binary' in entry:
                         data = entry['userCertificate;binary'][0]
                         h.update(data)
-                        out_dir = Path('dsc_broken') / dn['c'].lower() / (h.digest()[0:8].hex() + '.cer')
+                        out_dir = Path('dsc_broken') / country/ (h.digest()[0:8].hex() + '.cer')
                     elif 'certificateRevocationList' in entry or 'certificateRevocationList;binary' in entry:
                         data = entry['certificateRevocationList;binary'][0]
                         h.update(data)
-                        out_dir = Path('crl_broken') / dn['c'].lower() / (h.digest()[0:8].hex() + '.crl')
+                        out_dir = Path('crl_broken') / country / (h.digest()[0:8].hex() + '.crl')
 
                     if out_dir:
                         out_dir.parent.mkdir(parents=True, exist_ok=True)
