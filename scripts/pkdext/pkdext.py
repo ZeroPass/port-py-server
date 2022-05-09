@@ -4,12 +4,14 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Dict
 from datetime import datetime
+from xmlrpc.client import Boolean
 
 from ldif import LDIFParser
 
 from pymrtd.pki.x509 import Certificate, CscaCertificate, MasterListSignerCertificate, DocumentSignerCertificate
 from pymrtd.pki.crl import CertificateRevocationList
 from pymrtd.pki.ml import CscaMasterList
+from pymrtd.pki.cms import SignerInfo
 
 from asn1crypto.crl import CertificateList
 
@@ -114,13 +116,28 @@ def verify_and_write_csca(csca: CscaCertificate, issuing_cert: CscaCertificate, 
             with get_ofile_for_csca(csca, out_dir.joinpath('failed_verification')) as f:
                 f.write(csca.dump())
 
+def verify_ml_integrity(ml: CscaMasterList) -> bool:
+    lastException = None
+    si: SignerInfo
+    for si in ml.signers:
+        try:
+            if si.signedAttributes is None:
+                raise ValueError(f'{str(si)} has no signed attributes')
+            crt = ml.getSignerCertificate(si)
+            ml.verify(si, crt)
+            return True
+        except Exception as e:
+            lastException = e
+    country = 'UNKNONW'
+    if len(ml.signerCertificates) > 0:
+        if 'country_name' in ml.signerCertificates[0].subject.native:
+            country = ml.signerCertificates[0].subject.native['country_name']
+    print_warning(f"Integrity verification failed for master list issued by {country}.")
+    return False
+
 def verify_and_extract_masterlist(ml: CscaMasterList, out_dir: Path):
     # verify ml integrity
-    try:
-        ml.verify()
-    except Exception as e:
-        print_warning("Integrity verification failed for master list issued by {}."
-                      .format(ml.signerCertificates[0].subject.native['country_name']))
+    if not verify_ml_integrity(ml):
         out_dir /= 'unverified_ml'
 
     # verify and extract CSCAs
@@ -155,7 +172,7 @@ def verify_and_extract_masterlist(ml: CscaMasterList, out_dir: Path):
     for csca in skipped_cscas:
         issuer_cert = get_issuer_cert(csca, cscas)
         if issuer_cert is None:
-            print_warning("Could not verify signature of CSCA C={} SerNo={}. Issuing CSCA not found!"
+            print_warning("Could not verify signature of LCSCA C={} SerNo={}. Issuing CSCA not found!"
                           .format(csca.subject.native['country_name'], format_cert_sn(csca)))
             with get_ofile_for_csca(csca, out_dir.joinpath('unverified')) as f:
                 f.write(csca.dump())
