@@ -34,7 +34,7 @@ class LdsHashFilterList(dict[ef.DataGroupNumber, List[FilterListHash]]):
 
     def __getitem__(self, dgNumber: ef.DataGroupNumber) -> List[FilterListHash]:
         """
-        Returns list of `FilterlistHash` or empty list if list doesn't contain `dgNumber`.
+        Returns list of `FilterListHash` or empty list if list doesn't contain `dgNumber`.
         """
         assert isinstance(dgNumber, ef.DataGroupNumber)
         return super().__getitem__(dgNumber) if dgNumber in self else []
@@ -48,8 +48,8 @@ class CountryLdsFilterList(dict[CountryCode, LdsHashFilterList]):
     def __setitem__(self, country: CountryCode, filterlist: LdsHashFilterList) -> None:
         if not isinstance(country, CountryCode):
             raise KeyError('Argument country is not of type CountryCode')
-        if not isinstance(filterlist, List):
-            raise KeyError('Argument list is not of type FilterListHash')
+        if not isinstance(filterlist, LdsHashFilterList):
+            raise KeyError('Argument list is not of type LdsHashFilterList')
         return super().__setitem__(country, filterlist)
 
     def __getitem__(self, country: CountryCode) -> LdsHashFilterList:
