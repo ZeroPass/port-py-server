@@ -31,7 +31,8 @@ setup(
         'pywin32>=303;platform_system=="Windows"',
         'sqlalchemy>=1.4.32',
         'starlette>=0.19.0',
-        'uvicorn[standard]>=0.17.6'
+        'uvicorn[standard]>=0.17.6',
+        'asgiref>=3.5.2'
     ],
     extras_require={
         'examples' : [

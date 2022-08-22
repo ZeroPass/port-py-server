@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 from asn1crypto import x509
 from collections import defaultdict
 from datetime import datetime
+import datetime as datetimediff
 
 from .account import AccountStorage
 from .challenge import ChallengeStorage
@@ -38,6 +39,7 @@ from sqlalchemy import and_, literal, or_
 from sqlalchemy.orm.scoping import scoped_session
 from sqlalchemy.orm.query import Query
 from sqlalchemy.sql.functions import func
+from sqlalchemy.sql import func
 
 from typing import Final, List, NoReturn, Optional, Tuple, TypeVar, Union
 
@@ -417,6 +419,12 @@ class StorageAPI(ABC):
         """
         Deletes eMRTD PKI distribution url from DB.
         :param pkidId: The PkiDistributionUrl ID.
+        """
+
+    @abstractmethod
+    def cleanExpiredAccounts(self, minutesExpiredToDelete: int, currentTime: datetime) -> None:
+        """
+        Deletes expired accounts and their SODs
         """
 
 
@@ -1319,6 +1327,35 @@ class DatabaseAPI(StorageAPI):
         except Exception as e:
             self.__handle_exception(e)
 
+    def cleanExpiredAccounts(self, minutesExpiredToDelete: int, currentTime: datetime) -> None:
+        """
+        Deletes expired accounts and their SOD
+        """
+        self._log.debug("Deleting all accounts and their SOD entry")
+        try:
+            calculated_time_ago = text('NOW() - INTERVAL ' + str(minutesExpiredToDelete) + ' MINUTE')
+            accountsToDelete = self.__db \
+                .query(AccountStorage.sodId) \
+                .filter(calculated_time_ago > AccountStorage.expires)
+
+            accountsToDeleteSQ = accountsToDelete.subquery()
+
+            acountsWithSOD  = self.__db \
+                .query(SodTrack) \
+                .filter(SodTrack.id.in_(accountsToDelete))
+
+            acountsWithSOD.delete(synchronize_session=False)#"fetch"
+
+            #for some reason there need to be 2 queries to delete rows also in account table
+            accountsRowsDelete = self.__db \
+                .query(AccountStorage) \
+                .filter(calculated_time_ago > AccountStorage.expires)
+            accountsRowsDelete.delete(synchronize_session=False)
+
+            self.__db.commit()
+        except Exception as e:
+            self.__handle_exception(e)
+
 
 class MemoryDBError(StorageAPIError):
     pass
@@ -1980,3 +2017,10 @@ class MemoryDB(StorageAPI):
         """
         if pkidId in self._d['pkidurl']:
             self._d['pkidurl'].pop(pkidId)
+
+    def cleanExpiredAccounts(self, minutesExpiredToDelete: int, currentTime: datetime) -> None:
+        """
+        Deletes expired accounts and their SOD
+        """
+        self._d['sod'].clear()
+        self._d['account'].clear()
