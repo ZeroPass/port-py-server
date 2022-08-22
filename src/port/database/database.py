@@ -35,7 +35,7 @@ from port.proto.utils import bytes_to_int, sha512_256
 from pymrtd.pki.crl import CertificateRevocationList
 from pymrtd.pki.x509 import Certificate, CscaCertificate, DocumentSignerCertificate
 
-from sqlalchemy import and_, literal, or_
+from sqlalchemy import and_, literal, or_, text
 from sqlalchemy.orm.scoping import scoped_session
 from sqlalchemy.orm.query import Query
 from sqlalchemy.sql.functions import func
