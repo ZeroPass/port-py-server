@@ -29,7 +29,7 @@ setup(
         'pycountry>=22.3.5',
         'pymrtd@git+https://github.com/ZeroPass/pymrtd.git@master',
         'pywin32>=303;platform_system=="Windows"',
-        'sqlalchemy>=1.4.32',
+        'sqlalchemy>=1.4.32,<2.0',
         'starlette>=0.19.0',
         'uvicorn[standard]>=0.17.6',
         'asgiref>=3.5.2'
