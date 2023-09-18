@@ -41,7 +41,7 @@ setup(
         ],
         'mysql' : ['mysqlclient>=2.1.0'], # for using MySQL DB
         'postgresql' : ['psycopg2>=2.9.3'], # for using PostgreSQL DB
-        'sqlite' : ['sqlcipher3>=0.4.5'], # for using SQLite
+        'sqlite' : ['sqlcipher3-binary>=0.5.2'], # for using SQLite
         'tests': [
             'pytest>=7.1.0',
             'pytest-depends>=1.0.1',
