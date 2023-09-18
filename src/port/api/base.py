@@ -200,6 +200,10 @@ class JsonRpcApi(IApi, Starlette):
         self._build_api(self.registerApiMethod)
 
     async def _handle_request(self, request: Request) -> Response:
+        if 'content-type' not in request.headers:
+            return Response('Missing content type. API only supports application/json.',
+                status_code=415, media_type='text/plain')
+
         ct = request.headers['content-type'].split(';')
         if len(ct) == 0 or ct[0].strip() != 'application/json':
             return Response('Invalid content type. API only supports application/json.',
