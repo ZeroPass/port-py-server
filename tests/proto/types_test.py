@@ -33,7 +33,7 @@ CERTS_DIR = TV_DIR / 'certs'
 LDS_DIR   = TV_DIR / 'lds'
 
 # CountryCode tests
-# Note, whis test will depend on tests for proto.utils.format_alpha2 when they are finished.
+# Note, this test will depend on tests for proto.utils.format_alpha2 when they are finished.
 def test_CountryCode():
     def _test_2_letters_for_alphabet(alphabet):
         assert len(alphabet) > 0

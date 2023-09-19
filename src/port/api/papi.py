@@ -43,7 +43,7 @@ class PortPrivateApi(JsonRpcApi):
 
                 `aa`: (Optional) if `PassiveAuthentication` and `ActiveAuthentication` flag is set, this field has assigned a dictionary with fields:
 
-                     - `count`: the number of successfull active authns performed by the account.
+                     - `count`: the number of successful active authns performed by the account.
 
                      - `last_authn`: the date of the last successful active authn.
                      e.g.:
@@ -63,14 +63,23 @@ class PortPrivateApi(JsonRpcApi):
                           {
                             "ef" : {
                               "dg1" : {
-                                "hash" : { "sha256", "ABC00975....11FF0099"},
+                                "hash" : {
+                                    "algorithm": "sha256",
+                                     "value": "ABC00975....11FF0099"
+                                }
                                 "file" : { <MRZ dictionary>}
                               },
                               "dg2" : {
-                                "hash" : { "sha256", "ABC00975....11FF0099"}
+                                "hash" : {
+                                    "algorithm": "sha256",
+                                     "value": "ABC00975....11FF0099"
+                                }
                               },
                               "dg14" : {
-                                "hash" : { "sha256", "ABC00975....11FF0099"}
+                                "hash" : {
+                                    "algorithm": "sha256",
+                                     "value": "ABC00975....11FF0099"
+                                }
                               }
                             }
                           }
@@ -86,19 +95,34 @@ class PortPrivateApi(JsonRpcApi):
                       },
                       "ef":{
                         "dg1":{
-                          "hash":{"sha256":"0a0aa521cc643c0269e2c71205e3fe50c43ff9e6980f5bc745898c1a0795cea0"}
+                          "hash":{
+                            "algorithm":"sha256",
+                            "value":"0a0aa521cc643c0269e2c71205e3fe50c43ff9e6980f5bc745898c1a0795cea0"
+                          }
                         },
                         "dg2":{
-                          "hash":{"sha256":"1b1b7bcf824157e20b7060956bed9e9a34d9699926000c7f2019120a0f6295b1"}
+                          "hash":{
+                            "algorithm":"sha256",
+                            "value":"1b1b7bcf824157e20b7060956bed9e9a34d9699926000c7f2019120a0f6295b1"
+                          }
                         },
                         "dg3":{
-                          "hash":{"sha256":"2c2c7bd08f74b698fcb2948e27f98fc1ee04eac21ef1187a284a4f726090bac2"}
+                          "hash":{
+                            "algorithm":"sha256",
+                            "value":"2c2c7bd08f74b698fcb2948e27f98fc1ee04eac21ef1187a284a4f726090bac2"
+                          }
                         },
                         "dg14":{
-                          "hash":{"sha256":"3d3dee0a12eff3464d2a25f20808ed60c1773d45f815c5c371afd366639bd8d3"}
+                          "hash":{
+                            "algorithm":"sha256",
+                            "value":"3d3dee0a12eff3464d2a25f20808ed60c1773d45f815c5c371afd366639bd8d3"
+                          }
                         },
                         "dg15":{
-                          "hash":{"sha256":"4e3e4dab9996890e32b20ed93b91a654618ca18aa330cd9828f2c1b20f2aede4"}
+                          "hash":{
+                            "algorithm":"sha256",
+                            "value":"4e3e4dab9996890e32b20ed93b91a654618ca18aa330cd9828f2c1b20f2aede4"
+                          }
                         }
                       }
                     }
@@ -137,8 +161,10 @@ class PortPrivateApi(JsonRpcApi):
             for i in range(1, 17):
                 dghash = sod.dgHash(DataGroupNumber(i))
                 if dghash is not None:
-                    aai['ef'][f'dg{i}']['hash'] = { sod.hashAlgo : dghash.hex() }
-
+                    aai['ef'][f'dg{i}']['hash'] = {
+                        'algorithm': sod.hashAlgo,
+                        'value' : dghash.hex()
+                    }
         return aai
 
     # API: port.upload_certificate

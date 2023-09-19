@@ -76,7 +76,7 @@ class PortProto:
                 self._log.debug("Found existing challenge")
                 return cet
 
-        # 3. b) No challenge exitsts or has expired, let's generate a new one.
+        # 3. b) No challenge exists or has expired, let's generate a new one.
         c  = Challenge.generate(timeNow, uid + (seed or b''))
         et = self._get_challenge_expiration(timeNow)
         self._db.addChallenge(uid, c, et)
@@ -387,7 +387,7 @@ class PortProto:
             #         but the problematic certs encode key id as single OCTET STRING.
             csca.checkConformance()
 
-            # 3.) Find the issuer if csca is LCSCA or coresponding LCSCA.
+            # 3.) Find the issuer if csca is LCSCA or corresponding LCSCA.
             issuerCert: Optional[database.CscaStorage] = None # None for allowed self-issued
             selfIssued = csca.self_signed == 'maybe'
             if selfIssued:
@@ -700,7 +700,7 @@ class PortProto:
     def _verify_sod_is_genuine(self, sod: ef.SOD) -> database.DscStorage:
         """
         Verifies EF.SOD file was issued by at least 1 valid country DSC certificate
-        aka passive authentication as specivied in ICAO9303 part 11 5.1 Passive Authentication.
+        aka passive authentication as specified in ICAO9303 part 11 5.1 Passive Authentication.
         https://www.icao.int/publications/Documents/9303_p12_cons_en.pdf
 
         Valid DSC in this context means DSC certificate which has valid trustchain.
@@ -974,7 +974,7 @@ class PortProto:
     def _get_account_expiration(self, uid: UserId, account: Optional[database.AccountStorage], sod: database.SodTrack, dsc: database.DscStorage) -> Optional[datetime]: #pylint: disable=no-self-use,unused-argument,useless-return
         """
         Returns datetime till account attestation can be valid. Should be less or equal to `dsc.notValidAfter`.
-        `None` is returned by default aka attestation valid until atestation has valid passive auth trustchain
+        `None` is returned by default aka attestation valid until attestation has valid passive auth trustchain
         :param `uid`: The account user ID.
         :param `sod`: The account attested EF.SOD track.
         :param `dsc`: The account attested DSC certificate storage.
