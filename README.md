@@ -101,3 +101,7 @@ In **production** python should be run in optimized mode (by passing the `-O` or
 ## Server modules structure
 * [Port](src/port)
 * [pymrtd](src/pymrtd)
+
+## License
+This project is licensed under the terms of the GNU Lesser General Public License (LGPL) for open-source use and a Commercial License for proprietary use. See the [LICENSE.LGPL](/LICENSE.LGPL) and [LICENSE.COMMERCIAL](/LICENSE.COMMERCIAL) files for details.
+
