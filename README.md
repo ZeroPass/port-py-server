@@ -91,7 +91,7 @@ python -m pip install -r requirements-dev.txt
   ```psql=# grant all privileges on database <dbname> to <username> ;```
 
 ## Usage
-To extract eMRTD trustchain certificates (CSCA/DSC) from master list files (`*.ml`) and PKD LDAP files (`*.ldif`) use python tool [pkdext](https://github.com/ZeroPass/PassID-documntation-and-tools/tree/master/tools/pkdext).
+To extract eMRTD trustchain certificates (CSCA/DSC) from master list files (`*.ml`) and PKD LDAP files (`*.ldif`) use python tool [pkdext](https://github.com/ZeroPass/port-py-server/tree/master/scripts/pkdext).
 
 In **production** python should be run in optimized mode (by passing the `-O` or `-OO` switch to the interpreter, or by setting the `PYTHONOPTIMIZE` environment variable to 1 (or higher) to eliminate any assert type checking code and speed up execution.
 
