@@ -84,7 +84,7 @@ class StorageAPI(ABC):
         Function tries to find proto challenge by user ID in the db, and returns
         challenge and expiration time.
 
-        :param uid: User ID to search the challenge for
+        :param uid: User ID to searche the challenge for
         :return: Optional[Tuple[Challenge, datetime]]
         """
 
@@ -113,7 +113,7 @@ class StorageAPI(ABC):
     @abstractmethod
     def updateAccount(self, account: AccountStorage) -> None:
         """
-        Adds new account to storage or updates existing.
+        Adds new accout to storage or updates existing.
         :param account: Account storage to add.
         """
 
@@ -137,7 +137,7 @@ class StorageAPI(ABC):
         """
         Returns account under `uid` from DB if exists in the DB.
         :param `uid`: The account user ID.
-        :return: AccountStorage if account exists, otherwise None.
+        :return: AccountStorage if account exitsts, otherwise None.
         """
 
     @abstractmethod
@@ -261,7 +261,7 @@ class StorageAPI(ABC):
     @abstractmethod
     def findCscaCertificates(self, subject: x509.Name, subjectKey: Optional[bytes])-> Optional[List[CscaStorage]]:
         """
-        Returns list of CSCA certificate storage objects that match either the subject param or country code and subjectKey param.
+        Returns list of CSCA certificate storage objects that match eather the subject param or country code and subjectKey param.
         If the subjectKey is provided then the function first tries to query for the CSCAs by searching for CSCAs with specific
         subject country code and subjectKey. The reason for this is that querying by subject column might return invalid CSCA
         i.e. valid CSCAs for the country but invalid public key - invalid subjectKey, as the subject field can be the same between country's CSCAs.
@@ -442,7 +442,7 @@ class DatabaseAPI(StorageAPI):
         '''
         Creates new ORM database connection.
         :param dialect: The database dialect e.g.:  mariadb, mysql, oracle, postgresql, sqlite.
-        :param host: The database url host. Can be empty string in case of sqlite.
+        :param host: The database urlhost. Can be empty string in case of sqlite.
         :param db: The database path.
         :param username: The database username.
         :param password: The database password.
@@ -504,7 +504,7 @@ class DatabaseAPI(StorageAPI):
         Function tries to find proto challenge by user ID in the db, and returns
         challenge and expiration time.
 
-        :param uid: User ID to search the challenge for
+        :param uid: User ID to searche the challenge for
         :return: Optional[Tuple[Challenge, datetime]]
         :raises DatabaseAPIError: On DB connection errors.
         """
@@ -576,7 +576,7 @@ class DatabaseAPI(StorageAPI):
 
     def updateAccount(self, account: AccountStorage) -> None:
         """
-        Adds new acount to storage or updates existing.
+        Adds new accout to storage or updates existing.
         :param account: Account storage to add.
         :raises DatabaseAPIError: On DB connection errors.
         """
@@ -624,7 +624,7 @@ class DatabaseAPI(StorageAPI):
         """
         Returns account under `uid` from DB if exists in the DB.
         :param `uid`: The account user ID.
-        :return: AccountStorage if account exists, otherwise None.
+        :return: AccountStorage if account exitsts, otherwise None.
         :raises DatabaseAPIError: On DB connection errors.
         """
         assert isinstance(uid, UserId)
@@ -935,7 +935,7 @@ class DatabaseAPI(StorageAPI):
 
     def findCscaCertificates(self, subject: x509.Name, subjectKey: Optional[bytes])-> Optional[List[CscaStorage]]:
         """
-        Returns list of CSCA certificate storage objects that match either the subject param or country code and subjectKey param.
+        Returns list of CSCA certificate storage objects that match eather the subject param or country code and subjectKey param.
         If the subjectKey is provided then the function first tries to query for the CSCAs by searching for CSCAs with specific
         subject country code and subjectKey. The reason for this is that querying by subject column might return invalid CSCA
         i.e. valid CSCAs for the country but invalid public key - invalid subjectKey, as the subject field can be the same between country's CSCAs.
@@ -1340,11 +1340,11 @@ class DatabaseAPI(StorageAPI):
 
             accountsToDeleteSQ = accountsToDelete.subquery()
 
-            accountsWithSOD  = self.__db \
+            acountsWithSOD  = self.__db \
                 .query(SodTrack) \
                 .filter(SodTrack.id.in_(accountsToDelete))
 
-            accountsWithSOD.delete(synchronize_session=False)#"fetch"
+            acountsWithSOD.delete(synchronize_session=False)#"fetch"
 
             #for some reason there need to be 2 queries to delete rows also in account table
             accountsRowsDelete = self.__db \
@@ -1362,7 +1362,7 @@ class MemoryDBError(StorageAPIError):
 
 class MemoryDB(StorageAPI):
     '''
-    MemoryDB implements StorageAPI as non-persistent database.
+    MemoryDB implements StorageAPI as non-peristent database.
     The data is stored in memory (RAM) and gets deleted as instance of MemoryDB is destroyed.
     The purpose of MemoryDB is testing of port proto without needing to set up (or reset) proper database.
     Internally data is stored as dictionary in 4 categories:
@@ -1410,7 +1410,7 @@ class MemoryDB(StorageAPI):
         Function tries to find proto challenge by user ID in the db, and returns
         challenge and expiration time.
 
-        :param uid: User ID to search the challenge for
+        :param uid: User ID to searche the challenge for
         :return: Optional[Tuple[Challenge, datetime]]
         """
         assert isinstance(uid, UserId)
@@ -1451,7 +1451,7 @@ class MemoryDB(StorageAPI):
 
     def updateAccount(self, account: AccountStorage) -> None:
         """
-        Adds new account to storage or updates existing.
+        Adds new accout to storage or updates existing.
         :param account: Account storage to add.
         """
         assert isinstance(account, AccountStorage)
@@ -1482,7 +1482,7 @@ class MemoryDB(StorageAPI):
         """
         Returns account under `uid` from DB if exists in the DB.
         :param `uid`: The account user ID.
-        :return: AccountStorage if account exists, otherwise None.
+        :return: AccountStorage if account exitsts, otherwise None.
         """
         assert isinstance(uid, UserId)
         if uid not in self._d['account']:
@@ -1718,7 +1718,7 @@ class MemoryDB(StorageAPI):
 
     def findCscaCertificates(self, subject: x509.Name, subjectKey: Optional[bytes])-> Optional[List[CscaStorage]]:
         """
-        Returns list of CSCA certificate storage objects that match either the subject param or country code and subjectKey param.
+        Returns list of CSCA certificate storage objects that match eather the subject param or country code and subjectKey param.
         If the subjectKey is provided then the function first tries to query for the CSCAs by searching for CSCAs with specific
         subject country code and subjectKey. The reason for this is that querying by subject column might return invalid CSCA
         i.e. valid CSCAs for the country but invalid public key - invalid subjectKey, as the subject field can be the same between country's CSCAs.

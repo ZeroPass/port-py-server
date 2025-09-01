@@ -43,7 +43,7 @@ class PortPrivateApi(JsonRpcApi):
 
                 `aa`: (Optional) if `PassiveAuthentication` and `ActiveAuthentication` flag is set, this field has assigned a dictionary with fields:
 
-                     - `count`: the number of successful active authns performed by the account.
+                     - `count`: the number of successfull active authns performed by the account.
 
                      - `last_authn`: the date of the last successful active authn.
                      e.g.:
@@ -58,28 +58,19 @@ class PortPrivateApi(JsonRpcApi):
                 `ef`: (Optional) If `PassiveAuthentication` is set, a dictionary of data group hashes and files.
                        The value of "hash" dictionary consist of pair `hash_algo : hash_value` as dictionary.
                        If EF.DG1 file is present than the value of returned "file"  dictionary is MRZ in JSON format.
-                       IF EF.DG2 is present than the value of returned "file" dictionary is binary EF.DG2 encoded in Base64 format.
+                       If EF.DG2 is present than the value of returned "file" dictionary is the DG2 text content.
                         e.g.:
                           {
                             "ef" : {
                               "dg1" : {
-                                "hash" : {
-                                    "algorithm": "sha256",
-                                     "value": "ABC00975....11FF0099"
-                                }
+                                "hash" : { "sha256", "ABC00975....11FF0099"},
                                 "file" : { <MRZ dictionary>}
                               },
                               "dg2" : {
-                                "hash" : {
-                                    "algorithm": "sha256",
-                                     "value": "ABC00975....11FF0099"
-                                }
+                                "hash" : { "sha256", "ABC00975....11FF0099"}
                               },
                               "dg14" : {
-                                "hash" : {
-                                    "algorithm": "sha256",
-                                     "value": "ABC00975....11FF0099"
-                                }
+                                "hash" : { "sha256", "ABC00975....11FF0099"}
                               }
                             }
                           }
@@ -95,34 +86,19 @@ class PortPrivateApi(JsonRpcApi):
                       },
                       "ef":{
                         "dg1":{
-                          "hash":{
-                            "algorithm":"sha256",
-                            "value":"0a0aa521cc643c0269e2c71205e3fe50c43ff9e6980f5bc745898c1a0795cea0"
-                          }
+                          "hash":{"sha256":"0a0aa521cc643c0269e2c71205e3fe50c43ff9e6980f5bc745898c1a0795cea0"}
                         },
                         "dg2":{
-                          "hash":{
-                            "algorithm":"sha256",
-                            "value":"1b1b7bcf824157e20b7060956bed9e9a34d9699926000c7f2019120a0f6295b1"
-                          }
+                          "hash":{"sha256":"1b1b7bcf824157e20b7060956bed9e9a34d9699926000c7f2019120a0f6295b1"}
                         },
                         "dg3":{
-                          "hash":{
-                            "algorithm":"sha256",
-                            "value":"2c2c7bd08f74b698fcb2948e27f98fc1ee04eac21ef1187a284a4f726090bac2"
-                          }
+                          "hash":{"sha256":"2c2c7bd08f74b698fcb2948e27f98fc1ee04eac21ef1187a284a4f726090bac2"}
                         },
                         "dg14":{
-                          "hash":{
-                            "algorithm":"sha256",
-                            "value":"3d3dee0a12eff3464d2a25f20808ed60c1773d45f815c5c371afd366639bd8d3"
-                          }
+                          "hash":{"sha256":"3d3dee0a12eff3464d2a25f20808ed60c1773d45f815c5c371afd366639bd8d3"}
                         },
                         "dg15":{
-                          "hash":{
-                            "algorithm":"sha256",
-                            "value":"4e3e4dab9996890e32b20ed93b91a654618ca18aa330cd9828f2c1b20f2aede4"
-                          }
+                          "hash":{"sha256":"4e3e4dab9996890e32b20ed93b91a654618ca18aa330cd9828f2c1b20f2aede4"}
                         }
                       }
                     }
@@ -155,7 +131,7 @@ class PortPrivateApi(JsonRpcApi):
             if accnt.dg1 is not None:
                 aai['ef']['dg1']['file'] = accnt.getDG1().mrz.toJson()
             if accnt.dg2 is not None:
-                aai['ef']['dg2']['file'] = b64encode(accnt.dg2)
+                aai['ef']['dg2']['file'] = accnt.dg2.hex()
 
             # Add dg hashes
             for i in range(1, 17):

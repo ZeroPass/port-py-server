@@ -73,6 +73,7 @@ class PortApi(JsonRpcApi):
         :param `override`: If True, override the existing attestation for `uid`.
         :return: Dictionary object, specific to the server implementation.
         """
+        print("register")
         if override:
             ProtoError("Registration override not supported")
         uid   = try_deserialize(lambda: UserId.fromBase64(uid), self._log)
@@ -82,6 +83,36 @@ class PortApi(JsonRpcApi):
         if dg14 is not None:
             dg14 = try_deserialize(lambda: ef.DG14.load(b64decode(dg14)), self._log)
         return self._proto.register(uid, sod, dg15, dg14, override if override is not None else False)
+
+    # API: port.register_with_personal_data
+    @portapi
+    def register_with_personal_data(self, uid: str, sod: str,dg1: str, dg2: Optional[str] = None, dg15: Optional[str] = None, dg14: Optional[str] = None, override: Optional[bool] = None) -> dict:
+        """
+        Register new user account with eMRTD attestation and with personal data. (DG1=personal data, DG2=text data)
+
+        :param `uid`:   Base64 encoded UserId.
+        :param `sod`:   Base64 encoded eMRTD SOD file.
+        :param `dg1`:   Base64 encoded eMRTD DG1 file.
+        :param `dg2`:   Text data for DG2 (optional).
+        :param `dg15`:  Base64 encoded eMRTD DG15 file (optional but required if passport supports AA).
+        :param `dg14`:  Base64 encoded eMRTD DG14 file (optional but required if pubkey in dg15 uses EC key).
+        :param `override`: If True, override the existing attestation for `uid`.
+        :return: Dictionary object, specific to the server implementation.
+        """
+        print("register_with_personal_data")
+        if override:
+            ProtoError("Registration override not supported")
+        uid   = try_deserialize(lambda: UserId.fromBase64(uid), self._log)
+        sod   = try_deserialize(lambda: ef.SOD.load(b64decode(sod)), self._log)
+        dg1   = try_deserialize(lambda: ef.DG1.load(b64decode(dg1)), self._log)
+        if dg2 is not None:
+            dg2   = try_deserialize(lambda: ef.DG2.load(b64decode(dg2)), self._log)
+        if dg15 is not None:
+            dg15  = try_deserialize(lambda: ef.DG15.load(b64decode(dg15)), self._log)
+        if dg14 is not None:
+            dg14 = try_deserialize(lambda: ef.DG14.load(b64decode(dg14)), self._log)
+        return self._proto.register(uid, sod, dg1, dg2, dg15, dg14, override if override is not None else False)
+
 
     # API: port.get_assertion
     @portapi

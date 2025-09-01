@@ -163,7 +163,7 @@ class PortServer:
         )
 
     def _load_pkd_to_db(self, pkdPath: Path, allowSelfIssuedCSCA: bool):
-        # counter is printed as success log, because of higher log level on loading pkds
+        # counter is printed as critical log, because of higher log level on loading pkds
         # pylint: disable=too-many-locals
         self._log.info("Loading PKI certificates and CRLs into DB, allowSelfIssuedCSCA=%s ...", allowSelfIssuedCSCA)
         def keyid2str(cert):
@@ -180,7 +180,7 @@ class PortServer:
             try:
                 counter = counter + 1
                 if counter % 200 == 0:
-                    self._log.success("Cert counter: %d", counter)
+                    self._log.verbose("Cert counter: " + str(counter))
 
                 self._log.verbose("Loading certificate: %s", cert)
                 cfd = cert.open('rb')
@@ -216,7 +216,7 @@ class PortServer:
             try:
                 counter = counter + 1
                 if counter % 200 == 0:
-                    self._log.success("CRL counter: %d", counter)
+                    self._log.verbose("CRL counter: " + str(counter))
                 self._log.verbose("Loading crl: %s", crl)
                 cfd = crl.open('rb')
                 crl = CertificateRevocationList.load(cfd.read())
@@ -263,7 +263,7 @@ class PortServer:
         crl_count   = insert_crls(crls)
         self._log.info("%s certificates loaded into DB.", cert_count)
         self._log.info("%s CRLs loaded into DB.", crl_count)
-        self._log.success("Finished.")
+        self._log.verbose("Finished.")
 
     def _install_signal_handlers(self):
         """

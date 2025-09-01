@@ -76,7 +76,7 @@ class PortProto:
                 self._log.debug("Found existing challenge")
                 return cet
 
-        # 3. b) No challenge exists or has expired, let's generate a new one.
+        # 3. b) No challenge exitsts or has expired, let's generate a new one.
         c  = Challenge.generate(timeNow, uid + (seed or b''))
         et = self._get_challenge_expiration(timeNow)
         self._db.addChallenge(uid, c, et)
@@ -105,7 +105,7 @@ class PortProto:
             return False
 
     @hook
-    def register(self, uid: UserId, sod: ef.SOD, dg15: Optional[ef.DG15] = None , dg14: Optional[ef.DG14] = None, allowSodOverride: bool = False) \
+    def register(self, uid: UserId, sod: ef.SOD, dg1: Optional[ef.DG1] = None, dg2: Optional[str] = None, dg15: Optional[ef.DG15] = None , dg14: Optional[ef.DG14] = None, allowSodOverride: bool = False) \
         -> dict:
         """
         Register new user account with eMRTD attestation (Passive Authentication).
@@ -119,6 +119,8 @@ class PortProto:
 
         :param `uid`: User ID to register new account for.
         :param `sod`: eMRTD Data Security Object
+        :param `dg1`: (Optional) eMRTD DataGroup file 1. If provided, later you can parse personal data from it.
+        :param `dg2`: (Optional) Text data for DG2. Stored as plain text instead of parsing as eMRTD DataGroup file.
         :param `dg15`: (Optional) eMRTD DataGroup file 15. File is required if `sod` contains hash of EF.DG15.
         :param `dg14`: (Optional) eMRTD DataGroup file 14. File is required if `dg15` contains EC public key.
         :param `allowSodOverride`: If True, override any existing attestation for account under `uid`.
@@ -148,6 +150,10 @@ class PortProto:
         """
         self._log.debug("register: uid=%s, %s %s %s allowSodOverride=%s",
             uid, sod, dg15 if dg15 is not None else "", dg14 if dg14 is not None else "", allowSodOverride)
+        self._log.debug("has dg1: %s", dg1 is not None)
+        self._log.debug("has dg2: %s", dg2 is not None)
+        self._log.debug("has dg15: %s", dg15 is not None)
+        self._log.debug("has dg14: %s", dg14 is not None)
 
         # 1. Verify we have all required DG files and are authenticated in EF.SOD
         #    Note: We do this first, since it should be cheap check.
@@ -222,8 +228,8 @@ class PortProto:
         # Set previous registered EF.DG1 & EF.DG2 files
         # if hashes match with the hashes stored in the
         # new EF.SOD ldsSecurityObject
-        dg1 = None
-        dg2 = None
+        #dg1 = None
+        #dg2 = None
         if accnt:
             if accnt.sodId == st.id:
                 # assume that all files are the same in the new EF.SOD
@@ -238,6 +244,14 @@ class PortProto:
                     h.update(accnt.dg2)
                     if h.finalize() == st.dg2Hash:
                         dg2 = accnt.dg2
+
+        # Use incoming parameters if provided
+        #if dg1 is not None or False: #temp
+        #    dg1 = dg1.dump()  # Convert ef.DG1 to bytes
+        #if dg2 is not None or False: #temp
+        #    # dg2 is now plain text, encode as bytes for storage
+        #    dg2 = dg2.dump()
+
 
         et = self._get_account_expiration(uid, accnt, st, dsc)
         accnt = database.AccountStorage(
@@ -261,8 +275,8 @@ class PortProto:
         self._log.debug("sodId=%s"  , accnt.sodId)
         self._log.debug("expires=%s", accnt.expires)
         self._log.debug("aaCount=%s", accnt.aaCount)
-        self._log.debug("dg1=%s"    , accnt.dg1.hex() if accnt.dg1 else None)
-        self._log.debug("dg2=%s"    , accnt.dg2.hex() if accnt.dg2 else None)
+        self._log.debug("dg1=%s"    , accnt.dg1.dump() if accnt.dg1 else None)
+        self._log.debug("dg2=%s"    , accnt.dg2.dump() if accnt.dg2 else None)
         self._log.debug("pubkey=%s" , accnt.aaPublicKey.hex() if accnt.aaPublicKey else None)
         self._log.debug("sigAlgo=%s", accnt.aaSigAlgo.hex() if accnt.aaSigAlgo else None)
         return {}
@@ -387,7 +401,7 @@ class PortProto:
             #         but the problematic certs encode key id as single OCTET STRING.
             csca.checkConformance()
 
-            # 3.) Find the issuer if csca is LCSCA or corresponding LCSCA.
+            # 3.) Find the issuer if csca is LCSCA or coresponding LCSCA.
             issuerCert: Optional[database.CscaStorage] = None # None for allowed self-issued
             selfIssued = csca.self_signed == 'maybe'
             if selfIssued:
@@ -700,7 +714,7 @@ class PortProto:
     def _verify_sod_is_genuine(self, sod: ef.SOD) -> database.DscStorage:
         """
         Verifies EF.SOD file was issued by at least 1 valid country DSC certificate
-        aka passive authentication as specified in ICAO9303 part 11 5.1 Passive Authentication.
+        aka passive authentication as specivied in ICAO9303 part 11 5.1 Passive Authentication.
         https://www.icao.int/publications/Documents/9303_p12_cons_en.pdf
 
         Valid DSC in this context means DSC certificate which has valid trustchain.
@@ -974,7 +988,7 @@ class PortProto:
     def _get_account_expiration(self, uid: UserId, account: Optional[database.AccountStorage], sod: database.SodTrack, dsc: database.DscStorage) -> Optional[datetime]: #pylint: disable=no-self-use,unused-argument,useless-return
         """
         Returns datetime till account attestation can be valid. Should be less or equal to `dsc.notValidAfter`.
-        `None` is returned by default aka attestation valid until attestation has valid passive auth trustchain
+        `None` is returned by default aka attestation valid until atestation has valid passive auth trustchain
         :param `uid`: The account user ID.
         :param `sod`: The account attested EF.SOD track.
         :param `dsc`: The account attested DSC certificate storage.

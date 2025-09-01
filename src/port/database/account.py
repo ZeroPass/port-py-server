@@ -14,8 +14,8 @@ class AccountStorage:
     aaSigAlgo: Optional[bytes]
     aaCount: int                    # ActiveAuthentication counter, counts how many AAs have been done. When greater than 0, account is ActiveAuthenticated with eMRTD.
     aaLastAuthn: Optional[datetime] # The date of last successful Active Authentication.
-    dg1: Optional[bytes]
-    dg2: Optional[bytes]
+    dg1: Optional[DG1]
+    dg2: Optional[DG2]
 
     def __init__(self, uid: UserId, country: CountryCode, sodId: Optional[SodId], expires: Optional[datetime], \
         aaPublicKey: Optional[AAPublicKey], aaSigAlgo: Optional[SignatureAlgorithm], aaCount: int, aaLastAuthn: Optional[datetime], dg1: Optional[ef.DG1], dg2: Optional[bytes]):
@@ -29,13 +29,15 @@ class AccountStorage:
         assert isinstance(aaCount, int)
         assert isinstance(aaLastAuthn, (datetime, type(None)))
         assert isinstance(dg1, (ef.DG1, type(None)))
-        assert isinstance(dg2, (bytes, type(None)))
+        assert isinstance(dg2, (ef.DG2, type(None)))
         if aaPublicKey is not None:
             aaPublicKey = aaPublicKey.dump()
         if aaSigAlgo is not None:
             aaSigAlgo = aaSigAlgo.dump()
         if dg1 is not None:
             dg1 = dg1.dump()
+        if dg2 is not None:
+            dg2 = dg2.dump()
 
         self.uid         = uid
         self.country     = country
