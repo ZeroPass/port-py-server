@@ -14,8 +14,8 @@ class AccountStorage:
     aaSigAlgo: Optional[bytes]
     aaCount: int                    # ActiveAuthentication counter, counts how many AAs have been done. When greater than 0, account is ActiveAuthenticated with eMRTD.
     aaLastAuthn: Optional[datetime] # The date of last successful Active Authentication.
-    dg1: Optional[DG1]
-    dg2: Optional[DG2]
+    dg1: Optional[ef.DG1]
+    dg2: Optional[ef.DG2]
 
     def __init__(self, uid: UserId, country: CountryCode, sodId: Optional[SodId], expires: Optional[datetime], \
         aaPublicKey: Optional[AAPublicKey], aaSigAlgo: Optional[SignatureAlgorithm], aaCount: int, aaLastAuthn: Optional[datetime], dg1: Optional[ef.DG1], dg2: Optional[bytes]):
