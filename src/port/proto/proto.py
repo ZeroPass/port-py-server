@@ -275,8 +275,8 @@ class PortProto:
         self._log.debug("sodId=%s"  , accnt.sodId)
         self._log.debug("expires=%s", accnt.expires)
         self._log.debug("aaCount=%s", accnt.aaCount)
-        self._log.debug("dg1=%s"    , accnt.dg1.dump() if accnt.dg1 else None)
-        self._log.debug("dg2=%s"    , accnt.dg2.dump() if accnt.dg2 else None)
+        self._log.debug("dg1=%s"    , accnt.dg1 if accnt.dg1 else None)
+        self._log.debug("dg2=%s"    , accnt.dg2 if accnt.dg2 else None)
         self._log.debug("pubkey=%s" , accnt.aaPublicKey.hex() if accnt.aaPublicKey else None)
         self._log.debug("sigAlgo=%s", accnt.aaSigAlgo.hex() if accnt.aaSigAlgo else None)
         return {}
