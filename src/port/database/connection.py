@@ -97,7 +97,7 @@ class SodIdSqlType(TypeDecorator): #pylint: disable=abstract-method
         return SodId(value) if value is not None else value
 
 class UserIdSqlType(TypeDecorator): #pylint: disable=abstract-method
-    impl = VARBINARY(20)
+    impl = VARBINARY(80)
     python_type = UserId
     cache_ok = True
     def process_result_value(self, value, dialect):
