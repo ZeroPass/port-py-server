@@ -157,10 +157,10 @@ class UserId(bytes):
     Represents account user ID.
     User ID can be UTF-8 string or `bytes`.
     Internally UserId is represented as `bytes`.
-    Max user ID size is 20 bytes.
+    Max user ID size is 80 bytes.
     """
 
-    max_size: int = 20
+    max_size: int = 80
 
     def __new__(cls, userId: Union[bytes, str]) -> "UserId":
         if isinstance(userId, str):
