@@ -506,7 +506,7 @@ class PortProto:
 
             # 3.) Check that DSC can sign and issue passport document
             if dsc.documentTypes is not None:
-                if not dsc.documentTypes.contains(ef.mrz.DocumentType.Passport.value):
+                if not dsc.documentTypes.contains(ef.dg1.DocumentType.Passport.value):
                     raise peDscCantIssuePassport
 
             # 4.) Find the CSCA certificate that issued DSC.
