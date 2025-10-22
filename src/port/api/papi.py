@@ -127,11 +127,12 @@ class PortPrivateApi(JsonRpcApi):
                   "last_authn" : accnt.aaLastAuthn
                 }
 
-            # Add DG1 & DG2 files
+            # Add DG1
             if accnt.dg1 is not None:
                 aai['ef']['dg1']['file'] = accnt.getDG1().mrz.toJson()
-            if accnt.dg2 is not None:
-                aai['ef']['dg2']['file'] = accnt.dg2.hex()
+            # Do not add DG2 file, since it is not needed for attestation.
+            #if accnt.dg2 is not None:
+            #    aai['ef']['dg2']['file'] = accnt.dg2.hex()
 
             # Add dg hashes
             for i in range(1, 17):

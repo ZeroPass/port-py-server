@@ -29,10 +29,10 @@ api:
 #   log_level: None #[verbose, debug, info, warning, error]
 
 # Private API config
-# papi:
-#   log_level: None
-#   host: "127.0.0.1" # *WARNING* don't expose it to the internet
-#   port: 9090
+papi:
+    log_level: debug
+    host: "127.0.0.1" # *WARNING* don't expose it to the internet
+    port: 8080
 #   timeout_keep_alive: 10
 #   tls_cert: "tls\\port_server.cer"
 #   tls_key: "tls\\server_key.pem"
