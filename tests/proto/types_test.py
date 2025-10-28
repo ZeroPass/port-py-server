@@ -590,7 +590,7 @@ def test_sodId(datafiles):
 # UserId tests
 def test_UserId():
     assert issubclass(UserId, bytes)
-    assert UserId.max_size == 20
+    assert UserId.max_size == 80
 
     assert UserId(bytes.fromhex("01")) == bytes.fromhex("01")
     assert UserId(bytes.fromhex("0101")) == bytes.fromhex("0101")
